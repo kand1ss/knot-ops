@@ -1,5 +1,4 @@
 [licenses]
-copyleft = "deny"
 allow = [
     "MIT", 
     "Apache-2.0", 
@@ -16,5 +15,4 @@ multiple-versions = "warn"
 
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
 unmaintained = "all"
