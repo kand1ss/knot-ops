@@ -1,0 +1,12 @@
+
+[workspace]
+members = [
+    "src/core"
+]
+resolver = "2"
+
+[workspace.package]
+rust-version = "1.75.0"
+edition = "2021"
+authors = ["Yaroslav Varichenko <kand1ss>"]
+license = "MIT OR Apache-2.0"
