@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: knot-linux-x86_64
+          - name: Linux ARM64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            asset_name: knot-linux-aarch64
+            use_cross: true
+          - name: macOS ARM64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: knot-macos-aarch64
+          - name: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: knot-windows-x86_64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@cross
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+        shell: bash
+
+      - name: Prepare Assets
+        shell: bash
+        run: |
+          BIN_PATH="target/${{ matrix.target }}/release/knot"
+          [[ "${{ matrix.os }}" == "windows-latest" ]] && BIN_PATH="${BIN_PATH}.exe"
+          
+          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
+            strip "$BIN_PATH"
+          fi
+          
+          cp "$BIN_PATH" "${{ matrix.asset_name }}"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Extract Changelog
+        id: changelog
+        shell: bash
+        run: |
+            VERSION="${GITHUB_REF_NAME#v}"
+            NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md)
+            
+            NOTES=$(echo "$NOTES" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+            if [ -z "$NOTES" ]; then
+                NOTES="Release $VERSION"
+            fi
+
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            echo "$NOTES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.notes }}
+          files: dist/**
+          generate_release_notes: true
+
+      - name: Publish to crates.io
+        if: "!contains(github.ref_name, '-')"
+        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}

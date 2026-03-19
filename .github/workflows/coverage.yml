@@ -1,0 +1,25 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install tarpaulin
+        uses: taiki-e/install-action@cargo-tarpaulin
+
+      - name: Run coverage
+        run: cargo tarpaulin --workspace --all-features --out Xml --output-dir ./
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: cobertura.xml
