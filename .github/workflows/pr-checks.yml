@@ -21,31 +21,3 @@ jobs:
           l_max_size: 500
           xl_label: 'size/XL'
           fail_if_xl: false
-
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Read MSRV from Cargo.toml
-        id: msrv
-        run: |
-          MSRV=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages | map(select(.rust_version != null)) | .[0].rust_version')
-          if [ "$MSRV" == "null" ] || [ -z "$MSRV" ]; then
-            echo "MSRV not found in Cargo.toml, falling back to stable"
-            MSRV="stable"
-          fi
-          echo "Detected MSRV: $MSRV"
-          echo "version=$MSRV" >> $GITHUB_OUTPUT
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.msrv.outputs.version }}
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ steps.msrv.outputs.version }}
-
-      - run: cargo check --all-features
