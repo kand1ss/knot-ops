@@ -1,11 +1,11 @@
-use thiserror::Error;
 use std::path::PathBuf;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum TransportError {
     #[error("failed to connect to daemon socket '{path}': {source}")]
     ConnectionFailed {
-        path:   PathBuf,
+        path: PathBuf,
         #[source]
         source: std::io::Error,
     },

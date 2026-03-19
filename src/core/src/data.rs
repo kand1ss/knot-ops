@@ -1,6 +1,5 @@
 use crate::states::ServiceStatus;
 
-
 pub struct ServiceData {
     pub pid: u32,
     pub name: String,

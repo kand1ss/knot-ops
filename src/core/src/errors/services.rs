@@ -25,9 +25,9 @@ pub enum ServiceError {
 
     #[error("service '{name}' cannot start: dependency '{dependency}' is {status}")]
     DependencyNotReady {
-        name:       String,
+        name: String,
         dependency: String,
-        status:     String,
+        status: String,
     },
 
     #[error("group '{name}' not found")]

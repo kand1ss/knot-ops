@@ -1,5 +1,5 @@
-use thiserror::Error;
 use std::path::PathBuf;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DaemonError {
@@ -17,14 +17,14 @@ pub enum DaemonError {
 
     #[error("failed to write pid file '{path}': {source}")]
     PidFileError {
-        path:   PathBuf,
+        path: PathBuf,
         #[source]
         source: std::io::Error,
     },
 
     #[error("failed to create socket '{path}': {source}")]
     SocketError {
-        path:   PathBuf,
+        path: PathBuf,
         #[source]
         source: std::io::Error,
     },

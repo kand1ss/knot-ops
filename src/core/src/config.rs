@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-
 pub struct ServiceConfig {
     execution_command: String,
     directory: String,

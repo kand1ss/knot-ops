@@ -1,6 +1,5 @@
 use std::time::SystemTime;
 
-
 pub struct TimestampUtils;
 impl TimestampUtils {
     pub fn now_ms() -> u64 {
@@ -34,14 +33,14 @@ impl TimestampUtils {
         }
 
         let hours = minutes / 60;
-        let mins  = minutes % 60;
+        let mins = minutes % 60;
 
         if hours < 24 {
             return format!("{}h {}m", hours, mins);
         }
 
-        let days  = hours / 24;
-        let hrs   = hours % 24;
+        let days = hours / 24;
+        let hrs = hours % 24;
 
         format!("{}d {}h", days, hrs)
     }

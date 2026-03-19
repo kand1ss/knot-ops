@@ -5,5 +5,5 @@ pub enum ServiceStatus {
     Stopped,
     Starting,
     Running,
-    Failed
+    Failed,
 }
