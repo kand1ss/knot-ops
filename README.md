@@ -1,7 +1,10 @@
-# knot-ops | 🚧 Work in progress |
+# ⚡ knot-ops | 🚧 Work in progress |
 
 > A fast local service orchestrator for developers — built in Rust.
 
+![Check](https://github.com/kand1ss/knot-ops/actions/workflows/check.yml/badge.svg)
+![Release](https://github.com/kand1ss/knot-ops/actions/workflows/release.yml/badge.svg)
+[![codecov](https://codecov.io/github/kand1ss/knot-ops/graph/badge.svg?token=KHVGOUH2O4)](https://codecov.io/github/kand1ss/knot-ops)
 [![Crates.io](https://img.shields.io/crates/v/knot-ops.svg)](https://crates.io/crates/knot-ops)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
