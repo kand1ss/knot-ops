@@ -2,7 +2,15 @@ name: Coverage
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '**/src/**'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.github/workflows/**'
+      - '**/tests/**'
 
 jobs:
   coverage:
