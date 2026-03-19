@@ -31,7 +31,11 @@ jobs:
         id: msrv
         run: |
           MSRV=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages | map(select(.rust_version != null)) | .[0].rust_version')
-          if [ "$MSRV" == "null" ]; then MSRV="stable"; fi
+          if [ "$MSRV" == "null" ] || [ -z "$MSRV" ]; then
+            echo "MSRV not found in Cargo.toml, falling back to stable"
+            MSRV="stable"
+          fi
+          echo "Detected MSRV: $MSRV"
           echo "version=$MSRV" >> $GITHUB_OUTPUT
 
       - name: Install Rust toolchain
