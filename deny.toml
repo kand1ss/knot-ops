@@ -17,4 +17,4 @@ multiple-versions = "warn"
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 vulnerability = "deny"
-unmaintained = "warn"
+unmaintained = "all"
