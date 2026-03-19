@@ -245,3 +245,122 @@ ignore   = ["**/__pycache__", "**/*.pyc"]
 [services.backend]
 cmd = "cargo run --bin $APP_NAME"
 ```
+
+## v0.10 - Components & Pipeline features
+**Goal: Adding prepared components and the ability to create your own**
+
+### Config
+**Component using:**
+```toml
+[services.postgres]
+use = "knot/postgres" # name of component
+
+[services.backend]
+cmd        = "cargo run"
+depends_on = ["postgres"] # exported variables will be injected in service
+```
+
+**Component declaration:**
+```toml
+[components.postgres]
+description = "PostgreSQL database"
+version     = "16"
+type  = "docker"
+image = "postgres:16"
+port  = 5432
+restart = "always"
+
+  [components.postgres.env]
+  POSTGRES_PASSWORD = "{{ required | env: POSTGRES_PASSWORD }}"
+  POSTGRES_DB       = "{{ project.name }}"
+  POSTGRES_USER     = "postgres"
+
+  [components.postgres.healthcheck]
+  cmd     = "pg_isready -U {{ env.POSTGRES_USER }}"
+  timeout = "5s"
+  retries = 10
+
+  # variables which component will export
+  [components.postgres.exports]
+  DATABASE_URL = "postgres://{{ env.POSTGRES_USER }}:{{ env.POSTGRES_PASSWORD }}@localhost:{{ port }}/{{ env.POSTGRES_DB }}"
+```
+
+### Python SDK
+**Component using:**
+```python
+from knot import service, group
+from knot.components import use
+
+# using prepared component
+postgres = use("knot/postgres",
+    password = "secret",
+    db       = "myapp",
+)
+
+# using own component
+redis = use("my_component",
+    port = 6380,
+)
+
+# backend automatically gets DATABASE_URL from postgres
+backend = service("cargo run",
+    dir        = "./backend",
+    port       = 8080,
+    depends_on = [postgres, redis],
+    # DATABASE_URL will be injected automatically
+)
+
+group("infra", [postgres, redis])
+group("app",   [backend])
+```
+
+**Component declaration:**
+```python
+from knot import component, field, export, healthcheck
+
+@component(
+    name    = "knot/postgres",
+    version = "16",
+    description = "PostgreSQL database",
+)
+class PostgresComponent:
+    # fields with defaults
+    image:    str = field(default="postgres:16")
+    port:     int = field(default=5432)
+    user:     str = field(default="postgres")
+    password: str = field(required=True)
+    db:       str = field(default=lambda ctx: ctx.project.name)
+
+    def configure(self):
+        return {
+            "type":  "docker",
+            "image": self.image,
+            "port":  self.port,
+            "env": {
+                "POSTGRES_USER":     self.user,
+                "POSTGRES_PASSWORD": self.password,
+                "POSTGRES_DB":       self.db,
+            },
+            "healthcheck": healthcheck.command(
+                cmd     = f"pg_isready -U {self.user}",
+                timeout = "5s",
+                retries = 10,
+            ),
+            "restart": "always",
+        }
+
+    @export
+    def DATABASE_URL(self) -> str:
+        return (
+            f"postgres://{self.user}:{self.password}"
+            f"@localhost:{self.port}/{self.db}"
+        )
+
+    @export
+    def POSTGRES_HOST(self) -> str:
+        return "localhost"
+
+    @export
+    def POSTGRES_PORT(self) -> int:
+        return self.port
+```
