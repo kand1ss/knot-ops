@@ -1,6 +1,12 @@
 name: Deny
 
-on: [pull_request]
+on:
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/deny.yml'
 
 jobs:
   deny:
@@ -9,4 +15,5 @@ jobs:
       - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check all
+          command: check
+          arguments: --all-features --workspace
