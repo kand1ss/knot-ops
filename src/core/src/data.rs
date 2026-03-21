@@ -1,7 +1,7 @@
 use crate::states::ServiceStatus;
 
 /// Represents the current runtime state of a service.
-/// 
+///
 /// This structure provides a snapshot of a service's execution details
 /// at a specific point in time.
 pub struct ServiceData {

@@ -9,7 +9,7 @@ pub enum ExitReason {
 }
 
 /// Events emitted during the lifecycle of a process.
-/// 
+///
 /// Used for monitoring, logging, and triggering dependency-based actions.
 pub enum ProcessEvent<'a> {
     /// Emitted when a process is successfully launched.
