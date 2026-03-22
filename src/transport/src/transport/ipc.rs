@@ -1,6 +1,4 @@
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
-use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use interprocess::local_socket::tokio::prelude::*;
@@ -12,18 +10,13 @@ use interprocess::local_socket::{
     ToFsName,
     ToNsName
 };
-use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, WriteHalf, ReadHalf}, 
-    sync::{Mutex, oneshot}
+    sync::Mutex
 };
 
 use knot_core::errors::TransportError;
-use crate::{
-    messages::{Message, MessageKind},
-    codec::MessageCodec,
-    transport::Transport,
-};
+use crate::transport::RawTransport;
 
 
 const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
@@ -51,126 +44,41 @@ fn resolve_socket_name(path: &PathBuf) -> Result<Name<'static>, TransportError> 
     }
     
 
-use std::collections::HashMap;
-use tokio::sync::mpsc;
+use std::sync::Arc;
 
-struct Shared<TRequest, TResponse> {
-    pending: Mutex<HashMap<u32, oneshot::Sender<TResponse>>>,
-    inbox: mpsc::Sender<Message<TRequest, TResponse>>
-}
-
-pub struct IpcTransport<TRequest, TResponse, TCodec>
-where
-    TRequest:  Serialize + DeserializeOwned + Send,
-    TResponse: Serialize + DeserializeOwned + Send,
-    TCodec: MessageCodec<Raw = Vec<u8>>,
-{
+#[derive(Debug)]
+pub struct IpcTransport {
     writer: Arc<Mutex<WriteHalf<LocalSocketStream>>>,
-    next_id: AtomicU32,
-    shared: Arc<Shared<TRequest, TResponse>>,
-    inbox_rx: Mutex<mpsc::Receiver<Message<TRequest, TResponse>>>,
-    _phantom: PhantomData<(TRequest, TResponse, TCodec)>,
+    reader: Arc<Mutex<ReadHalf<LocalSocketStream>>>,
 }
 
-impl<TRequest, TResponse, TCodec> IpcTransport<TRequest, TResponse, TCodec>
-where
-    TRequest:  Serialize + DeserializeOwned + Send + 'static,
-    TResponse: Serialize + DeserializeOwned + Send + 'static,
-    TCodec: MessageCodec<Raw = Vec<u8>> + Send + 'static,
-{
-    async fn from_socket(stream: LocalSocketStream) -> Self {
+impl IpcTransport {
+    pub fn from_socket(stream: LocalSocketStream) -> Self {
         let (reader, writer) = tokio::io::split(stream);
-        let (inbox_tx, inbox_rx) = mpsc::channel(32);
-
-        let shared = Arc::new(Shared {
-            pending: Mutex::new(HashMap::new()),
-            inbox: inbox_tx
-        });
-        
-        tokio::spawn(Self::read_loop(
-            reader, 
-            Arc::clone(&shared)
-        ));
-
         Self {
             writer: Arc::new(Mutex::new(writer)),
-            inbox_rx: Mutex::new(inbox_rx),
-            shared,
-            next_id: AtomicU32::new(0),
-            _phantom: PhantomData,
+            reader: Arc::new(Mutex::new(reader)),
         }
     }
 
-    async fn read_loop(mut reader: ReadHalf<LocalSocketStream>, shared: Arc<Shared<TRequest, TResponse>>) {
-        loop {
-            let raw = match Self::read_frame(&mut reader).await {
-                Ok(raw) => raw,
-                Err(e)  => {
-                    eprintln!("[read_loop] read_frame error: {:?}", e);
-                    break
-                },
-            };
-
-            let msg: Message<TRequest, TResponse> = match TCodec::decode(raw) {
-                Ok(msg) => msg,
-                Err(e)  => {
-                    eprintln!("[read_loop] deserialize error: {:?}", e);
-                    break
-                },
-            };
-
-            match &msg.kind {
-                MessageKind::Response(_) => {
-                    let mut pending = shared.pending.lock().await;
-                    eprintln!("[read_loop] pending count={}", pending.len());
-
-                    if let Some(tx) = pending.remove(&msg.id) {
-                        if let MessageKind::Response(payload) = msg.kind {
-                            let _ = tx.send(payload);
-                        }
-                    } else {
-                        let _ = shared.inbox.send(msg).await;
-                    }
-                }
-                MessageKind::Request(_) => {
-                    let _ = shared.inbox.send(msg).await;
-                }
-            }
-        }
-
-        shared.pending.lock().await.clear();
-    }
-
-    async fn write_frame(
-        writer: &mut WriteHalf<LocalSocketStream>,
-        data:   &[u8],
-    ) -> Result<(), TransportError> {
-        let len = data.len() as u32;
-
-        writer
-            .write_all(&len.to_be_bytes())
+    pub async fn connect(socket_path: PathBuf) -> Result<Self, TransportError> {
+        let name = resolve_socket_name(&socket_path)?;
+        let stream = LocalSocketStream::connect(name)
             .await
-            .map_err(|e| TransportError::Io { source: e })?;
-
-        writer
-            .write_all(data)
-            .await
-            .map_err(|e| TransportError::Io { source: e })?;
-
-        Ok(())
-    }
-
-    async fn read_frame(
-        reader: &mut ReadHalf<LocalSocketStream>,
-    ) -> Result<Vec<u8>, TransportError> {
-        let mut len_buf = [0u8; 4];
-        reader
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|e| match e.kind() {
-                std::io::ErrorKind::UnexpectedEof => TransportError::ConnectionClosed,
-                _ => TransportError::Io { source: e },
+            .map_err(|e| TransportError::ConnectionFailed {
+                path: socket_path.clone(),
+                source: e,
             })?;
+
+        Ok(Self::from_socket(stream))
+    }
+
+    async fn read_frame_internal(reader: &mut ReadHalf<LocalSocketStream>) -> Result<Vec<u8>, TransportError> {
+        let mut len_buf = [0u8; 4];
+        reader.read_exact(&mut len_buf).await.map_err(|e| match e.kind() {
+            std::io::ErrorKind::UnexpectedEof => TransportError::ConnectionClosed,
+            _ => TransportError::Io { source: e },
+        })?;
         
         let len = u32::from_be_bytes(len_buf) as usize;
         if len > MAX_MESSAGE_SIZE {
@@ -178,144 +86,68 @@ where
         }
 
         let mut buf = vec![0u8; len];
-        reader
-            .read_exact(&mut buf)
-            .await
-            .map_err(|e| TransportError::Io { source: e })?;
-
+        reader.read_exact(&mut buf).await.map_err(|e| TransportError::Io { source: e })?;
         Ok(buf)
-    }
-
-    fn next_id(&self) -> u32 {
-        self.next_id.fetch_add(1, Ordering::SeqCst)
-    }
-
-    async fn send_message(
-        &self,
-        msg: &Message<TRequest, TResponse>,
-    ) -> Result<(), TransportError> {
-        let mut writer = self.writer.lock().await;
-        let raw = TCodec::encode(msg)?;
-        Self::write_frame(&mut writer, &raw).await
-    }
-
-    async fn recv_message(
-        &self,
-    ) -> Result<Message<TRequest, TResponse>, TransportError> {
-        self.inbox_rx
-            .lock()
-            .await
-            .recv()
-            .await
-            .ok_or(TransportError::ConnectionClosed)
     }
 }
 
 #[async_trait]
-impl<TRequest, TResponse, TCodec> Transport<TRequest, TResponse, TCodec>
-    for IpcTransport<TRequest, TResponse, TCodec>
-where
-    TRequest:  Serialize + DeserializeOwned + Send + Sync + 'static,
-    TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-    TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
-{
-    type Address = PathBuf;
+impl RawTransport for IpcTransport {
+    async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+        let mut writer = self.writer.lock().await;
+        let len = frame.len() as u32;
 
-    async fn connect(socket_path: PathBuf) -> Result<Self, TransportError> {
-        let name = resolve_socket_name(&socket_path)?;
-        let stream = LocalSocketStream::connect(name)
-            .await
-            .map_err(|e| match e.kind() {
-                std::io::ErrorKind::ConnectionRefused => {
-                    TransportError::ConnectionRefused
-                }
-                std::io::ErrorKind::NotFound => {
-                    TransportError::InvalidSocketPath {
-                        path: socket_path.clone(),
-                    }
-                }
-                _ => TransportError::ConnectionFailed {
-                    path:   socket_path.clone(),
-                    source: e,
-                },
-            })?;
+        writer.write_all(&len.to_be_bytes()).await
+            .map_err(|e| TransportError::Io { source: e })?;
 
-        Ok(Self::from_socket(stream).await)
+        writer.write_all(frame).await
+            .map_err(|e| TransportError::Io { source: e })?;
+
+        Ok(())
     }
 
-    async fn serve(
-        &self,
-    ) -> Result<Message<TRequest, TResponse>, TransportError> {
-        self.recv_message().await
-    }
-
-    async fn send(
-        &self,
-        message: Message<TRequest, TResponse>,
-    ) -> Result<(), TransportError> {
-        self.send_message(&message).await
-    }
-
-    async fn request(
-        &self,
-        request: TRequest,
-    ) -> Result<TResponse, TransportError> {
-        let id  = self.next_id();
-        let msg = Message::request(id, request);
-
-        let (tx, rx) = oneshot::channel();
-        self.shared.pending.lock().await.insert(id, tx);
-
-        self.send_message(&msg).await?;
-        rx.await.map_err(|_| TransportError::ConnectionClosed)
+    async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
+        let mut reader = self.reader.lock().await;
+        Self::read_frame_internal(&mut reader).await
     }
 }
 
 
 use crate::transport::Server;
 
-
 pub struct IpcServer {
     listener: LocalSocketListener,
     socket_path: PathBuf,
-    is_closed: bool
+    is_closed: bool,
 }
+
 impl IpcServer {
     pub fn path(&self) -> &PathBuf {
         &self.socket_path
-    }
-
-    pub async fn accept_specific<TRequest, TResponse, TCodec>(&self) 
-        -> Result<IpcTransport<TRequest, TResponse, TCodec>, TransportError>
-    where
-        TRequest: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
-    {
-        let stream = self.listener
-            .accept()
-            .await
-            .map_err(|e| TransportError::Io { source: e })?;
-
-        Ok(IpcTransport::from_socket(stream).await)
     }
 }
 
 #[async_trait]
 impl Server for IpcServer {
     type Address = PathBuf;
+    type Transport = IpcTransport;
 
     async fn bind(socket_path: PathBuf) -> Result<Self, TransportError> {
         let name = resolve_socket_name(&socket_path)?;
+        
         let listener = ListenerOptions::new()
             .name(name)
             .create_tokio()
             .map_err(|e| TransportError::ConnectionFailed {
-                path:   socket_path.clone(),
+                path: socket_path.clone(),
                 source: e,
             })?;
 
-        Ok(Self { listener, socket_path, is_closed: false })
+        Ok(Self { 
+            listener, 
+            socket_path, 
+            is_closed: false 
+        })
     }
 
     async fn shutdown(&mut self) {
@@ -326,28 +158,28 @@ impl Server for IpcServer {
         #[cfg(unix)]
         {
             if self.socket_path.exists() {
-                let res = tokio::fs::remove_file(&self.socket_path).await;
+                let _ = tokio::fs::remove_file(&self.socket_path).await;
             }
         }
         self.is_closed = true;
     }
 
-    async fn accept<TRequest, TResponse, TCodec>(&self) 
-        -> Result<Box<dyn Transport<TRequest, TResponse, TCodec, Address = Self::Address>>, TransportError>
-    where
-        TRequest: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
-    {
-        let transport = self.accept_specific().await?;
-        Ok(Box::new(transport))
+    async fn accept(&self) -> Result<Self::Transport, TransportError> {
+        let stream = self.listener
+            .accept()
+            .await
+            .map_err(|e| TransportError::Io { source: e })?;
+        
+        Ok(IpcTransport::from_socket(stream))
     }
 }
+
 impl Drop for IpcServer {
     fn drop(&mut self) {
         if !self.is_closed {
             #[cfg(unix)]
             {
+                // В синхронном Drop используем std::fs
                 let _ = std::fs::remove_file(&self.socket_path);
             }
         }

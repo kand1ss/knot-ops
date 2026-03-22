@@ -3,6 +3,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use knot_core::errors::TransportError;
 
+#[derive(Debug)]
 pub struct JsonCodec;
 
 impl MessageCodec for JsonCodec {

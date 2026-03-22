@@ -1,11 +1,15 @@
-
+use rstest::*;
 use knot_transport::{
-    messages::{Message, MessageKind, daemon::{DaemonRequest, DaemonResponse}}, 
-    codec::JsonCodec, transport::{Server, Transport, ipc::{IpcServer, IpcTransport}}
+    codec::{MessageCodec, JsonCodec, BinaryCodec}, 
+    messages::{Message, MessageKind, 
+        daemon::{DaemonRequest, DaemonResponse}}, 
+        transport::{MessageTransport, RawTransport, Server, ipc::{IpcServer, IpcTransport}}
 };
 use knot_core::errors::TransportError;
 use std::path::PathBuf;
 use tokio::task::JoinHandle;
+use std::marker::PhantomData;
+
 
 fn test_socket_path(suffix: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
@@ -14,18 +18,18 @@ fn test_socket_path(suffix: &str) -> PathBuf {
     path
 }
 
-async fn spawn_echo_server(
-    socket_path: PathBuf,
-) -> JoinHandle<()> {
+async fn spawn_echo_server<Cod>(socket_path: PathBuf) -> JoinHandle<()> 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static 
+{
     tokio::spawn(async move {
         let server = IpcServer::bind(socket_path).await.unwrap();
         println!("server spawned");
-        let transport: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> 
-            = server.accept_specific().await.unwrap();
+        let transport: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> = server.accept().await.unwrap().to_messaged();
         println!("received transport");
 
         loop {
-            match transport.serve().await {
+            match transport.recv().await {
                 Ok(msg) => {
                     match msg.kind {
                         MessageKind::Request(req) => {
@@ -56,9 +60,14 @@ async fn spawn_echo_server(
     })
 }
 
-
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_multiple_clients() {
+async fn test_multiple_clients<Cod>(#[case] _marker: PhantomData<Cod>) 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static 
+{
     let path = test_socket_path("concurrent");
 
     let p1 = path.clone();
@@ -66,12 +75,12 @@ async fn test_multiple_clients() {
         let server = IpcServer::bind(p1).await.unwrap();
 
         for _ in 0..3 {
-            let transport: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> =
-                server.accept_specific().await.unwrap();
+            let transport: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> 
+                = server.accept().await.unwrap().to_messaged();
 
             tokio::spawn(async move {
                 loop {
-                    match transport.serve().await {
+                    match transport.recv().await {
                         Ok(msg) => {
                             if let MessageKind::Request(_) = msg.kind {
                                 transport.send(Message::response(
@@ -93,8 +102,8 @@ async fn test_multiple_clients() {
     let handles: Vec<_> = (0..3).map(|_| {
         let p2 = path.clone();
         tokio::spawn(async move {
-            let client: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> =
-                IpcTransport::connect(p2).await.unwrap();
+            let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+                IpcTransport::connect(p2).await.unwrap().to_messaged();
 
             client.request(DaemonRequest::Status).await.unwrap()
         })
@@ -106,17 +115,22 @@ async fn test_multiple_clients() {
     }
 }
 
-
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_connect_and_request() {
+async fn test_connect_and_request<Cod>(#[case] _marker: PhantomData<Cod>) 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static 
+{
     let path   = test_socket_path("connect");
-    let server = spawn_echo_server(path.clone()).await;
+    let server = spawn_echo_server::<Cod>(path.clone()).await;
     println!("server spawned 2");
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> =
-        IpcTransport::connect(path).await.unwrap();
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
     println!("received client");
 
     println!("waiting response");
@@ -130,15 +144,21 @@ async fn test_connect_and_request() {
     server.abort();
 }
 
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_multiple_requests() {
+async fn test_multiple_requests<Cod>(#[case] _marker: PhantomData<Cod>) 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static
+{
     let path   = test_socket_path("multiple");
-    let server = spawn_echo_server(path.clone()).await;
+    let server = spawn_echo_server::<Cod>(path.clone()).await;
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> =
-        IpcTransport::connect(path).await.unwrap();
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
 
     for i in 0..5 {
         let response = client
@@ -155,18 +175,23 @@ async fn test_multiple_requests() {
     server.abort();
 }
 
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_connect_fails_when_no_server() {
+async fn test_connect_fails_when_no_server<Cod>(#[case] _marker: PhantomData<Cod>) 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + std::fmt::Debug + 'static 
+{
     let path = test_socket_path("no-server");
 
-    let result: Result<IpcTransport<DaemonRequest, DaemonResponse, JsonCodec>, _> =
-        IpcTransport::connect(path).await;
+    let result: Result<MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod>, _> =
+        IpcTransport::connect(path).await.map(|t| t.to_messaged());
 
-    assert!(matches!(
-        result,
-        Err(TransportError::InvalidSocketPath { .. })
-            | Err(TransportError::ConnectionRefused)
-    ));
+    assert!(
+    matches!(result, Err(TransportError::ConnectionFailed { .. })),
+        "Expected specific error, but got: {:?}", result
+    );
 }
 
 #[tokio::test]
@@ -197,15 +222,21 @@ async fn test_server_bind_cleans_stale_socket_drop() {
     assert!(!path.exists());
 }
 
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_shutdown_message() {
+async fn test_shutdown_message<Cod>(#[case] _marker: PhantomData<Cod>) 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static 
+{
     let path   = test_socket_path("shutdown");
-    let server = spawn_echo_server(path.clone()).await;
+    let server = spawn_echo_server::<Cod>(path.clone()).await;
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> =
-        IpcTransport::connect(path).await.unwrap();
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
 
     let response = client
         .request(DaemonRequest::Down)
@@ -222,15 +253,21 @@ async fn test_shutdown_message() {
 
 use tokio::time::Duration;
 
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_connection_closed_on_server_drop() {
+async fn test_connection_closed_on_server_drop<Cod>(#[case] _marker: PhantomData<Cod>) 
+where 
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static 
+{
     let path   = test_socket_path("drop");
     let server = IpcServer::bind(path.clone()).await.unwrap();
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let client: IpcTransport<DaemonRequest, DaemonResponse, JsonCodec> =
-        IpcTransport::connect(path).await.unwrap();
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
 
     drop(server);
 

@@ -15,6 +15,7 @@ const BINCODE_CONFIG: config::Configuration<
     .with_limit::<4096>();
 
     
+#[derive(Debug)]
 pub struct BinaryCodec;
 impl MessageCodec for BinaryCodec {
     type Raw = Vec<u8>;
