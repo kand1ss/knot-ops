@@ -2,6 +2,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use knot_core::errors::TransportError;
 
+mod json;
+pub use json::JsonCodec;
+
 pub trait MessageCodec {
     type Raw;
 
