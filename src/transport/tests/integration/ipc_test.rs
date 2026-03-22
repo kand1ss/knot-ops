@@ -33,31 +33,28 @@ where
             server.accept().await.unwrap().to_messaged();
         println!("received transport");
 
-        loop {
-            match transport.recv().await {
-                Ok(msg) => match msg.kind {
-                    MessageKind::Request(req) => {
-                        let response = match req {
-                            DaemonRequest::Down { .. } => {
-                                transport
-                                    .send(Message::response(msg.id, DaemonResponse::Ok))
-                                    .await
-                                    .ok();
-                                break;
-                            }
-                            DaemonRequest::Status { .. } => DaemonResponse::Status {
-                                services: Vec::new(),
-                            },
-                        };
+        while let Ok(msg) = transport.recv().await {
+            match msg.kind {
+                MessageKind::Request(req) => {
+                    let response = match req {
+                        DaemonRequest::Down => {
+                            transport
+                                .send(Message::response(msg.id, DaemonResponse::Ok))
+                                .await
+                                .ok();
+                            break;
+                        }
+                        DaemonRequest::Status => DaemonResponse::Status {
+                            services: Vec::new(),
+                        },
+                    };
 
-                        transport
-                            .send(Message::response(msg.id, response))
-                            .await
-                            .ok();
-                    }
-                    _ => {}
-                },
-                Err(_) => break,
+                    transport
+                        .send(Message::response(msg.id, response))
+                        .await
+                        .ok();
+                }
+                _ => {}
             }
         }
     })
@@ -82,17 +79,12 @@ where
                 server.accept().await.unwrap().to_messaged();
 
             tokio::spawn(async move {
-                loop {
-                    match transport.recv().await {
-                        Ok(msg) => {
-                            if let MessageKind::Request(_) = msg.kind {
-                                transport
-                                    .send(Message::response(msg.id, DaemonResponse::Ok))
-                                    .await
-                                    .ok();
-                            }
-                        }
-                        Err(_) => break,
+                while let Ok(msg) = transport.recv().await {
+                    if let MessageKind::Request(_) = msg.kind {
+                        transport
+                            .send(Message::response(msg.id, DaemonResponse::Ok))
+                            .await
+                            .ok();
                     }
                 }
             });
