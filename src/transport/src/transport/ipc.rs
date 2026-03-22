@@ -11,7 +11,7 @@ use interprocess::local_socket::tokio::prelude::*;
 use interprocess::local_socket::{
     GenericFilePath, GenericNamespaced, ListenerOptions, Name, ToFsName, ToNsName,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
@@ -29,27 +29,37 @@ const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
 ///
 /// On Windows, it extracts the file name for use in the object namespace.
 /// On Unix, it uses the direct filesystem path for the socket file.
-fn resolve_socket_name(path: &PathBuf) -> Result<Name<'static>, TransportError> {
+fn resolve_socket_name(path: &Path) -> Result<Name<'static>, TransportError> {
     if path.as_os_str().is_empty() {
-        return Err(TransportError::InvalidSocketPath { path: path.clone() });
+        return Err(TransportError::InvalidSocketPath {
+            path: path.to_path_buf(),
+        });
     }
 
     #[cfg(unix)]
     if path.as_os_str().len() > 100 {
-        return Err(TransportError::InvalidSocketPath { path: path.clone() });
+        return Err(TransportError::InvalidSocketPath {
+            path: path.to_path_buf(),
+        });
     }
 
     if cfg!(windows) {
         path.file_name()
             .and_then(|n| n.to_str())
-            .ok_or(TransportError::InvalidSocketPath { path: path.clone() })?
+            .ok_or(TransportError::InvalidSocketPath {
+                path: path.to_path_buf(),
+            })?
             .to_ns_name::<GenericNamespaced>()
             .map(|name| name.into_owned())
-            .map_err(|_e| TransportError::InvalidSocketPath { path: path.clone() })
+            .map_err(|_e| TransportError::InvalidSocketPath {
+                path: path.to_path_buf(),
+            })
     } else {
-        path.clone()
+        path.to_path_buf()
             .to_fs_name::<GenericFilePath>()
-            .map_err(|_e| TransportError::InvalidSocketPath { path: path.clone() })
+            .map_err(|_e| TransportError::InvalidSocketPath {
+                path: path.to_path_buf(),
+            })
     }
 }
 
