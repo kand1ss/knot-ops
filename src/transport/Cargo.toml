@@ -12,6 +12,7 @@ tokio = "1.50.0"
 knot-core = { path="../core" }
 async-trait = "0.1.89"
 interprocess = { version = "2.4.0", features = ["tokio"] }
+bincode = "3.0.0"
 
 [dev-dependencies]
 tokio = { version = "1.50.0", features = ["full", "test-util"] }
