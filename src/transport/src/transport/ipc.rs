@@ -253,8 +253,9 @@ mod tests {
     fn test_resolve_socket_name_uses_full_path() {
         let path   = PathBuf::from("/tmp/knot-test.sock");
         let name   = resolve_socket_name(&path).unwrap();
-        let name_str = name.to_string();
-        assert!(name_str.contains("knot-test.sock"));
+        let name_debug = format!("{:?}", name);
+    
+        assert!(name_debug.contains("knot-test.sock"));
     }
 
     #[test]
