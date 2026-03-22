@@ -30,6 +30,15 @@ const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
 /// On Windows, it extracts the file name for use in the object namespace.
 /// On Unix, it uses the direct filesystem path for the socket file.
 fn resolve_socket_name(path: &PathBuf) -> Result<Name<'static>, TransportError> {
+    if path.as_os_str().is_empty() {
+        return Err(TransportError::InvalidSocketPath { path: path.clone() });
+    }
+
+    #[cfg(unix)]
+    if path.as_os_str().len() > 100 {
+        return Err(TransportError::InvalidSocketPath { path: path.clone() });
+    }
+
     if cfg!(windows) {
         path.file_name()
             .and_then(|n| n.to_str())
