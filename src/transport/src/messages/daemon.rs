@@ -1,19 +1,39 @@
+//! # Knot Daemon Protocol
+//! 
+//! This module defines the high-level API for the Knot daemon.
+//! 
+//! It includes request/response structures for managing process lifecycles, 
+//! querying service health, and retrieving system status.
+
 use serde::{Serialize, Deserialize};
 use crate::messages::Message;
 use knot_core::data::ServiceData;
 use knot_core::states::ServiceStatus;
 use knot_core::utils::TimestampUtils;
 
-
+/// A serialized snapshot of a service's current state.
+/// 
+/// This structure is sent from the daemon to the CLI to provide 
+/// human-readable information about a managed process.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceStatusResponse {
-    pid: u32,
-    name: String,
-    status: String,
-    uptime: String,
-    healthy: bool,
+    /// Process ID (PID) assigned by the operating system.
+    pub pid: u32,
+    /// Unique identifier for the service.
+    pub name: String,
+    /// String representation of the service lifecycle state.
+    pub status: String,
+    /// Formatted duration (e.g., "2h 15m") since the service started.
+    pub uptime: String,
+    /// Simple boolean indicating if the service is currently operational.
+    pub healthy: bool,
 }
+
 impl From<&ServiceData> for ServiceStatusResponse {
+    /// Converts internal `ServiceData` into a serializable `ServiceStatusResponse`.
+    /// 
+    /// This handles the conversion of raw timestamps into formatted uptime strings
+    /// and determines the health status based on the `ServiceStatus` enum.
     fn from(s: &ServiceData) -> Self {
         Self {
             pid: s.pid,
@@ -25,18 +45,34 @@ impl From<&ServiceData> for ServiceStatusResponse {
     }
 }
 
-
+/// Commands sent from the CLI to the Knot Daemon.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DaemonRequest {
+    /// Request to gracefully shut down the daemon and all managed services.
     Down,
+    /// Request to retrieve the status of all currently registered services.
     Status
 }
 
+/// Information sent from the Knot Daemon back to the CLI.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DaemonResponse {
+    /// Indicates that the requested operation was received.
     Ok,
-    Error { message: String },
-    Status { services: Vec<ServiceStatusResponse> }
+    /// Indicates a failure occurred during the operation.
+    Error { 
+        /// Human-readable explanation of what went wrong.
+        message: String 
+    },
+    /// Contains a list of service snapshots in response to a `Status` request.
+    Status { 
+        /// A vector of individual service statuses.
+        services: Vec<ServiceStatusResponse> 
+    }
 }
 
+/// Concrete type alias for the Knot message protocol.
+/// 
+/// This combines the generic `Message` envelope with Knot-specific 
+/// requests and responses.
 pub type DaemonMessage = Message<DaemonRequest, DaemonResponse>;
