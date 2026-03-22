@@ -12,13 +12,13 @@
 //! The core is divided into several specialized modules:
 //!
 //! * **Data & States**: Defines what a "Service" is ([`data`][data]) and the
-//!     lifecycle stages it can inhabit ([`states`][states]).
+//! lifecycle stages it can inhabit ([`states`][states]).
 //! * **Configuration**: Handles the parsing and validation of service
-//!     definitions ([`config`][config]).
+//! definitions ([`config`][config]).
 //! * **Error Handling**: Provides a unified error system ([`errors`][errors])
-//!     used across the entire workspace.
+//! used across the entire workspace.
 //! * **Observability**: Manages internal system events ([`events`][events])
-//!     for logging and monitoring.
+//! for logging and monitoring.
 //!
 //! ## Dependency Flow
 //!
