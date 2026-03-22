@@ -26,6 +26,9 @@ use crate::{
 };
 
 
+const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+
+
 fn resolve_socket_name(path: &PathBuf) -> Result<Name<'static>, TransportError> {
         if cfg!(windows) {
             path.file_name()
@@ -168,8 +171,6 @@ where
                 std::io::ErrorKind::UnexpectedEof => TransportError::ConnectionClosed,
                 _ => TransportError::Io { source: e },
             })?;
-
-        const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
         
         let len = u32::from_be_bytes(len_buf) as usize;
         if len > MAX_MESSAGE_SIZE {
