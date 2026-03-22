@@ -8,7 +8,7 @@ use async_trait::async_trait;
 pub mod ipc;
 
 #[async_trait]
-pub trait Transport<TRequest, TResponse, TProtocol: MessageCodec> 
+pub trait Transport<TRequest, TResponse, TCodec: MessageCodec> 
 where
     TRequest: Serialize + DeserializeOwned + Send + 'static,
     TResponse: Serialize + DeserializeOwned + Send + 'static, 
@@ -31,10 +31,10 @@ pub trait Server {
         Self: Sized;
 
     async fn shutdown(&mut self);
-    async fn accept<TRequest, TResponse, TProtocol>(&self) 
-        -> Result<Box<dyn Transport<TRequest, TResponse, TProtocol, Address = Self::Address>>, TransportError>
+    async fn accept<TRequest, TResponse, TCodec>(&self) 
+        -> Result<Box<dyn Transport<TRequest, TResponse, TCodec, Address = Self::Address>>, TransportError>
     where
         TRequest: Serialize + DeserializeOwned + Send + Sync + 'static,
         TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TProtocol: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static;
+        TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static;
 }

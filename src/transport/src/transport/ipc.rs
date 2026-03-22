@@ -59,24 +59,24 @@ struct Shared<TRequest, TResponse> {
     inbox: mpsc::Sender<Message<TRequest, TResponse>>
 }
 
-pub struct IpcTransport<TRequest, TResponse, TProtocol>
+pub struct IpcTransport<TRequest, TResponse, TCodec>
 where
     TRequest:  Serialize + DeserializeOwned + Send,
     TResponse: Serialize + DeserializeOwned + Send,
-    TProtocol: MessageCodec<Raw = Vec<u8>>,
+    TCodec: MessageCodec<Raw = Vec<u8>>,
 {
     writer: Arc<Mutex<WriteHalf<LocalSocketStream>>>,
     next_id: AtomicU32,
     shared: Arc<Shared<TRequest, TResponse>>,
     inbox_rx: Mutex<mpsc::Receiver<Message<TRequest, TResponse>>>,
-    _phantom: PhantomData<(TRequest, TResponse, TProtocol)>,
+    _phantom: PhantomData<(TRequest, TResponse, TCodec)>,
 }
 
-impl<TRequest, TResponse, TProtocol> IpcTransport<TRequest, TResponse, TProtocol>
+impl<TRequest, TResponse, TCodec> IpcTransport<TRequest, TResponse, TCodec>
 where
     TRequest:  Serialize + DeserializeOwned + Send + 'static,
     TResponse: Serialize + DeserializeOwned + Send + 'static,
-    TProtocol: MessageCodec<Raw = Vec<u8>> + Send + 'static,
+    TCodec: MessageCodec<Raw = Vec<u8>> + Send + 'static,
 {
     async fn from_socket(stream: LocalSocketStream) -> Self {
         let (reader, writer) = tokio::io::split(stream);
@@ -111,7 +111,7 @@ where
                 },
             };
 
-            let msg: Message<TRequest, TResponse> = match TProtocol::decode(raw) {
+            let msg: Message<TRequest, TResponse> = match TCodec::decode(raw) {
                 Ok(msg) => msg,
                 Err(e)  => {
                     eprintln!("[read_loop] deserialize error: {:?}", e);
@@ -195,7 +195,7 @@ where
         msg: &Message<TRequest, TResponse>,
     ) -> Result<(), TransportError> {
         let mut writer = self.writer.lock().await;
-        let raw = TProtocol::encode(msg)?;
+        let raw = TCodec::encode(msg)?;
         Self::write_frame(&mut writer, &raw).await
     }
 
@@ -212,12 +212,12 @@ where
 }
 
 #[async_trait]
-impl<TRequest, TResponse, TProtocol> Transport<TRequest, TResponse, TProtocol>
-    for IpcTransport<TRequest, TResponse, TProtocol>
+impl<TRequest, TResponse, TCodec> Transport<TRequest, TResponse, TCodec>
+    for IpcTransport<TRequest, TResponse, TCodec>
 where
     TRequest:  Serialize + DeserializeOwned + Send + Sync + 'static,
     TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-    TProtocol: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
+    TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
     type Address = PathBuf;
 
@@ -285,12 +285,12 @@ impl IpcServer {
         &self.socket_path
     }
 
-    pub async fn accept_specific<TRequest, TResponse, TProtocol>(&self) 
-        -> Result<IpcTransport<TRequest, TResponse, TProtocol>, TransportError>
+    pub async fn accept_specific<TRequest, TResponse, TCodec>(&self) 
+        -> Result<IpcTransport<TRequest, TResponse, TCodec>, TransportError>
     where
         TRequest: Serialize + DeserializeOwned + Send + Sync + 'static,
         TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TProtocol: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
+        TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
     {
         let stream = self.listener
             .accept()
@@ -332,12 +332,12 @@ impl Server for IpcServer {
         self.is_closed = true;
     }
 
-    async fn accept<TRequest, TResponse, TProtocol>(&self) 
-        -> Result<Box<dyn Transport<TRequest, TResponse, TProtocol, Address = Self::Address>>, TransportError>
+    async fn accept<TRequest, TResponse, TCodec>(&self) 
+        -> Result<Box<dyn Transport<TRequest, TResponse, TCodec, Address = Self::Address>>, TransportError>
     where
         TRequest: Serialize + DeserializeOwned + Send + Sync + 'static,
         TResponse: Serialize + DeserializeOwned + Send + Sync + 'static,
-        TProtocol: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
+        TCodec: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
     {
         let transport = self.accept_specific().await?;
         Ok(Box::new(transport))
