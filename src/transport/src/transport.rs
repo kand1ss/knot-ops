@@ -1,24 +1,24 @@
 //! # Knot Transport
-//! 
+//!
 //! This module provides the infrastructure for typed, asynchronous messaging.
 //! It handles frame-based I/O, serialization, and request-response synchronization.
 
-use crate::messages::{Message, MessageKind};
 use crate::codec::MessageCodec;
+use crate::messages::{Message, MessageKind};
+use async_trait::async_trait;
+use knot_core::errors::TransportError;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use knot_core::errors::TransportError;
-use async_trait::async_trait;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use tokio::sync::{mpsc, oneshot, Mutex};
-use std::marker::PhantomData;
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 pub mod ipc;
 
 /// Defines a low-level byte-frame transport.
-/// 
+///
 /// Implementors are responsible for ensuring that a single call to `recv_frame`
 /// returns exactly one complete message frame.
 #[async_trait]
@@ -27,7 +27,7 @@ pub trait RawTransport: Send + Sync + Sized {
     async fn recv_frame(&self) -> Result<Vec<u8>, TransportError>;
 
     /// Wraps the raw transport into a high-level `MessageTransport`.
-    fn to_messaged<Req, Res, C>(self) -> MessageTransport<Self, Req, Res, C> 
+    fn to_messaged<Req, Res, C>(self) -> MessageTransport<Self, Req, Res, C>
     where
         Req: Serialize + DeserializeOwned + Send + 'static,
         Res: Serialize + DeserializeOwned + Send + 'static,
@@ -54,7 +54,7 @@ pub struct MessageTransport<R, TRequest, TResponse, TCodec>
 where
     R: RawTransport + 'static,
 {
-    raw_transport: Arc<R>, 
+    raw_transport: Arc<R>,
     next_id: AtomicU32,
     shared: Arc<SharedState<TRequest, TResponse>>,
     inbox_rx: Mutex<mpsc::Receiver<Message<TRequest, TResponse>>>,
@@ -131,7 +131,7 @@ where
                 }
             }
         }
-        
+
         // Clean up pending requests on transport failure
         shared.pending.lock().await.clear();
     }
@@ -143,8 +143,8 @@ where
     }
 
     /// Sends a request and returns a future that resolves to the matching response.
-    /// 
-    /// This method generates a unique ID, registers a listener, and waits for the 
+    ///
+    /// This method generates a unique ID, registers a listener, and waits for the
     /// background loop to receive the corresponding response.
     pub async fn request(&self, request: TRequest) -> Result<TResponse, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
@@ -157,7 +157,7 @@ where
 
         let msg: Message<TRequest, TResponse> = Message::request(id, request);
         let encoded = TCodec::encode(&msg)?;
-        
+
         if let Err(e) = self.raw_transport.send_frame(&encoded).await {
             let mut pending = self.shared.pending.lock().await;
             pending.remove(&id);
@@ -181,13 +181,13 @@ pub trait Server {
     type Transport: RawTransport;
 
     /// Binds to the specified address and starts the listener.
-    async fn bind(addr: Self::Address) -> Result<Self, TransportError> 
-    where 
+    async fn bind(addr: Self::Address) -> Result<Self, TransportError>
+    where
         Self: Sized;
 
     /// Stops the server listener.
     async fn shutdown(&mut self);
-    
+
     /// Accepts the next incoming connection.
     async fn accept(&self) -> Result<Self::Transport, TransportError>;
 }

@@ -1,13 +1,13 @@
 //! # Knot Messages
-//! 
-//! This module defines the core message structures used for communication 
+//!
+//! This module defines the core message structures used for communication
 //! between the Knot CLI and the Knot Daemon.
 //!
-//! It implements a robust Request/Response pattern with correlation IDs 
+//! It implements a robust Request/Response pattern with correlation IDs
 //! and automatic timestamping.
 
-use serde::{Serialize, Deserialize};
 use knot_core::utils::TimestampUtils;
+use serde::{Deserialize, Serialize};
 
 pub mod daemon;
 
