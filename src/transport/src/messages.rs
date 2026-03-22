@@ -1,6 +1,8 @@
 use serde::{Serialize, Deserialize};
 use knot_core::utils::TimestampUtils;
 
+pub mod daemon;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Message<TRequest, TResponse> {
     pub id: u32,
