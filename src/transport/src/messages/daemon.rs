@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::messages::MessageKind;
+use crate::messages::Message;
 use knot_core::data::ServiceData;
 use knot_core::states::ServiceStatus;
 use knot_core::utils::TimestampUtils;
@@ -39,4 +39,4 @@ pub enum DaemonResponse {
     Status { services: Vec<ServiceStatusResponse> }
 }
 
-pub type DaemonMessage = MessageKind<DaemonRequest, DaemonResponse>;
+pub type DaemonMessage = Message<DaemonRequest, DaemonResponse>;
