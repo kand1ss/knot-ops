@@ -57,54 +57,71 @@ where
     })
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+enum TestRequest {
+    Ping(i32),
+}
+#[derive(Serialize, Deserialize, Debug)]
+enum TestResponse {
+    Pong(i32),
+}
+
 #[rstest]
 #[case::json(PhantomData::<JsonCodec>)]
 #[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn test_multiple_clients<Cod>(#[case] _marker: PhantomData<Cod>)
+async fn test_concurrent_clients_isolation<Cod>(#[case] _marker: PhantomData<Cod>)
 where
     Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
-    let path = test_socket_path("concurrent");
+    let path = test_socket_path("isolation");
+    let server_path = path.clone();
 
-    let p1 = path.clone();
     tokio::spawn(async move {
-        let server = IpcServer::bind(p1).await.unwrap();
+        let server = IpcServer::bind(server_path).await.unwrap();
 
-        for _ in 0..3 {
-            let transport: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
-                server.accept().await.unwrap().to_messaged();
+        while let Ok(raw) = server.accept().await {
+            let transport: MessageTransport<IpcTransport, TestRequest, TestResponse, Cod> =
+                raw.to_messaged();
 
             tokio::spawn(async move {
                 while let Ok(msg) = transport.recv().await {
-                    if let MessageKind::Request(_) = msg.kind {
-                        transport
-                            .send(Message::response(msg.id, DaemonResponse::Ok))
-                            .await
-                            .ok();
+                    if let MessageKind::Request(TestRequest::Ping(val)) = msg.kind {
+                        let response = Message::response(msg.id, TestResponse::Pong(val));
+                        let _ = transport.send(response).await;
                     }
                 }
             });
         }
     });
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let mut handles = Vec::new();
 
-    let handles: Vec<_> = (0..3)
-        .map(|_| {
-            let p2 = path.clone();
-            tokio::spawn(async move {
-                let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
-                    IpcTransport::connect(p2).await.unwrap().to_messaged();
+    for i in 0..10 {
+        let p = path.clone();
+        let handle = tokio::spawn(async move {
+            let client: MessageTransport<IpcTransport, TestRequest, TestResponse, Cod> =
+                IpcTransport::connect(p).await.unwrap().to_messaged();
 
-                client.request(DaemonRequest::Status).await.unwrap()
-            })
-        })
-        .collect();
+            for j in 0..5 {
+                let unique_val = i * 100 + j;
+                let response = client
+                    .request(TestRequest::Ping(unique_val))
+                    .await
+                    .expect("Request failed");
+
+                let TestResponse::Pong(received_val) = response;
+                assert_eq!(received_val, unique_val);
+            }
+        });
+        handles.push(handle);
+    }
 
     for handle in handles {
-        let response = handle.await.unwrap();
-        assert!(matches!(response, DaemonResponse::Ok));
+        handle.await.expect("Client task panicked");
     }
 }
 
