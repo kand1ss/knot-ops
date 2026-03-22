@@ -160,6 +160,12 @@ impl Server for IpcServer {
 
     /// Binds a local socket listener to the provided path.
     async fn bind(socket_path: PathBuf) -> Result<Self, TransportError> {
+        #[cfg(unix)]
+        {
+            if socket_path.exists() {
+                let _ = tokio::fs::remove_file(&socket_path).await;
+            }
+        }
         let name = resolve_socket_name(&socket_path)?;
 
         let listener = ListenerOptions::new()
