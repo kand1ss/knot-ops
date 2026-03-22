@@ -12,7 +12,6 @@ pub struct Message<TRequest, TResponse> {
 
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "payload")]
 pub enum MessageKind<TRequest, TResponse>
 {
     Request(TRequest),
