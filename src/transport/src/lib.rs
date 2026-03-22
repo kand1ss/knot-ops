@@ -25,16 +25,6 @@
 //! The transport layer uses a background worker pattern. This allows a single
 //! connection to handle multiple concurrent requests without blocking the
 //! main execution thread.
-//!
-//! ## Example
-//!
-//! ```rust
-//! // Converting a raw UnixStream into a high-level typed transport
-//! let transport = raw_socket.to_messaged::<DaemonRequest, DaemonResponse, BinaryCodec>();
-//!
-//! // Sending a request and waiting for a specific response
-//! let response = transport.request(DaemonRequest::Status).await?;
-//! ```
 
 /// Serialization and deserialization logic.
 ///
