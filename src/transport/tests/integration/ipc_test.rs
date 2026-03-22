@@ -34,27 +34,24 @@ where
         println!("received transport");
 
         while let Ok(msg) = transport.recv().await {
-            match msg.kind {
-                MessageKind::Request(req) => {
-                    let response = match req {
-                        DaemonRequest::Down => {
-                            transport
-                                .send(Message::response(msg.id, DaemonResponse::Ok))
-                                .await
-                                .ok();
-                            break;
-                        }
-                        DaemonRequest::Status => DaemonResponse::Status {
-                            services: Vec::new(),
-                        },
-                    };
+            if let MessageKind::Request(req) = msg.kind {
+                let response = match req {
+                    DaemonRequest::Down => {
+                        transport
+                            .send(Message::response(msg.id, DaemonResponse::Ok))
+                            .await
+                            .ok();
+                        break;
+                    }
+                    DaemonRequest::Status => DaemonResponse::Status {
+                        services: Vec::new(),
+                    },
+                };
 
-                    transport
-                        .send(Message::response(msg.id, response))
-                        .await
-                        .ok();
-                }
-                _ => {}
+                transport
+                    .send(Message::response(msg.id, response))
+                    .await
+                    .ok();
             }
         }
     })
