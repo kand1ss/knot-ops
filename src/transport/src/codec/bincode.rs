@@ -33,3 +33,51 @@ impl MessageCodec for BinaryCodec {
         Ok(decoded)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages::{daemon::{DaemonRequest, DaemonResponse, DaemonMessage}, MessageKind};
+
+    #[test]
+    fn test_binary_codec_serialize_deserialize() {
+        let msg: DaemonMessage = DaemonMessage::request(
+            42,
+            DaemonRequest::Down,
+        );
+
+        let raw = BinaryCodec::encode(&msg).unwrap();
+        let decoded: DaemonMessage = BinaryCodec::decode(raw).unwrap();
+
+        assert_eq!(decoded.id, 42);
+        assert!(matches!(decoded.kind, MessageKind::Request(_)));
+    }
+
+    #[test]
+    fn test_binary_deserialize_response() {
+        let msg: DaemonMessage = DaemonMessage::response(
+            42,
+            DaemonResponse::Status { services: vec![] },
+        );
+
+        let raw = BinaryCodec::encode(&msg).unwrap();
+        let decoded: DaemonMessage = BinaryCodec::decode(raw).unwrap();
+
+        assert_eq!(decoded.id, 42);
+        assert!(matches!(
+            decoded.kind,
+            MessageKind::Response(DaemonResponse::Status { .. })
+        ));
+    }
+
+    #[test]
+    fn test_binary_deserialize_invalid_data() {
+        let invalid = b"not valid data at all {{{".to_vec();
+        let result: Result<DaemonMessage, _> = BinaryCodec::decode(invalid);
+
+        assert!(matches!(
+            result,
+            Err(TransportError::DeserializeError { .. })
+        ));
+    }
+}

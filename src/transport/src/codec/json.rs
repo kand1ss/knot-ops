@@ -20,3 +20,52 @@ impl MessageCodec for JsonCodec {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages::{daemon::{DaemonMessage, DaemonRequest, DaemonResponse}, MessageKind};
+
+    #[test]
+    fn test_json_codec_serialize_deserialize() {
+        let msg: DaemonMessage = DaemonMessage::request(
+            42,
+            DaemonRequest::Down,
+        );
+
+        let raw = JsonCodec::encode(&msg).unwrap();
+        let decoded: DaemonMessage = JsonCodec::decode(raw).unwrap();
+
+        assert_eq!(decoded.id, 42);
+        assert!(matches!(decoded.kind, MessageKind::Request(_)));
+    }
+
+    #[test]
+    fn test_json_deserialize_response() {
+        let msg: DaemonMessage = DaemonMessage::response(
+            42,
+            DaemonResponse::Status { services: vec![] },
+        );
+
+        let raw     = JsonCodec::encode(&msg).unwrap();
+        let decoded: DaemonMessage = JsonCodec::decode(raw).unwrap();
+
+        assert_eq!(decoded.id, 42);
+        assert!(matches!(
+            decoded.kind,
+            MessageKind::Response(DaemonResponse::Status { .. })
+        ));
+    }
+
+    #[test]
+    fn test_json_deserialize_invalid_data() {
+        let invalid = b"not valid json at all {{{".to_vec();
+
+        let result: Result<DaemonMessage, _> = JsonCodec::decode(invalid);
+
+        assert!(matches!(
+            result,
+            Err(TransportError::DeserializeError { .. })
+        ));
+    }
+}

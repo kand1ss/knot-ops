@@ -358,8 +358,6 @@ impl Drop for IpcServer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::daemon::{DaemonRequest, DaemonResponse};
-    use crate::codec::JsonCodec;
 
     #[tokio::test]
     async fn test_frame_roundtrip() {
@@ -379,67 +377,6 @@ mod tests {
         server.read_exact(&mut buf).await.unwrap();
 
         assert_eq!(&buf, data);
-    }
-
-    #[test]
-    fn test_json_protocol_serialize_deserialize() {
-        let msg: Message<DaemonRequest, DaemonResponse> = Message::request(
-            42,
-            DaemonRequest::Down,
-        );
-
-        let raw = JsonCodec::encode(&msg).unwrap();
-        let decoded: Message<DaemonRequest, DaemonResponse> =
-            JsonCodec::decode(raw).unwrap();
-
-        assert_eq!(decoded.id, 42);
-        assert!(matches!(decoded.kind, MessageKind::Request(_)));
-    }
-
-    #[test]
-    fn test_json_deserialize_response() {
-        let msg: Message<DaemonRequest, DaemonResponse> = Message::response(
-            42,
-            DaemonResponse::Status { services: vec![] },
-        );
-
-        let raw     = JsonCodec::encode(&msg).unwrap();
-        let decoded: Message<DaemonRequest, DaemonResponse> =
-            JsonCodec::decode(raw).unwrap();
-
-        assert_eq!(decoded.id, 42);
-        assert!(matches!(
-            decoded.kind,
-            MessageKind::Response(DaemonResponse::Status { .. })
-        ));
-    }
-
-    #[test]
-    fn test_json_deserialize_invalid_data() {
-        let invalid = b"not valid json at all {{{".to_vec();
-
-        let result: Result<Message<DaemonRequest, DaemonResponse>, _> =
-            JsonCodec::decode(invalid);
-
-        assert!(matches!(
-            result,
-            Err(TransportError::DeserializeError { .. })
-        ));
-    }
-
-    #[test]
-    fn test_message_request_response_roundtrip() {
-        let request: Message<DaemonRequest, DaemonResponse> = Message::request(
-            1,
-            DaemonRequest::Down,
-        );
-
-        let raw    = JsonCodec::encode(&request).unwrap();
-        let decoded: Message<DaemonRequest, DaemonResponse> =
-            JsonCodec::decode(raw).unwrap();
-
-        assert_eq!(decoded.id, 1);
-        assert!(decoded.timestamp > 0);
     }
 
     #[test]
