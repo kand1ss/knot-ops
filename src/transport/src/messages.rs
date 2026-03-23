@@ -6,7 +6,7 @@
 //! The module supports three interaction patterns:
 //! 1. **Requests**: Initiated by the client, requiring a correlated response.
 //! 2. **Responses**: Sent by the server in reply to a specific request (matched via ID).
-//! 3. **Events**: One-way asynchronous notifications (e.g., logs or status updates) 
+//! 3. **Events**: One-way asynchronous notifications (e.g., logs or status updates)
 //!    that do not require an acknowledgment.
 
 use knot_core::utils::TimestampUtils;
@@ -38,7 +38,7 @@ pub enum MessageKind<Req, Res, Ev> {
     /// A response sent from a server back to a client.
     Response(Res),
     /// An asynchronous event or notification from the server.
-    Event(Ev)
+    Event(Ev),
 }
 
 impl<Req, Res, Ev> Message<Req, Res, Ev>
@@ -88,7 +88,7 @@ where
         Self {
             id: 0,
             timestamp: TimestampUtils::now_ms(),
-            kind: MessageKind::Event(payload)
+            kind: MessageKind::Event(payload),
         }
     }
 

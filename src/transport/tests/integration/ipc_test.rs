@@ -8,10 +8,10 @@ use knot_transport::{
     },
 };
 use rstest::*;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use tokio::task::JoinHandle;
-use serde::{Deserialize, Serialize};
 
 fn test_socket_path(suffix: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
@@ -19,7 +19,6 @@ fn test_socket_path(suffix: &str) -> PathBuf {
     path.push(format!("knot-test-{}-{:?}.sock", suffix, thread_id));
     path
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 enum TestRequest {
@@ -31,12 +30,12 @@ enum TestResponse {
 }
 #[derive(Serialize, Deserialize, Debug)]
 enum TestEvent {
-    Event(i32)
+    Event(i32),
 }
 
-type TestTransport<Transport, Codec> = MessageTransport<Transport, TestRequest, TestResponse, TestEvent, Codec>;
+type TestTransport<Transport, Codec> =
+    MessageTransport<Transport, TestRequest, TestResponse, TestEvent, Codec>;
 type TestMessage = Message<TestRequest, TestResponse, TestEvent>;
-
 
 async fn spawn_echo_server<Cod>(socket_path: PathBuf) -> JoinHandle<()>
 where
@@ -44,7 +43,8 @@ where
 {
     tokio::spawn(async move {
         let server = IpcServer::bind(socket_path).await.unwrap();
-        let transport: TestTransport<IpcTransport, Cod> = server.accept().await.unwrap().to_messaged();
+        let transport: TestTransport<IpcTransport, Cod> =
+            server.accept().await.unwrap().to_messaged();
 
         while let Ok(msg) = transport.recv().await {
             match msg.kind {
@@ -54,10 +54,10 @@ where
                         .send(TestMessage::response(msg.id, TestResponse::Pong(val)))
                         .await
                         .ok();
-                },
+                }
                 MessageKind::Event(ev) => {
                     let _ = transport.send(Message::event(ev)).await;
-                },
+                }
                 MessageKind::Response(_) => {}
             }
         }
@@ -98,8 +98,8 @@ where
     for i in 0..10 {
         let p = path.clone();
         let handle = tokio::spawn(async move {
-            let client: TestTransport<IpcTransport, Cod> 
-                = IpcTransport::connect(p).await.unwrap().to_messaged();
+            let client: TestTransport<IpcTransport, Cod> =
+                IpcTransport::connect(p).await.unwrap().to_messaged();
 
             for j in 0..5 {
                 let unique_val = i * 100 + j;
@@ -133,7 +133,8 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: TestTransport<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
+    let client: TestTransport<IpcTransport, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
     let response = client.request(TestRequest::Ping(1)).await.unwrap();
 
     assert!(matches!(response, TestResponse::Pong(1)));
@@ -153,11 +154,18 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: TestTransport<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
-    client.send(TestMessage::event(TestEvent::Event(0))).await.expect("failed event sending");
+    let client: TestTransport<IpcTransport, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
+    client
+        .send(TestMessage::event(TestEvent::Event(0)))
+        .await
+        .expect("failed event sending");
     let response = client.recv().await.expect("failed receiving response");
 
-    assert!(matches!(response.kind, MessageKind::Event(TestEvent::Event(0))));
+    assert!(matches!(
+        response.kind,
+        MessageKind::Event(TestEvent::Event(0))
+    ));
     server.abort();
 }
 
@@ -174,7 +182,8 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: TestTransport<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
+    let client: TestTransport<IpcTransport, Cod> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
 
     for i in 0..5 {
         let response = client.request(TestRequest::Ping(i)).await.unwrap();

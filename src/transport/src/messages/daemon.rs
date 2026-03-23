@@ -72,13 +72,13 @@ pub enum DaemonResponse {
 }
 
 /// Represents asynchronous notifications sent from the Daemon to connected clients.
-/// 
+///
 /// Unlike responses, events are unprompted and used to broadcast state changes,
 /// real-time logs, or lifecycle updates across the system.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DaemonEvent {
     /// A generic event related to a specific service managed by the orchestrator.
-    /// 
+    ///
     /// This can include status transitions (e.g., from 'Starting' to 'Running')
     ServiceEvent(ServiceStatusResponse),
 }

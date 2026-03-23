@@ -22,8 +22,8 @@
 //! data is processed.
 //!
 //! ### Asynchronous Multiplexing
-//! The transport layer is designed for non-blocking I/O. It allows a single 
-//! connection to process multiple concurrent operations, ensuring that slow 
+//! The transport layer is designed for non-blocking I/O. It allows a single
+//! connection to process multiple concurrent operations, ensuring that slow
 //! service startups or heavy log streams do not stall the CLI or Daemon.
 
 /// Serialization and deserialization logic.
@@ -44,10 +44,9 @@ pub mod messages;
 /// the `Server` trait for building listening services (e.g., Unix Domain Sockets).
 pub mod transport;
 
-
 /// Type aliases and convenience definitions for the Knot protocol.
 ///
-/// This module provides specialized type aliases for `MessageTransport` 
-/// pre-configured with the standard Knot Daemon protocol types 
+/// This module provides specialized type aliases for `MessageTransport`
+/// pre-configured with the standard Knot Daemon protocol types
 /// (`DaemonRequest`, `DaemonResponse`, and `DaemonEvent`).
 pub mod types;

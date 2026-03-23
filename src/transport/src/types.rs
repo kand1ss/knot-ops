@@ -1,11 +1,11 @@
 //! # Knot Protocol Types
 //!
-//! This module defines high-level type aliases to simplify the usage of 
+//! This module defines high-level type aliases to simplify the usage of
 //! the transport layer with the standard Knot communication protocol.
 
 use crate::{
+    messages::daemon::{DaemonEvent, DaemonRequest, DaemonResponse},
     transport::MessageTransport,
-    messages::daemon::{DaemonRequest, DaemonResponse, DaemonEvent}
 };
 
 /// A specialized [`MessageTransport`] for the Knot Daemon protocol.
@@ -15,7 +15,7 @@ use crate::{
 /// - **Responses**: [`DaemonResponse`]
 /// - **Events**: [`DaemonEvent`]
 ///
-/// It still allows flexibility in choosing the underlying I/O [`Transport`] 
+/// It still allows flexibility in choosing the underlying I/O [`Transport`]
 /// (e.g., `IpcTransport`) and the serialization [`Codec`].
-pub type DaemonTransport<Transport, Codec> 
-    = MessageTransport<Transport, DaemonRequest, DaemonResponse, DaemonEvent, Codec>;
+pub type DaemonTransport<Transport, Codec> =
+    MessageTransport<Transport, DaemonRequest, DaemonResponse, DaemonEvent, Codec>;
