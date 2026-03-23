@@ -16,28 +16,28 @@ pub mod daemon;
 /// `Message` wraps payloads of type `TRequest` and `TResponse` to provide
 /// metadata required for tracking and synchronization.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Message<TRequest, TResponse> {
+pub struct Message<Req, Res> {
     /// Unique correlation ID to match responses to requests.
     pub id: u32,
     /// Unix timestamp in milliseconds, set at the moment of creation.
     pub timestamp: u64,
     /// The actual payload, either a Request or a Response.
-    pub kind: MessageKind<TRequest, TResponse>,
+    pub kind: MessageKind<Req, Res>,
 }
 
 /// Differentiates between outbound requests and inbound responses.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum MessageKind<TRequest, TResponse> {
+pub enum MessageKind<Req, Res> {
     /// A request sent from a client to a server.
-    Request(TRequest),
+    Request(Req),
     /// A response sent from a server back to a client.
-    Response(TResponse),
+    Response(Res),
 }
 
-impl<TRequest, TResponse> Message<TRequest, TResponse>
+impl<Req, Res> Message<Req, Res>
 where
-    TRequest: Serialize,
-    TResponse: Serialize,
+    Req: Serialize,
+    Res: Serialize,
 {
     /// Creates a new `Message` initialized as a **Request**.
     ///
@@ -46,7 +46,7 @@ where
     /// # Arguments
     /// * `id` - A unique identifier for this request.
     /// * `payload` - The specific data for the request.
-    pub fn request(id: u32, payload: TRequest) -> Self {
+    pub fn request(id: u32, payload: Req) -> Self {
         Self {
             id,
             timestamp: TimestampUtils::now_ms(),
@@ -61,7 +61,7 @@ where
     /// # Arguments
     /// * `id` - The correlation ID from the original request.
     /// * `payload` - The specific data for the response.
-    pub fn response(id: u32, payload: TResponse) -> Self {
+    pub fn response(id: u32, payload: Res) -> Self {
         Self {
             id,
             timestamp: TimestampUtils::now_ms(),
@@ -77,7 +77,7 @@ where
     /// Consumes the message and returns the ID and request payload.
     ///
     /// Returns `None` if the message is actually a `Response`.
-    pub fn into_request(self) -> Option<(u32, TRequest)> {
+    pub fn into_request(self) -> Option<(u32, Req)> {
         match self.kind {
             MessageKind::Request(payload) => Some((self.id, payload)),
             _ => None,
@@ -87,7 +87,7 @@ where
     /// Consumes the message and returns the ID and response payload.
     ///
     /// Returns `None` if the message is actually a `Request`.
-    pub fn into_response(self) -> Option<(u32, TResponse)> {
+    pub fn into_response(self) -> Option<(u32, Res)> {
         match self.kind {
             MessageKind::Response(payload) => Some((self.id, payload)),
             _ => None,
