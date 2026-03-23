@@ -8,11 +8,11 @@
 //! This library is built on a layered architecture that separates data structures,
 //! serialization logic, and I/O operations:
 //!
-//! 1.  **[`messages`]**: Defines the typed Request/Response envelopes used across the system.
+//! 1.  **[`messages`]**: Defines the typed Request, Response, and Event envelopes.
 //! 2.  **[`codec`]**: Provides traits and implementations for various serialization
 //!     formats (e.g., Bincode for performance, JSON for compatibility).
 //! 3.  **[`transport`]**: Implements the asynchronous engine that handles frame-based
-//!     I/O, request-response correlation, and connection management.
+//!     I/O, request-response correlation, and asynchronous event dispatching.
 //!
 //! ## Key Patterns
 //!
@@ -22,9 +22,9 @@
 //! data is processed.
 //!
 //! ### Asynchronous Multiplexing
-//! The transport layer uses a background worker pattern. This allows a single
-//! connection to handle multiple concurrent requests without blocking the
-//! main execution thread.
+//! The transport layer is designed for non-blocking I/O. It allows a single 
+//! connection to process multiple concurrent operations, ensuring that slow 
+//! service startups or heavy log streams do not stall the CLI or Daemon.
 
 /// Serialization and deserialization logic.
 ///
