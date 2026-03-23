@@ -41,32 +41,32 @@ type PendingResponse<TResponse> = oneshot::Sender<TResponse>;
 
 /// Internal state shared between the public API and the background read loop.
 #[derive(Debug)]
-pub struct SharedState<TRequest, TResponse> {
+pub struct SharedState<Req, Res> {
     /// Tracks requests waiting for a response.
-    pub pending: Mutex<HashMap<u32, PendingResponse<TResponse>>>,
+    pub pending: Mutex<HashMap<u32, PendingResponse<Res>>>,
     /// Channel to send incoming requests or unhandled responses to the consumer.
-    pub inbox_tx: mpsc::Sender<Message<TRequest, TResponse>>,
+    pub inbox_tx: mpsc::Sender<Message<Req, Res>>,
 }
 
 /// A high-level transport that handles typed messages and request-response pairing.
 #[derive(Debug)]
-pub struct MessageTransport<R, TRequest, TResponse, TCodec>
+pub struct MessageTransport<R, Req, Res, C>
 where
     R: RawTransport + 'static,
 {
     raw_transport: Arc<R>,
     next_id: AtomicU32,
-    shared: Arc<SharedState<TRequest, TResponse>>,
-    inbox_rx: Mutex<mpsc::Receiver<Message<TRequest, TResponse>>>,
-    _phantom: PhantomData<TCodec>,
+    shared: Arc<SharedState<Req, Res>>,
+    inbox_rx: Mutex<mpsc::Receiver<Message<Req, Res>>>,
+    _phantom: PhantomData<C>,
 }
 
-impl<R, TRequest, TResponse, TCodec> MessageTransport<R, TRequest, TResponse, TCodec>
+impl<R, Req, Res, C> MessageTransport<R, Req, Res, C>
 where
     R: RawTransport + 'static,
-    TRequest: Serialize + DeserializeOwned + Send + 'static,
-    TResponse: Serialize + DeserializeOwned + Send + 'static,
-    TCodec: MessageCodec<Raw = Vec<u8>> + Send + 'static,
+    Req: Serialize + DeserializeOwned + Send + 'static,
+    Res: Serialize + DeserializeOwned + Send + 'static,
+    C: MessageCodec<Raw = Vec<u8>> + Send + 'static,
 {
     /// Creates a new `MessageTransport` and spawns a background read loop.
     pub fn new(raw: R) -> Self {
@@ -94,7 +94,7 @@ where
     }
 
     /// Background worker that reads frames from the raw transport and dispatches them.
-    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<TRequest, TResponse>>) {
+    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<Req, Res>>) {
         loop {
             let raw_bytes = match raw.recv_frame().await {
                 Ok(bytes) => bytes,
@@ -104,7 +104,7 @@ where
                 }
             };
 
-            let msg: Message<TRequest, TResponse> = match TCodec::decode(raw_bytes) {
+            let msg: Message<Req, Res> = match C::decode(raw_bytes) {
                 Ok(msg) => msg,
                 Err(e) => {
                     eprintln!("[read_loop] Codec error: {:?}", e);
@@ -137,8 +137,8 @@ where
     }
 
     /// Sends a one-way message without waiting for a response.
-    pub async fn send(&self, msg: Message<TRequest, TResponse>) -> Result<(), TransportError> {
-        let encoded = TCodec::encode(&msg)?;
+    pub async fn send(&self, msg: Message<Req, Res>) -> Result<(), TransportError> {
+        let encoded = C::encode(&msg)?;
         self.raw_transport.send_frame(&encoded).await
     }
 
@@ -146,7 +146,7 @@ where
     ///
     /// This method generates a unique ID, registers a listener, and waits for the
     /// background loop to receive the corresponding response.
-    pub async fn request(&self, request: TRequest) -> Result<TResponse, TransportError> {
+    pub async fn request(&self, request: Req) -> Result<Res, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -155,8 +155,8 @@ where
             pending.insert(id, tx);
         }
 
-        let msg: Message<TRequest, TResponse> = Message::request(id, request);
-        let encoded = TCodec::encode(&msg)?;
+        let msg: Message<Req, Res> = Message::request(id, request);
+        let encoded = C::encode(&msg)?;
 
         if let Err(e) = self.raw_transport.send_frame(&encoded).await {
             let mut pending = self.shared.pending.lock().await;
@@ -168,7 +168,7 @@ where
     }
 
     /// Receives the next available message from the inbox (requests or unhandled responses).
-    pub async fn recv(&self) -> Result<Message<TRequest, TResponse>, TransportError> {
+    pub async fn recv(&self) -> Result<Message<Req, Res>, TransportError> {
         let mut rx = self.inbox_rx.lock().await;
         rx.recv().await.ok_or(TransportError::ConnectionClosed)
     }
