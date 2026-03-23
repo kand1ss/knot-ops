@@ -43,3 +43,11 @@ pub mod messages;
 /// Provides the `RawTransport` and `MessageTransport` types, as well as
 /// the `Server` trait for building listening services (e.g., Unix Domain Sockets).
 pub mod transport;
+
+
+/// Type aliases and convenience definitions for the Knot protocol.
+///
+/// This module provides specialized type aliases for `MessageTransport` 
+/// pre-configured with the standard Knot Daemon protocol types 
+/// (`DaemonRequest`, `DaemonResponse`, and `DaemonEvent`).
+pub mod types;
