@@ -3,7 +3,7 @@ use knot_transport::{
     codec::{BinaryCodec, JsonCodec, MessageCodec},
     messages::{
         Message, MessageKind,
-        daemon::{DaemonRequest, DaemonResponse},
+        daemon::{DaemonRequest, DaemonResponse, DaemonEvent},
     },
     transport::{
         MessageTransport, RawTransport, Server,
@@ -29,29 +29,32 @@ where
     tokio::spawn(async move {
         let server = IpcServer::bind(socket_path).await.unwrap();
         println!("server spawned");
-        let transport: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+        let transport: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, DaemonEvent, Cod> =
             server.accept().await.unwrap().to_messaged();
         println!("received transport");
 
         while let Ok(msg) = transport.recv().await {
-            if let MessageKind::Request(req) = msg.kind {
-                let response = match req {
-                    DaemonRequest::Down => {
-                        transport
-                            .send(Message::response(msg.id, DaemonResponse::Ok))
-                            .await
-                            .ok();
-                        break;
-                    }
-                    DaemonRequest::Status => DaemonResponse::Status {
-                        services: Vec::new(),
-                    },
-                };
-
-                transport
-                    .send(Message::response(msg.id, response))
-                    .await
-                    .ok();
+            match msg.kind {
+                MessageKind::Request(req) => {
+                    let response = match req {
+                        DaemonRequest::Down => {
+                            let _ = transport
+                                .send(Message::response(msg.id, DaemonResponse::Ok))
+                                .await;
+                            break;
+                        },
+                        DaemonRequest::Status => DaemonResponse::Status {
+                            services: Vec::new(),
+                        },
+                    };
+                    let _ = transport
+                        .send(Message::response(msg.id, response))
+                        .await;
+                },
+                MessageKind::Event(ev) => {
+                    let _ = transport.send(Message::event(ev)).await;
+                },
+                MessageKind::Response(_) => {}
             }
         }
     })
@@ -83,7 +86,7 @@ where
         let server = IpcServer::bind(server_path).await.unwrap();
 
         while let Ok(raw) = server.accept().await {
-            let transport: MessageTransport<IpcTransport, TestRequest, TestResponse, Cod> =
+            let transport: MessageTransport<IpcTransport, TestRequest, TestResponse, DaemonEvent, Cod> =
                 raw.to_messaged();
 
             tokio::spawn(async move {
@@ -103,7 +106,7 @@ where
     for i in 0..10 {
         let p = path.clone();
         let handle = tokio::spawn(async move {
-            let client: MessageTransport<IpcTransport, TestRequest, TestResponse, Cod> =
+            let client: MessageTransport<IpcTransport, TestRequest, TestResponse, DaemonEvent, Cod> =
                 IpcTransport::connect(p).await.unwrap().to_messaged();
 
             for j in 0..5 {
@@ -139,7 +142,7 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, DaemonEvent, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
     println!("received client");
 
@@ -164,7 +167,7 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, DaemonEvent, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
 
     for i in 0..5 {
@@ -190,7 +193,7 @@ where
 {
     let path = test_socket_path("no-server");
 
-    let result: Result<MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod>, _> =
+    let result: Result<MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, DaemonEvent, Cod>, _> =
         IpcTransport::connect(path).await.map(|t| t.to_messaged());
 
     assert!(
@@ -241,7 +244,7 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, DaemonEvent, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
 
     let response = client.request(DaemonRequest::Down).await.unwrap();
@@ -269,7 +272,7 @@ where
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, Cod> =
+    let client: MessageTransport<IpcTransport, DaemonRequest, DaemonResponse, DaemonEvent, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
 
     drop(server);

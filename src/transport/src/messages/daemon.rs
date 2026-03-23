@@ -71,8 +71,13 @@ pub enum DaemonResponse {
     },
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DaemonEvent {
+    ServiceEvent,
+}
+
 /// Concrete type alias for the Knot message protocol.
 ///
 /// This combines the generic `Message` envelope with Knot-specific
 /// requests and responses.
-pub type DaemonMessage = Message<DaemonRequest, DaemonResponse>;
+pub type DaemonMessage = Message<DaemonRequest, DaemonResponse, DaemonEvent>;

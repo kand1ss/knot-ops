@@ -16,28 +16,30 @@ pub mod daemon;
 /// `Message` wraps payloads of type `TRequest` and `TResponse` to provide
 /// metadata required for tracking and synchronization.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Message<Req, Res> {
+pub struct Message<Req, Res, Ev> {
     /// Unique correlation ID to match responses to requests.
     pub id: u32,
     /// Unix timestamp in milliseconds, set at the moment of creation.
     pub timestamp: u64,
     /// The actual payload, either a Request or a Response.
-    pub kind: MessageKind<Req, Res>,
+    pub kind: MessageKind<Req, Res, Ev>,
 }
 
 /// Differentiates between outbound requests and inbound responses.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum MessageKind<Req, Res> {
+pub enum MessageKind<Req, Res, Ev> {
     /// A request sent from a client to a server.
     Request(Req),
     /// A response sent from a server back to a client.
     Response(Res),
+    Event(Ev)
 }
 
-impl<Req, Res> Message<Req, Res>
+impl<Req, Res, Ev> Message<Req, Res, Ev>
 where
     Req: Serialize,
     Res: Serialize,
+    Ev: Serialize,
 {
     /// Creates a new `Message` initialized as a **Request**.
     ///
@@ -69,6 +71,15 @@ where
         }
     }
 
+
+    pub fn event(payload: Ev) -> Self {
+        Self {
+            id: 0,
+            timestamp: TimestampUtils::now_ms(),
+            kind: MessageKind::Event(payload)
+        }
+    }
+
     /// Returns the correlation ID of this message.
     pub fn id(&self) -> u32 {
         self.id
@@ -90,6 +101,14 @@ where
     pub fn into_response(self) -> Option<(u32, Res)> {
         match self.kind {
             MessageKind::Response(payload) => Some((self.id, payload)),
+            _ => None,
+        }
+    }
+
+
+    pub fn into_event(self) -> Option<(u32, Ev)> {
+        match self.kind {
+            MessageKind::Event(payload) => Some((self.id, payload)),
             _ => None,
         }
     }
