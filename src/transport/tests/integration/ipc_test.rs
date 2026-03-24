@@ -157,7 +157,7 @@ where
     Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
     let path = test_socket_path("timeout_test");
-    
+
     let server_path = path.clone();
     let server = tokio::spawn(async move {
         let listener = IpcServer::bind(server_path).await.unwrap();
@@ -167,13 +167,14 @@ where
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let client: TestTransport<IpcTransport, Cod> = 
+    let client: TestTransport<IpcTransport, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
     let result = client.request(TestRequest::Ping(1), 1).await;
 
     assert!(
         matches!(result, Err(TransportError::Timeout { .. })),
-        "Expected TransportError::Timeout, but got: {:?}", result
+        "Expected TransportError::Timeout, but got: {:?}",
+        result
     );
     server.abort();
 }
