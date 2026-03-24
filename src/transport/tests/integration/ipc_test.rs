@@ -3,7 +3,7 @@ use knot_transport::{
     codec::{BinaryCodec, JsonCodec, MessageCodec},
     messages::{Message, MessageKind},
     transport::{
-        MessageTransport, RawTransport, Server,
+        MessageTransport, RawTransport, Server, TransportSpec,
         ipc::{IpcServer, IpcTransport},
     },
 };
@@ -33,8 +33,16 @@ enum TestEvent {
     Event(i32),
 }
 
-type TestTransport<Transport, Codec> =
-    MessageTransport<Transport, TestRequest, TestResponse, TestEvent, Codec>;
+#[derive(Debug)]
+struct TestTransportSpec<C: MessageCodec<Raw = Vec<u8>>>(PhantomData<C>);
+impl<C: MessageCodec<Raw = Vec<u8>>> TransportSpec for TestTransportSpec<C> {
+    type Req = TestRequest;
+    type Res = TestResponse;
+    type Ev = TestEvent;
+    type C = C;
+}
+
+type TestTransport<Transport, Codec> = MessageTransport<Transport, TestTransportSpec<Codec>>;
 type TestMessage = Message<TestRequest, TestResponse, TestEvent>;
 
 async fn spawn_echo_server<Cod>(socket_path: PathBuf) -> JoinHandle<()>

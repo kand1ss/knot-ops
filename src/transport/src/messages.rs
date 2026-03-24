@@ -9,13 +9,10 @@
 //! 3. **Events**: One-way asynchronous notifications (e.g., logs or status updates)
 //!    that do not require an acknowledgment.
 
-use crate::{
-    codec::MessageCodec,
-    transport::{MessageTransport, RawTransport},
-};
+use crate::transport::{MessageTransport, RawTransport, TransportSpec};
 use knot_core::errors::TransportError;
 use knot_core::utils::TimestampUtils;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 
 pub mod daemon;
 
@@ -35,25 +32,29 @@ pub struct Message<Req, Res, Ev> {
     pub kind: MessageKind<Req, Res, Ev>,
 }
 
-pub struct MessageContext<'a, R, Req, Res, Ev, Cod>
+pub struct MessageContext<'a, R, S>
 where
     R: RawTransport + 'static,
+    S: TransportSpec,
 {
-    transport: &'a MessageTransport<R, Req, Res, Ev, Cod>,
-    message: Message<Req, Res, Ev>,
+    transport: &'a MessageTransport<R, S>,
+    message: Message<S::Req, S::Res, S::Ev>,
     replied: bool,
 }
-impl<'a, R, Req, Res, Ev, Cod> MessageContext<'a, R, Req, Res, Ev, Cod>
+
+pub type MessageContextParts<'a, R, S> = (
+    Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>,
+    &'a MessageTransport<R, S>,
+);
+
+impl<'a, R, S> MessageContext<'a, R, S>
 where
     R: RawTransport + 'static,
-    Req: Serialize + DeserializeOwned + Send + 'static,
-    Res: Serialize + DeserializeOwned + Send + 'static,
-    Ev: Serialize + DeserializeOwned + Send + 'static,
-    Cod: MessageCodec<Raw = Vec<u8>> + Send + 'static,
+    S: TransportSpec,
 {
     pub fn new(
-        message: Message<Req, Res, Ev>,
-        transport: &'a MessageTransport<R, Req, Res, Ev, Cod>,
+        message: Message<S::Req, S::Res, S::Ev>,
+        transport: &'a MessageTransport<R, S>,
     ) -> Self {
         Self {
             transport,
@@ -62,7 +63,7 @@ where
         }
     }
 
-    pub async fn reply(&mut self, msg: Res) -> Result<(), TransportError> {
+    pub async fn reply(&mut self, msg: S::Res) -> Result<(), TransportError> {
         if !self.replied {
             eprintln!(
                 "WARNING: MessageContext replied twice to request ID {}",
@@ -76,24 +77,19 @@ where
             .await
     }
 
-    pub async fn emit(&self, msg: Message<Req, Res, Ev>) -> Result<(), TransportError> {
+    pub async fn emit(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
         self.transport.send(msg).await
     }
 
-    pub fn get(&self) -> &Message<Req, Res, Ev> {
+    pub fn get(&self) -> &Message<S::Req, S::Res, S::Ev> {
         &self.message
     }
 
-    pub fn kind(&self) -> &MessageKind<Req, Res, Ev> {
+    pub fn kind(&self) -> &MessageKind<S::Req, S::Res, S::Ev> {
         &self.message.kind
     }
 
-    pub fn into_parts(
-        self,
-    ) -> (
-        Message<Req, Res, Ev>,
-        &'a MessageTransport<R, Req, Res, Ev, Cod>,
-    ) {
+    pub fn into_parts(self) -> MessageContextParts<'a, R, S> {
         (self.message, self.transport)
     }
 }

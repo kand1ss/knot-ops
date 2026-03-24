@@ -10,12 +10,20 @@ use knot_core::errors::TransportError;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 pub mod ipc;
+
+pub trait TransportSpec: Send + Sync + 'static {
+    type Req: Serialize + DeserializeOwned + Send + Debug + 'static;
+    type Res: Serialize + DeserializeOwned + Send + Debug + 'static;
+    type Ev: Serialize + DeserializeOwned + Send + Debug + 'static;
+    type C: MessageCodec<Raw = Vec<u8>>;
+}
 
 /// Defines a low-level byte-frame transport.
 ///
@@ -27,13 +35,7 @@ pub trait RawTransport: Send + Sync + Sized {
     async fn recv_frame(&self) -> Result<Vec<u8>, TransportError>;
 
     /// Wraps the raw transport into a high-level `MessageTransport`.
-    fn to_messaged<Req, Res, Ev, C>(self) -> MessageTransport<Self, Req, Res, Ev, C>
-    where
-        Req: Serialize + DeserializeOwned + Send + 'static,
-        Res: Serialize + DeserializeOwned + Send + 'static,
-        Ev: Serialize + DeserializeOwned + Send + 'static,
-        C: MessageCodec<Raw = Vec<u8>> + Send + 'static,
-    {
+    fn to_messaged<S: TransportSpec>(self) -> MessageTransport<Self, S> {
         MessageTransport::new(self)
     }
 }
@@ -42,33 +44,35 @@ type PendingResponse<TResponse> = oneshot::Sender<TResponse>;
 
 /// Internal state shared between the public API and the background read loop.
 #[derive(Debug)]
-pub struct SharedState<Req, Res, Ev> {
+pub struct SharedState<S: TransportSpec> {
     /// Tracks requests waiting for a response.
-    pub pending: Mutex<HashMap<u32, PendingResponse<Res>>>,
+    pub pending: Mutex<HashMap<u32, PendingResponse<S::Res>>>,
     /// Channel to send incoming requests or unhandled responses to the consumer.
-    pub inbox_tx: mpsc::Sender<Message<Req, Res, Ev>>,
+    pub inbox_tx: mpsc::Sender<Message<S::Req, S::Res, S::Ev>>,
 }
+
+type InboundMessage<S> =
+    Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>;
+type InboxRx<S> = Mutex<mpsc::Receiver<InboundMessage<S>>>;
 
 /// A high-level transport that handles typed messages and request-response pairing.
 #[derive(Debug)]
-pub struct MessageTransport<R, Req, Res, Ev, C>
+pub struct MessageTransport<R, S>
 where
     R: RawTransport + 'static,
+    S: TransportSpec,
 {
     raw_transport: Arc<R>,
     next_id: AtomicU32,
-    shared: Arc<SharedState<Req, Res, Ev>>,
-    inbox_rx: Mutex<mpsc::Receiver<Message<Req, Res, Ev>>>,
-    _phantom: PhantomData<C>,
+    shared: Arc<SharedState<S>>,
+    inbox_rx: InboxRx<S>,
+    _phantom: PhantomData<S::C>,
 }
 
-impl<R, Req, Res, Ev, C> MessageTransport<R, Req, Res, Ev, C>
+impl<R, S> MessageTransport<R, S>
 where
     R: RawTransport + 'static,
-    Req: Serialize + DeserializeOwned + Send + 'static,
-    Res: Serialize + DeserializeOwned + Send + 'static,
-    Ev: Serialize + DeserializeOwned + Send + 'static,
-    C: MessageCodec<Raw = Vec<u8>> + Send + 'static,
+    S: TransportSpec,
 {
     /// Creates a new `MessageTransport` and spawns a background read loop.
     pub fn new(raw: R) -> Self {
@@ -96,7 +100,7 @@ where
     }
 
     /// Background worker that reads frames from the raw transport and dispatches them.
-    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<Req, Res, Ev>>) {
+    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<S>>) {
         loop {
             let raw_bytes = match raw.recv_frame().await {
                 Ok(bytes) => bytes,
@@ -106,7 +110,7 @@ where
                 }
             };
 
-            let msg: Message<Req, Res, Ev> = match C::decode(raw_bytes) {
+            let msg: Message<S::Req, S::Res, S::Ev> = match S::C::decode(raw_bytes) {
                 Ok(msg) => msg,
                 Err(e) => {
                     eprintln!("[read_loop] Codec error: {:?}", e);
@@ -139,8 +143,8 @@ where
     }
 
     /// Sends a one-way message without waiting for a response.
-    pub async fn send(&self, msg: Message<Req, Res, Ev>) -> Result<(), TransportError> {
-        let encoded = C::encode(&msg)?;
+    pub async fn send(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
+        let encoded = S::C::encode(&msg)?;
         self.raw_transport.send_frame(&encoded).await
     }
 
@@ -148,7 +152,7 @@ where
     ///
     /// This method generates a unique ID, registers a listener, and waits for the
     /// background loop to receive the corresponding response.
-    pub async fn request(&self, request: Req) -> Result<Res, TransportError> {
+    pub async fn request(&self, request: S::Req) -> Result<S::Res, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -157,8 +161,8 @@ where
             pending.insert(id, tx);
         }
 
-        let msg: Message<Req, Res, Ev> = Message::request(id, request);
-        let encoded = C::encode(&msg)?;
+        let msg: Message<S::Req, S::Res, S::Ev> = Message::request(id, request);
+        let encoded = S::C::encode(&msg)?;
 
         if let Err(e) = self.raw_transport.send_frame(&encoded).await {
             let mut pending = self.shared.pending.lock().await;
@@ -170,7 +174,7 @@ where
     }
 
     /// Receives the next available message from the inbox (requests or unhandled responses).
-    pub async fn recv(&self) -> Result<MessageContext<'_, R, Req, Res, Ev, C>, TransportError> {
+    pub async fn recv(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
         let mut rx = self.inbox_rx.lock().await;
         let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
         Ok(MessageContext::new(message, self))

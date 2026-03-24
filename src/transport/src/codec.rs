@@ -19,7 +19,7 @@ pub use json::JsonCodec;
 /// Implementations of this trait define how a specific data format
 /// (like JSON or Bincode) handles the transformation of Rust types
 /// into a `Raw` format (typically `Vec<u8>`).
-pub trait MessageCodec {
+pub trait MessageCodec: Send + Sync + 'static {
     /// The resulting type of the encoding process.
     /// Usually `Vec<u8>` for network or IPC transports.
     type Raw;

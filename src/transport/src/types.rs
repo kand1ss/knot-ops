@@ -4,9 +4,18 @@
 //! the transport layer with the standard Knot communication protocol.
 
 use crate::{
+    codec::BinaryCodec,
     messages::daemon::{DaemonEvent, DaemonRequest, DaemonResponse},
-    transport::MessageTransport,
+    transport::{MessageTransport, TransportSpec, ipc::IpcTransport},
 };
+
+pub struct DaemonTransportSpec;
+impl TransportSpec for DaemonTransportSpec {
+    type Req = DaemonRequest;
+    type Res = DaemonResponse;
+    type Ev = DaemonEvent;
+    type C = BinaryCodec;
+}
 
 /// A specialized [`MessageTransport`] for the Knot Daemon protocol.
 ///
@@ -17,5 +26,4 @@ use crate::{
 ///
 /// It still allows flexibility in choosing the underlying I/O [`Transport`]
 /// (e.g., `IpcTransport`) and the serialization [`Codec`].
-pub type DaemonTransport<Transport, Codec> =
-    MessageTransport<Transport, DaemonRequest, DaemonResponse, DaemonEvent, Codec>;
+pub type DaemonTransport = MessageTransport<IpcTransport, DaemonTransportSpec>;
