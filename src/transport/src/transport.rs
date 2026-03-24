@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::{sync::{Mutex, mpsc, oneshot}, time::{timeout, Duration}};
 
 pub mod ipc;
 mod traits;
@@ -165,7 +165,7 @@ where
     /// * Returns [`TransportError::SerializeError`] if serialization fails.
     /// * Returns [`TransportError::ConnectionClosed`] if the background worker
     ///   is unable to deliver the response (e.g., socket disconnected).
-    pub async fn request(&self, request: S::Req) -> Result<S::Res, TransportError> {
+    pub async fn request(&self, request: S::Req, timeout_secs: u64) -> Result<S::Res, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -183,7 +183,17 @@ where
             return Err(e);
         }
 
-        rx.await.map_err(|_| TransportError::ConnectionClosed)
+        match timeout(Duration::from_secs(timeout_secs), rx).await {
+        Ok(result) => {
+            result.map_err(|_| TransportError::ConnectionClosed)
+        }
+        Err(_) => {
+            let mut pending = self.shared.pending.lock().await;
+            pending.remove(&id);
+            
+            Err(TransportError::Timeout { seconds: timeout_secs }) 
+        }
+    }
     }
 
     /// Receives the next incoming message wrapped in a [`MessageContext`].
