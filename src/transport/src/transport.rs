@@ -4,7 +4,7 @@
 //! It handles frame-based I/O, serialization, and request-response synchronization.
 
 use crate::codec::MessageCodec;
-use crate::messages::{Message, MessageKind};
+use crate::messages::{Message, MessageContext, MessageKind};
 use async_trait::async_trait;
 use knot_core::errors::TransportError;
 use serde::Serialize;
@@ -170,9 +170,10 @@ where
     }
 
     /// Receives the next available message from the inbox (requests or unhandled responses).
-    pub async fn recv(&self) -> Result<Message<Req, Res, Ev>, TransportError> {
+    pub async fn recv(&self) -> Result<MessageContext<'_, R, Req, Res, Ev, C>, TransportError> {
         let mut rx = self.inbox_rx.lock().await;
-        rx.recv().await.ok_or(TransportError::ConnectionClosed)
+        let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
+        Ok(MessageContext::new(message, self))
     }
 }
 

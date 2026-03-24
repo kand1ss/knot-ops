@@ -9,8 +9,13 @@
 //! 3. **Events**: One-way asynchronous notifications (e.g., logs or status updates)
 //!    that do not require an acknowledgment.
 
+use crate::{
+    codec::MessageCodec,
+    transport::{MessageTransport, RawTransport},
+};
+use knot_core::errors::TransportError;
 use knot_core::utils::TimestampUtils;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub mod daemon;
 
@@ -30,6 +35,69 @@ pub struct Message<Req, Res, Ev> {
     pub kind: MessageKind<Req, Res, Ev>,
 }
 
+pub struct MessageContext<'a, R, Req, Res, Ev, Cod>
+where
+    R: RawTransport + 'static,
+{
+    transport: &'a MessageTransport<R, Req, Res, Ev, Cod>,
+    message: Message<Req, Res, Ev>,
+    replied: bool,
+}
+impl<'a, R, Req, Res, Ev, Cod> MessageContext<'a, R, Req, Res, Ev, Cod>
+where
+    R: RawTransport + 'static,
+    Req: Serialize + DeserializeOwned + Send + 'static,
+    Res: Serialize + DeserializeOwned + Send + 'static,
+    Ev: Serialize + DeserializeOwned + Send + 'static,
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + 'static,
+{
+    pub fn new(
+        message: Message<Req, Res, Ev>,
+        transport: &'a MessageTransport<R, Req, Res, Ev, Cod>,
+    ) -> Self {
+        Self {
+            transport,
+            message,
+            replied: false,
+        }
+    }
+
+    pub async fn reply(&mut self, msg: Res) -> Result<(), TransportError> {
+        if !self.replied {
+            eprintln!(
+                "WARNING: MessageContext replied twice to request ID {}",
+                self.message.id
+            );
+        }
+
+        self.replied = true;
+        self.transport
+            .send(Message::response(self.message.id, msg))
+            .await
+    }
+
+    pub async fn emit(&self, msg: Message<Req, Res, Ev>) -> Result<(), TransportError> {
+        self.transport.send(msg).await
+    }
+
+    pub fn get(&self) -> &Message<Req, Res, Ev> {
+        &self.message
+    }
+
+    pub fn kind(&self) -> &MessageKind<Req, Res, Ev> {
+        &self.message.kind
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        Message<Req, Res, Ev>,
+        &'a MessageTransport<R, Req, Res, Ev, Cod>,
+    ) {
+        (self.message, self.transport)
+    }
+}
+
 /// Differentiates between the roles of a message within the protocol.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MessageKind<Req, Res, Ev> {
@@ -47,6 +115,14 @@ where
     Res: Serialize,
     Ev: Serialize,
 {
+    fn new(id: u32, kind: MessageKind<Req, Res, Ev>) -> Self {
+        Self {
+            id,
+            timestamp: TimestampUtils::now_ms(),
+            kind,
+        }
+    }
+
     /// Creates a new `Message` initialized as a **Request**.
     ///
     /// Automatically captures the current system time using `TimestampUtils`.
@@ -55,11 +131,7 @@ where
     /// * `id` - A unique identifier for this request.
     /// * `payload` - The specific data for the request.
     pub fn request(id: u32, payload: Req) -> Self {
-        Self {
-            id,
-            timestamp: TimestampUtils::now_ms(),
-            kind: MessageKind::Request(payload),
-        }
+        Self::new(id, MessageKind::Request(payload))
     }
 
     /// Creates a new `Message` initialized as a **Response**.
@@ -70,11 +142,7 @@ where
     /// * `id` - The correlation ID from the original request.
     /// * `payload` - The specific data for the response.
     pub fn response(id: u32, payload: Res) -> Self {
-        Self {
-            id,
-            timestamp: TimestampUtils::now_ms(),
-            kind: MessageKind::Response(payload),
-        }
+        Self::new(id, MessageKind::Response(payload))
     }
 
     /// Creates a new `Message` initialized as an **Event**.
@@ -85,11 +153,7 @@ where
     /// # Arguments
     /// * `payload` - The event data (e.g., a broadcast notification).
     pub fn event(payload: Ev) -> Self {
-        Self {
-            id: 0,
-            timestamp: TimestampUtils::now_ms(),
-            kind: MessageKind::Event(payload),
-        }
+        Self::new(0, MessageKind::Event(payload))
     }
 
     /// Returns the correlation ID of this message.

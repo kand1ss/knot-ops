@@ -46,17 +46,17 @@ where
         let transport: TestTransport<IpcTransport, Cod> =
             server.accept().await.unwrap().to_messaged();
 
-        while let Ok(msg) = transport.recv().await {
-            match msg.kind {
+        while let Ok(mut msg) = transport.recv().await {
+            match msg.kind() {
                 MessageKind::Request(req) => {
                     let TestRequest::Ping(val) = req;
-                    transport
-                        .send(TestMessage::response(msg.id, TestResponse::Pong(val)))
-                        .await
-                        .ok();
+                    msg.reply(TestResponse::Pong(*val)).await.ok();
                 }
                 MessageKind::Event(ev) => {
-                    let _ = transport.send(Message::event(ev)).await;
+                    let TestEvent::Event(val) = ev;
+                    msg.emit(TestMessage::event(TestEvent::Event(*val)))
+                        .await
+                        .ok();
                 }
                 MessageKind::Response(_) => {}
             }
@@ -82,10 +82,9 @@ where
             let transport: TestTransport<IpcTransport, Cod> = raw.to_messaged();
 
             tokio::spawn(async move {
-                while let Ok(msg) = transport.recv().await {
-                    if let MessageKind::Request(TestRequest::Ping(val)) = msg.kind {
-                        let response = Message::response(msg.id, TestResponse::Pong(val));
-                        let _ = transport.send(response).await;
+                while let Ok(mut msg) = transport.recv().await {
+                    if let MessageKind::Request(TestRequest::Ping(val)) = msg.kind() {
+                        msg.reply(TestResponse::Pong(*val)).await.ok();
                     }
                 }
             });
@@ -161,9 +160,10 @@ where
         .await
         .expect("failed event sending");
     let response = client.recv().await.expect("failed receiving response");
+    let (message, _) = response.into_parts();
 
     assert!(matches!(
-        response.kind,
+        message.kind,
         MessageKind::Event(TestEvent::Event(0))
     ));
     server.abort();
