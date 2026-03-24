@@ -29,21 +29,40 @@ pub struct SharedState<S: TransportSpec> {
     pub inbox_tx: mpsc::Sender<Message<S::Req, S::Res, S::Ev>>,
 }
 
+/// A convenient type alias for an incoming message defined by the [`TransportSpec`].
 type InboundMessage<S> =
     Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>;
+
+/// A thread-safe, asynchronous receiver for inbound messages.
+///
+/// Messages are placed in this "inbox" by a background worker task
+/// and consumed by the [`MessageTransport::recv`] method.
 type InboxRx<S> = Mutex<mpsc::Receiver<InboundMessage<S>>>;
 
-/// A high-level transport that handles typed messages and request-response pairing.
+/// A high-level, asynchronous transport for typed communication.
+///
+/// `MessageTransport` manages the lifecycle of a connection, including:
+/// - **Serialization**: Using the provided [`MessageCodec`].
+/// - **Multiplexing**: Handling multiple concurrent requests and background events.
+/// - **State Management**: Matching responses to requests using unique IDs.
+///
+/// It acts as the primary interface for both the Knot CLI and Daemon to
+/// send and receive protocol-compliant messages.
 #[derive(Debug)]
 pub struct MessageTransport<R, S>
 where
     R: RawTransport + 'static,
     S: TransportSpec,
 {
+    /// The underlying low-level frame transport (e.g., UDS or TCP).
     raw_transport: Arc<R>,
+    /// Thread-safe counter for generating unique correlation IDs for outbound requests.
     next_id: AtomicU32,
+    /// Shared state between the transport and its background worker (e.g., pending response channels).
     shared: Arc<SharedState<S>>,
+    /// The protected receiver for messages that aren't direct responses (Events or Requests).
     inbox_rx: InboxRx<S>,
+    /// Zero-cost marker to link the transport to a specific serialization format.
     _phantom: PhantomData<S::C>,
 }
 
@@ -120,16 +139,32 @@ where
         shared.pending.lock().await.clear();
     }
 
-    /// Sends a one-way message without waiting for a response.
+    /// Sends a low-level message envelope directly through the transport.
+    ///
+    /// This is a "fire-and-forget" operation. It does not track responses or
+    /// generate IDs; it simply encodes the provided [`Message`] and pushes
+    /// the frame to the underlying [`RawTransport`].
+    ///
+    /// Use this for emitting events or manual protocol handling.
     pub async fn send(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
         let encoded = S::C::encode(&msg)?;
         self.raw_transport.send_frame(&encoded).await
     }
 
-    /// Sends a request and returns a future that resolves to the matching response.
+    /// Performs a synchronized Request-Response operation.
     ///
-    /// This method generates a unique ID, registers a listener, and waits for the
-    /// background loop to receive the corresponding response.
+    /// This high-level method automates the entire RPC lifecycle:
+    /// 1. **ID Generation**: Atomically increments the internal counter to ensure a unique `id`.
+    /// 2. **Registration**: Creates a `oneshot` channel and registers it in the shared
+    ///    `pending` map so the background worker can route the response back.
+    /// 3. **Transmission**: Encodes and sends the request frame.
+    /// 4. **Awaiting**: Suspend execution until the matching response is received
+    ///    or the connection is dropped.
+    ///
+    /// # Errors
+    /// * Returns [`TransportError::SerializeError`] if serialization fails.
+    /// * Returns [`TransportError::ConnectionClosed`] if the background worker
+    ///   is unable to deliver the response (e.g., socket disconnected).
     pub async fn request(&self, request: S::Req) -> Result<S::Res, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
@@ -151,7 +186,19 @@ where
         rx.await.map_err(|_| TransportError::ConnectionClosed)
     }
 
-    /// Receives the next available message from the inbox (requests or unhandled responses).
+    /// Receives the next incoming message wrapped in a [`MessageContext`].
+    ///
+    /// This method awaits the next message from the internal inbox. The returned
+    /// context provides easy access to the message data and a convenient way
+    /// to send replies or emit events back through this transport.
+    ///
+    /// # Errors
+    /// Returns [`TransportError::ConnectionClosed`] if the background worker
+    /// or the underlying connection has been terminated.
+    ///
+    /// # Locking
+    /// This method locks the internal `inbox_rx` mutex. While multiple tasks
+    /// can call `recv`, they will be processed sequentially.
     pub async fn recv(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
         let mut rx = self.inbox_rx.lock().await;
         let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
