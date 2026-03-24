@@ -111,7 +111,7 @@ where
             for j in 0..5 {
                 let unique_val = i * 100 + j;
                 let response = client
-                    .request(TestRequest::Ping(unique_val))
+                    .request(TestRequest::Ping(unique_val), 10)
                     .await
                     .expect("Request failed");
 
@@ -142,9 +142,39 @@ where
 
     let client: TestTransport<IpcTransport, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
-    let response = client.request(TestRequest::Ping(1)).await.unwrap();
+    let response = client.request(TestRequest::Ping(1), 10).await.unwrap();
 
     assert!(matches!(response, TestResponse::Pong(1)));
+    server.abort();
+}
+
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
+#[tokio::test]
+async fn test_request_timeout<Cod>(#[case] _marker: PhantomData<Cod>)
+where
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
+{
+    let path = test_socket_path("timeout_test");
+    
+    let server_path = path.clone();
+    let server = tokio::spawn(async move {
+        let listener = IpcServer::bind(server_path).await.unwrap();
+        let _raw_transport = listener.accept().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let client: TestTransport<IpcTransport, Cod> = 
+        IpcTransport::connect(path).await.unwrap().to_messaged();
+    let result = client.request(TestRequest::Ping(1), 1).await;
+
+    assert!(
+        matches!(result, Err(TransportError::Timeout { .. })),
+        "Expected TransportError::Timeout, but got: {:?}", result
+    );
     server.abort();
 }
 
@@ -194,7 +224,7 @@ where
         IpcTransport::connect(path).await.unwrap().to_messaged();
 
     for i in 0..5 {
-        let response = client.request(TestRequest::Ping(i)).await.unwrap();
+        let response = client.request(TestRequest::Ping(i), 10).await.unwrap();
 
         assert!(
             matches!(response, TestResponse::Pong(_)),
@@ -275,7 +305,7 @@ where
     drop(server);
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let result = client.request(TestRequest::Ping(0)).await;
+    let result = client.request(TestRequest::Ping(0), 10).await;
 
     assert!(matches!(
         result,
