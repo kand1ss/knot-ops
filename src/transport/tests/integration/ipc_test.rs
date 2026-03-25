@@ -1,7 +1,7 @@
 use knot_core::errors::TransportError;
 use knot_transport::{
     codec::{BinaryCodec, JsonCodec, MessageCodec},
-    messages::{Message, MessageKind},
+    messages::{Message, MessageContext, MessageKind},
     transport::{
         MessageTransport, RawTransport, Server, TransportSpec,
         ipc::{IpcServer, IpcTransport},
@@ -54,21 +54,23 @@ where
         let transport: TestTransport<IpcTransport, Cod> =
             server.accept().await.unwrap().to_messaged();
 
-        while let Ok(mut msg) = transport.recv().await {
-            match msg.kind() {
-                MessageKind::Request(req) => {
-                    let TestRequest::Ping(val) = req;
-                    msg.reply(TestResponse::Pong(*val)).await.ok();
-                }
-                MessageKind::Event(ev) => {
-                    let TestEvent::Event(val) = ev;
-                    msg.emit(TestMessage::event(TestEvent::Event(*val)))
-                        .await
-                        .ok();
-                }
-                MessageKind::Response(_) => {}
-            }
-        }
+        transport
+            .serve_with(
+                async |mut ctx: MessageContext<'_, IpcTransport, TestTransportSpec<Cod>>| match ctx
+                    .kind()
+                {
+                    MessageKind::Request(req) => {
+                        let TestRequest::Ping(val) = req;
+                        ctx.reply(TestResponse::Pong(*val)).await
+                    }
+                    MessageKind::Event(ev) => {
+                        let TestEvent::Event(val) = ev;
+                        ctx.emit(TestMessage::event(TestEvent::Event(*val))).await
+                    }
+                    MessageKind::Response(_) => Ok(()),
+                },
+            )
+            .await;
     })
 }
 

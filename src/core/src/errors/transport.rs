@@ -31,6 +31,9 @@ pub enum TransportError {
     #[error("failed to deserialize message: {reason}")]
     DeserializeError { reason: String },
 
+    #[error("failed to process message in middleware {name}: {reason}")]
+    MiddlewareError { name: String, reason: String },
+
     #[error("connection closed unexpectedly")]
     ConnectionClosed,
 

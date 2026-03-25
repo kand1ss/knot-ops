@@ -33,7 +33,7 @@ pub trait TransportSpec: Send + Sync + 'static {
 /// Implementors are responsible for ensuring that a single call to `recv_frame`
 /// returns exactly one complete message frame.
 #[async_trait]
-pub trait RawTransport: Send + Sync + Sized {
+pub trait RawTransport: Send + Sync + Sized + 'static {
     /// Sends a raw byte slice as a single frame.
     async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError>;
 

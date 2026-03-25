@@ -5,6 +5,7 @@
 
 use crate::codec::MessageCodec;
 use crate::messages::{Message, MessageContext, MessageKind};
+use crate::middleware::{Pipeline, traits::Middleware};
 use knot_core::errors::TransportError;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -12,13 +13,15 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::{
-    sync::{Mutex, mpsc, oneshot},
+    sync::{Mutex, RwLock, mpsc, oneshot},
     time::{Duration, timeout},
 };
 
+mod handler;
 pub mod ipc;
 mod traits;
 
+pub use handler::*;
 pub use traits::*;
 
 type PendingResponse<TResponse> = oneshot::Sender<TResponse>;
@@ -54,7 +57,7 @@ type InboxRx<S> = Mutex<mpsc::Receiver<InboundMessage<S>>>;
 #[derive(Debug)]
 pub struct MessageTransport<R, S>
 where
-    R: RawTransport + 'static,
+    R: RawTransport,
     S: TransportSpec,
 {
     /// The underlying low-level frame transport (e.g., UDS or TCP).
@@ -67,11 +70,12 @@ where
     inbox_rx: InboxRx<S>,
     /// Zero-cost marker to link the transport to a specific serialization format.
     _phantom: PhantomData<S::C>,
+    pipeline: RwLock<Pipeline<R, S>>,
 }
 
 impl<R, S> MessageTransport<R, S>
 where
-    R: RawTransport + 'static,
+    R: RawTransport,
     S: TransportSpec,
 {
     /// Creates a new `MessageTransport` and spawns a background read loop.
@@ -96,6 +100,7 @@ where
             shared,
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
+            pipeline: RwLock::new(Pipeline::default()),
         }
     }
 
@@ -140,6 +145,20 @@ where
 
         // Clean up pending requests on transport failure
         shared.pending.lock().await.clear();
+    }
+
+    /// Registers a new middleware into the transport's processing pipeline.
+    ///
+    /// Middlewares are executed in the order they are added. They can be used for
+    /// logging, metrics collection, authentication, or modifying messages
+    /// before they reach the application logic.
+    ///
+    /// # Guard
+    /// This method acquires a write lock on the internal pipeline. It should
+    /// ideally be called during the initialization phase of the transport.
+    pub async fn add_middleware<M: Middleware<R, S>>(&mut self, middleware: M) {
+        let mut p = self.pipeline.write().await;
+        p.add_middleware(middleware);
     }
 
     /// Sends a low-level message envelope directly through the transport.
@@ -203,22 +222,106 @@ where
         }
     }
 
-    /// Receives the next incoming message wrapped in a [`MessageContext`].
+    /// Receives the next incoming message directly from the inbox, bypassing the middleware pipeline.
     ///
-    /// This method awaits the next message from the internal inbox. The returned
-    /// context provides easy access to the message data and a convenient way
-    /// to send replies or emit events back through this transport.
+    /// This is a low-level method that returns a [`MessageContext`] without triggering
+    /// any registered middlewares. Use this when you need to handle raw messages
+    /// (e.g., control frames, heartbeats) or for debugging purposes where
+    /// middleware interference is undesirable.
     ///
     /// # Errors
-    /// Returns [`TransportError::ConnectionClosed`] if the background worker
-    /// or the underlying connection has been terminated.
+    /// Returns [`TransportError::ConnectionClosed`] if the underlying connection
+    /// or the background worker has been terminated.
     ///
     /// # Locking
-    /// This method locks the internal `inbox_rx` mutex. While multiple tasks
-    /// can call `recv`, they will be processed sequentially.
-    pub async fn recv(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
+    /// This method locks the internal `inbox_rx` mutex. Multiple tasks can call
+    /// `next`, but they will be processed sequentially.
+    pub async fn next(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
         let mut rx = self.inbox_rx.lock().await;
         let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
         Ok(MessageContext::new(message, self))
+    }
+
+    /// Receives the next incoming message and processes it through the middleware pipeline.
+    ///
+    /// This is the primary method for receiving messages in a production environment.
+    /// It first retrieves a message using [`Self::next`] and then asynchronously
+    /// executes all registered middlewares via the [`Pipeline`].
+    ///
+    /// # Pipeline Execution
+    /// If any middleware in the pipeline returns an error or chooses to drop the
+    /// message (short-circuiting), this method will return that error, and the
+    /// message will not be returned to the caller.
+    ///
+    /// # Returns
+    /// Returns a [`MessageContext`] that has successfully passed through all
+    /// middleware layers.
+    pub async fn recv(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
+        let message = self.next().await?;
+        {
+            let p = self.pipeline.read().await;
+            p.execute(&message).await?;
+        }
+
+        Ok(message)
+    }
+
+    /// Starts a continuous message processing loop using the provided handler.
+    ///
+    /// This is the primary entry point for building a server or a long-running
+    /// message processor with the Knot transport. It manages the full lifecycle
+    /// of every incoming message, from the raw wire to your business logic.
+    ///
+    /// ### Processing Lifecycle
+    ///
+    /// 1. **Receive**: Awaits the next [`MessageContext`] from the internal inbox.
+    /// 2. **Middleware**: Executes the registered [`Middleware`] pipeline.
+    ///    Middlewares can inspect, modify, or block the message.
+    /// 3. **Dispatch**: If the pipeline completes successfully, the message is
+    ///    passed to the terminal `handler`.
+    /// 4. **Error Handling**: Non-fatal errors in the pipeline or handler are
+    ///    logged, and the loop proceeds to the next message.
+    ///
+    /// ### Technical Note: `AsyncHandler`
+    ///
+    /// The handler uses the [`AsyncHandler`] trait with **Higher-Rank Trait Bounds** /// (`for<'a>`). This ensures that the handler can safely borrow data from the
+    /// message context during its execution without requiring expensive heap
+    /// allocations (like `Box<dyn Future>`) or complex lifetime annotations
+    /// in the user's code.
+    ///
+    /// ### Example
+    ///
+    /// ```rust,ignore
+    /// transport.serve_with(async |ctx| {
+    ///     match ctx.kind() {
+    ///         MessageKind::Request(req) => {
+    ///             println!("Received request: {:?}", req);
+    ///             ctx.reply(MyResponse::Ok).await?;
+    ///         }
+    ///         _ => {}
+    ///     }
+    ///     Ok(())
+    /// }).await;
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// This method does not typically panic, but it will propagate panics that
+    /// occur within the `handler` or `middleware` unless they are caught
+    /// by a specific middleware layer.
+    pub async fn serve_with<F>(&self, handler: F)
+    where
+        F: for<'a> AsyncHandler<'a, R, S>,
+    {
+        while let Ok(ctx) = self.next().await {
+            if let Err(e) = self.pipeline.read().await.execute(&ctx).await {
+                eprintln!("Middleware blocked message: {:?}", e);
+                continue;
+            }
+
+            if let Err(e) = handler.call(ctx).await {
+                eprintln!("Handler error: {:?}", e);
+            }
+        }
     }
 }
