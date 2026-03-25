@@ -232,9 +232,7 @@ mod pipeline_tests {
 
         async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
             let mut rx = self.incoming_rx.lock().await;
-            rx.recv()
-                .await
-                .ok_or(TransportError::UnexpectedMessage)
+            rx.recv().await.ok_or(TransportError::UnexpectedMessage)
         }
     }
 
