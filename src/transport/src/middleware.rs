@@ -234,7 +234,7 @@ mod pipeline_tests {
             let mut rx = self.incoming_rx.lock().await;
             rx.recv()
                 .await
-                .ok_or_else(|| TransportError::UnexpectedMessage)
+                .ok_or(TransportError::UnexpectedMessage)
         }
     }
 
