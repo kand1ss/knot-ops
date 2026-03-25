@@ -19,5 +19,5 @@ rstest = "0.26.1"
 tokio = { version = "1.50.0", features = ["full", "test-util"] }
 
 [[test]]
-name = "ipc_transport_test"
-path = "tests/integration/ipc_test.rs"
+name = "transport_test"
+path = "tests/integration/transport_test.rs"
