@@ -13,7 +13,7 @@ use crate::transport::{MessageTransport, RawTransport, TransportSpec};
 use knot_core::errors::TransportError;
 use knot_core::utils::TimestampUtils;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, borrow::Cow};
+use std::{borrow::Cow, collections::HashMap};
 
 pub mod daemon;
 
@@ -31,13 +31,13 @@ pub struct Message<Req, Res, Ev> {
     pub timestamp: u64,
     /// The message type and its associated payload.
     pub kind: MessageKind<Req, Res, Ev>,
-    /// Metadata allows for attaching auxiliary information such as tracing IDs, 
+    /// Metadata allows for attaching auxiliary information such as tracing IDs,
     /// timestamps, or versioning data without modifying the main payload.
     ///
     /// Using [`Cow<'static, str>`] enables high-performance storage:
     /// - **Static keys/values** (`&'static str`) are stored as references without heap allocation.
     /// - **Dynamic strings** (`String`) are automatically promoted to owned storage when needed.
-    pub metadata: HashMap<Cow<'static, str>, Cow<'static, str>>
+    pub metadata: HashMap<Cow<'static, str>, Cow<'static, str>>,
 }
 
 /// A high-level wrapper around an incoming message and its associated transport.
@@ -154,21 +154,25 @@ where
             id,
             timestamp: TimestampUtils::now_ms(),
             kind,
-            metadata: HashMap::new()
+            metadata: HashMap::new(),
         }
     }
 
     /// Adds or updates a metadata entry for the message.
     ///
     /// This method uses [`Cow<'static, str>`] for both keys and values, allowing
-    /// for highly efficient storage. If a `&'static str` is provided, it is 
-    /// stored by reference without heap allocation. If a dynamic `String` is 
+    /// for highly efficient storage. If a `&'static str` is provided, it is
+    /// stored by reference without heap allocation. If a dynamic `String` is
     /// provided, it is stored as owned data.
     ///
     /// ### Arguments
     /// * `key` - The metadata key (e.g., "correlation_id" or "version").
     /// * `value` - The value associated with the key.
-    pub fn add_metadata(&mut self, key: impl Into<Cow<'static, str>>, value: impl Into<Cow<'static, str>>) {
+    pub fn add_metadata(
+        &mut self,
+        key: impl Into<Cow<'static, str>>,
+        value: impl Into<Cow<'static, str>>,
+    ) {
         self.metadata.insert(key.into(), value.into());
     }
 
@@ -177,8 +181,8 @@ where
     /// Returns `Some(&str)` if the key exists, or `None` otherwise.
     ///
     /// ### Performance Note
-    /// While this method accepts `impl Into<Cow>`, passing a `&str` or 
-    /// `&'static str` is preferred to avoid unnecessary internal 
+    /// While this method accepts `impl Into<Cow>`, passing a `&str` or
+    /// `&'static str` is preferred to avoid unnecessary internal
     /// transformations.
     ///
     /// ### Arguments
@@ -274,28 +278,25 @@ where
 #[cfg(test)]
 mod messages_tests {
     use super::*;
-    use std::{
-        fmt::Debug,
-        sync::Arc,
-    };
-    use serde::{Serialize, Deserialize};
-    use async_trait::async_trait;
     use crate::codec::JsonCodec;
+    use async_trait::async_trait;
+    use serde::{Deserialize, Serialize};
+    use std::{fmt::Debug, sync::Arc};
     use tokio::sync::{Mutex, mpsc};
 
     // MOCKS
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub enum TestReq {
-        Cmd(String)
+        Cmd(String),
     }
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub enum TestRes {
-        Ok(bool)
+        Ok(bool),
     }
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub enum TestEv {
-        Kind(String)
+        Kind(String),
     }
 
     // TRANSPORT STUBS
@@ -347,7 +348,7 @@ mod messages_tests {
     }
 
     // TRANSPORT SPEC STUB
- 
+
     pub struct TestSpec;
     impl TransportSpec for TestSpec {
         type Req = TestReq;
@@ -355,18 +356,24 @@ mod messages_tests {
         type Ev = TestEv;
         type C = JsonCodec;
     }
- 
+
     // ALIASES
- 
-    type TestMsg     = Message<TestReq, TestRes, TestEv>;
-    type TestKind    = MessageKind<TestReq, TestRes, TestEv>;
+
+    type TestMsg = Message<TestReq, TestRes, TestEv>;
+    type TestKind = MessageKind<TestReq, TestRes, TestEv>;
     type TestCtx<'a> = MessageContext<'a, MockRaw, TestSpec>;
 
     // CONSTRUCTORS
 
-    fn req(cmd: &str) -> TestReq { TestReq::Cmd(cmd.into()) }
-    fn res(ok: bool) -> TestRes { TestRes::Ok(ok) }
-    fn ev(kind: &str) -> TestEv  { TestEv::Kind(kind.into()) }
+    fn req(cmd: &str) -> TestReq {
+        TestReq::Cmd(cmd.into())
+    }
+    fn res(ok: bool) -> TestRes {
+        TestRes::Ok(ok)
+    }
+    fn ev(kind: &str) -> TestEv {
+        TestEv::Kind(kind.into())
+    }
 
     // HELPERS
 
@@ -374,7 +381,7 @@ mod messages_tests {
         let (transport, _, _) = MockRaw::new();
         transport.to_messaged()
     }
- 
+
     fn make_ctx<'a>(
         msg: TestMsg,
         transport: &'a MessageTransport<MockRaw, TestSpec>,
@@ -412,13 +419,13 @@ mod messages_tests {
         let msg = TestMsg::response(10, res(true));
         assert!(matches!(msg.kind, MessageKind::Response(_)));
     }
- 
+
     #[test]
     fn test_response_stores_correlation_id() {
         let msg = TestMsg::response(55, res(false));
         assert_eq!(msg.id, 55, "response id must match original request id");
     }
- 
+
     #[test]
     fn test_response_stores_payload() {
         let msg = TestMsg::response(1, res(false));
@@ -429,19 +436,19 @@ mod messages_tests {
             panic!("expected Response kind");
         }
     }
- 
+
     #[test]
     fn test_event_constructor_sets_kind() {
         let msg = TestMsg::event(ev("service.started"));
         assert!(matches!(msg.kind, MessageKind::Event(_)));
     }
- 
+
     #[test]
     fn test_event_id_is_zero() {
         let msg = TestMsg::event(ev("any"));
         assert_eq!(msg.id, 0, "events must use id = 0");
     }
- 
+
     #[test]
     fn test_event_stores_payload() {
         let msg = TestMsg::event(ev("health.check"));
@@ -452,67 +459,67 @@ mod messages_tests {
             panic!("expected Event kind");
         }
     }
- 
+
     #[test]
     fn test_new_message_has_empty_metadata() {
         let msg = TestMsg::request(1, req("x"));
         assert!(msg.metadata.is_empty());
     }
- 
+
     #[test]
     fn test_timestamp_is_non_zero() {
         let msg = TestMsg::request(1, req("x"));
         assert!(msg.timestamp > 0, "timestamp must be a real unix ms value");
     }
 
-     #[test]
+    #[test]
     fn test_is_request_true_for_request() {
         let msg = TestMsg::request(1, req("a"));
         assert!(msg.is_request());
     }
- 
+
     #[test]
     fn test_is_request_false_for_response() {
         let msg = TestMsg::response(1, res(true));
         assert!(!msg.is_request());
     }
- 
+
     #[test]
     fn test_is_request_false_for_event() {
         let msg = TestMsg::event(ev("e"));
         assert!(!msg.is_request());
     }
- 
+
     #[test]
     fn test_is_response_true_for_response() {
         let msg = TestMsg::response(1, res(false));
         assert!(msg.is_response());
     }
- 
+
     #[test]
     fn test_is_response_false_for_request() {
         let msg = TestMsg::request(1, req("x"));
         assert!(!msg.is_response());
     }
- 
+
     #[test]
     fn test_is_response_false_for_event() {
         let msg = TestMsg::event(ev("e"));
         assert!(!msg.is_response());
     }
- 
+
     #[test]
     fn test_is_event_true_for_event() {
         let msg = TestMsg::event(ev("e"));
         assert!(msg.is_event());
     }
- 
+
     #[test]
     fn test_is_event_false_for_request() {
         let msg = TestMsg::request(1, req("x"));
         assert!(!msg.is_event());
     }
- 
+
     #[test]
     fn test_is_event_false_for_response() {
         let msg = TestMsg::response(1, res(true));
@@ -524,25 +531,25 @@ mod messages_tests {
         let msg = TestMsg::request(128, req("x"));
         assert_eq!(msg.id(), 128);
     }
- 
+
     #[test]
     fn test_id_accessor_response() {
         let msg = TestMsg::response(256, res(true));
         assert_eq!(msg.id(), 256);
     }
- 
+
     #[test]
     fn test_id_accessor_event_is_zero() {
         let msg = TestMsg::event(ev("e"));
         assert_eq!(msg.id(), 0);
     }
- 
+
     #[test]
     fn test_id_max_u32() {
         let msg = TestMsg::request(u32::MAX, req("x"));
         assert_eq!(msg.id(), u32::MAX);
     }
- 
+
     #[test]
     fn test_id_zero_for_request() {
         // id = 0 is technically allowed for requests (edge case)
@@ -556,22 +563,22 @@ mod messages_tests {
         msg.add_metadata("version", "1.0");
         assert_eq!(msg.get_metadata("version"), Some("1.0"));
     }
- 
+
     #[test]
     fn test_add_and_get_owned_string_metadata() {
         let mut msg = TestMsg::request(1, req("x"));
-        let key   = String::from("trace_id");
+        let key = String::from("trace_id");
         let value = String::from("abc-123");
         msg.add_metadata(key, value);
         assert_eq!(msg.get_metadata("trace_id"), Some("abc-123"));
     }
- 
+
     #[test]
     fn test_get_metadata_missing_key_returns_none() {
         let msg = TestMsg::request(1, req("x"));
         assert!(msg.get_metadata("nonexistent").is_none());
     }
- 
+
     #[test]
     fn test_add_metadata_overwrites_existing_key() {
         let mut msg = TestMsg::request(1, req("x"));
@@ -579,7 +586,7 @@ mod messages_tests {
         msg.add_metadata("env", "production");
         assert_eq!(msg.get_metadata("env"), Some("production"));
     }
- 
+
     #[test]
     fn test_multiple_metadata_entries_stored_independently() {
         let mut msg = TestMsg::request(1, req("x"));
@@ -590,21 +597,21 @@ mod messages_tests {
         assert_eq!(msg.get_metadata("b"), Some("2"));
         assert_eq!(msg.get_metadata("c"), Some("3"));
     }
- 
+
     #[test]
     fn test_metadata_empty_value_allowed() {
         let mut msg = TestMsg::request(1, req("x"));
         msg.add_metadata("empty", "");
         assert_eq!(msg.get_metadata("empty"), Some(""));
     }
- 
+
     #[test]
     fn test_metadata_unicode_key_and_value() {
         let mut msg = TestMsg::request(1, req("x"));
         msg.add_metadata("описание", "тест");
         assert_eq!(msg.get_metadata("описание"), Some("тест"));
     }
- 
+
     #[test]
     fn test_metadata_cow_borrowed_does_not_allocate() {
         // Compile-time check: &'static str → Cow::Borrowed, no heap alloc
@@ -612,11 +619,11 @@ mod messages_tests {
         msg.add_metadata(Cow::Borrowed("static_key"), Cow::Borrowed("static_val"));
         assert_eq!(msg.get_metadata("static_key"), Some("static_val"));
     }
- 
+
     #[test]
     fn test_metadata_cow_owned() {
         let mut msg = TestMsg::request(1, req("x"));
-        let dynamic_key   = format!("key_{}", 42);
+        let dynamic_key = format!("key_{}", 42);
         let dynamic_value = format!("val_{}", 99);
         msg.add_metadata(
             Cow::Owned(dynamic_key.clone()),
@@ -624,21 +631,21 @@ mod messages_tests {
         );
         assert_eq!(msg.get_metadata(dynamic_key), Some(dynamic_value.as_str()));
     }
- 
+
     #[test]
     fn test_metadata_present_on_response() {
         let mut msg = TestMsg::response(5, res(true));
         msg.add_metadata("source", "handler");
         assert_eq!(msg.get_metadata("source"), Some("handler"));
     }
- 
+
     #[test]
     fn test_metadata_present_on_event() {
         let mut msg = TestMsg::event(ev("ping"));
         msg.add_metadata("node", "worker-1");
         assert_eq!(msg.get_metadata("node"), Some("worker-1"));
     }
- 
+
     #[test]
     fn test_metadata_map_count() {
         let mut msg = TestMsg::request(1, req("x"));
@@ -655,98 +662,100 @@ mod messages_tests {
         // Two messages created back-to-back; t2 >= t1
         assert!(m2.timestamp >= m1.timestamp);
     }
- 
+
     #[test]
     fn test_timestamp_looks_like_unix_ms() {
         // Rough sanity: timestamp > 1_700_000_000_000 ms (Nov 2023)
         let msg = TestMsg::request(1, req("x"));
-        assert!(msg.timestamp > 1_700_000_000_000,
-            "timestamp {} does not look like a unix-ms value", msg.timestamp);
+        assert!(
+            msg.timestamp > 1_700_000_000_000,
+            "timestamp {} does not look like a unix-ms value",
+            msg.timestamp
+        );
     }
- 
+
     #[tokio::test]
     async fn test_context_get_returns_message_ref() {
         let transport = make_transport();
         let msg = TestMsg::request(42, req("hello"));
         let ctx = make_ctx(msg, &transport);
- 
+
         assert_eq!(ctx.get().id, 42);
         assert!(ctx.get().is_request());
     }
- 
+
     #[tokio::test]
     async fn test_context_kind_returns_kind_ref() {
         let transport = make_transport();
         let ctx = make_ctx(TestMsg::request(1, req("x")), &transport);
         assert!(matches!(ctx.kind(), MessageKind::Request(_)));
     }
- 
+
     #[tokio::test]
     async fn test_context_kind_event() {
         let transport = make_transport();
         let ctx = make_ctx(TestMsg::event(ev("boot")), &transport);
         assert!(matches!(ctx.kind(), MessageKind::Event(_)));
     }
- 
+
     #[tokio::test]
     async fn test_context_kind_response() {
         let transport = make_transport();
         let ctx = make_ctx(TestMsg::response(5, res(false)), &transport);
         assert!(matches!(ctx.kind(), MessageKind::Response(_)));
     }
- 
+
     #[tokio::test]
     async fn test_context_into_parts_returns_message_and_transport() {
         let transport = make_transport();
         let msg = TestMsg::request(99, req("split"));
         let ctx = make_ctx(msg, &transport);
- 
+
         let (returned_msg, _returned_transport) = ctx.into_parts();
         assert_eq!(returned_msg.id, 99);
         assert!(returned_msg.is_request());
     }
- 
+
     #[tokio::test]
     async fn test_reply_sets_replied_flag_preventing_silent_loss() {
         let transport = make_transport();
         let mut ctx = make_ctx(TestMsg::request(1, req("x")), &transport);
- 
+
         let r1 = ctx.reply(res(true)).await;
         let r2 = ctx.reply(res(true)).await;
- 
+
         assert!(r1.is_ok());
         assert!(r2.is_ok());
     }
- 
+
     #[tokio::test]
     async fn test_reply_propagates_transport_error() {
-        let transport: MessageTransport<FailingRaw, TestSpec> =
-            MessageTransport::new(FailingRaw);
+        let transport: MessageTransport<FailingRaw, TestSpec> = MessageTransport::new(FailingRaw);
         let mut ctx: MessageContext<'_, FailingRaw, TestSpec> =
             MessageContext::new(TestMsg::request(1, req("x")), &transport);
- 
+
         let result = ctx.reply(res(true)).await;
         assert!(result.is_err(), "transport failure must propagate as Err");
     }
 
-    #[test]
-    fn test_into_parts_message_preserves_id() {
+    #[tokio::test]
+    async fn test_into_parts_message_preserves_id() {
         let transport = make_transport();
         let ctx = make_ctx(TestMsg::request(512, req("parts")), &transport);
         let (msg, _tr) = ctx.into_parts();
         assert_eq!(msg.id, 512);
     }
- 
-    #[test]
-    fn test_into_parts_message_preserves_kind() {
+
+    #[tokio::test]
+    async fn test_into_parts_message_preserves_kind() {
         let transport = make_transport();
         let ctx = make_ctx(TestMsg::event(ev("ev")), &transport);
         let (msg, _tr) = ctx.into_parts();
         assert!(msg.is_event());
     }
- 
-    #[test]
-    fn test_into_parts_message_preserves_metadata() {
+
+    #[tokio::test]
+    async fn test_into_parts_message_preserves_metadata() {
         let transport = make_transport();
         let mut msg = TestMsg::request(1, req("x"));
         msg.add_metadata("trace", "t-001");
@@ -758,68 +767,68 @@ mod messages_tests {
     #[test]
     fn test_request_serde_roundtrip() {
         let original = TestMsg::request(1, req("test-cmd"));
-        let json     = serde_json::to_string(&original).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
- 
+
         assert_eq!(decoded.id, original.id);
         assert!(decoded.is_request());
         let (_, payload) = decoded.into_request().unwrap();
         let TestReq::Cmd(cmd) = payload;
         assert_eq!(cmd, "test-cmd");
     }
- 
+
     #[test]
     fn test_response_serde_roundtrip() {
         let original = TestMsg::response(42, res(false));
-        let json     = serde_json::to_string(&original).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
- 
+
         assert_eq!(decoded.id, 42);
         assert!(decoded.is_response());
         let (_, payload) = decoded.into_response().unwrap();
         let TestRes::Ok(ok) = payload;
         assert!(!ok);
     }
- 
+
     #[test]
     fn test_event_serde_roundtrip() {
         let original = TestMsg::event(ev("node.ready"));
-        let json     = serde_json::to_string(&original).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
- 
+
         assert_eq!(decoded.id, 0);
         assert!(decoded.is_event());
         let (_, payload) = decoded.into_event().unwrap();
         let TestEv::Kind(kind) = payload;
         assert_eq!(kind, "node.ready");
     }
- 
+
     #[test]
     fn test_metadata_survives_serde_roundtrip() {
         let mut original = TestMsg::request(7, req("x"));
         original.add_metadata("key1", "val1");
         original.add_metadata("key2", "val2");
- 
-        let json    = serde_json::to_string(&original).unwrap();
+
+        let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
- 
+
         assert_eq!(decoded.get_metadata("key1"), Some("val1"));
         assert_eq!(decoded.get_metadata("key2"), Some("val2"));
     }
- 
+
     #[test]
     fn test_timestamp_survives_serde_roundtrip() {
         let original = TestMsg::request(1, req("x"));
-        let ts       = original.timestamp;
-        let json     = serde_json::to_string(&original).unwrap();
+        let ts = original.timestamp;
+        let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.timestamp, ts);
     }
- 
+
     #[test]
     fn test_max_id_survives_serde_roundtrip() {
         let original = TestMsg::request(u32::MAX, req("x"));
-        let json     = serde_json::to_string(&original).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.id, u32::MAX);
     }
@@ -831,19 +840,24 @@ mod messages_tests {
         let TestReq::Cmd(cmd) = payload;
         assert_eq!(cmd, "");
     }
- 
+
     #[test]
     fn test_response_with_unicode_payload() {
         #[derive(Debug, Serialize, Deserialize, PartialEq)]
-        struct UnicodeRes { text: String }
- 
-        let msg = Message::<TestReq, UnicodeRes, TestEv>::response(1, UnicodeRes {
-            text: "日本語テスト".into(),
-        });
+        struct UnicodeRes {
+            text: String,
+        }
+
+        let msg = Message::<TestReq, UnicodeRes, TestEv>::response(
+            1,
+            UnicodeRes {
+                text: "日本語テスト".into(),
+            },
+        );
         let (_, p) = msg.into_response().unwrap();
         assert_eq!(p.text, "日本語テスト");
     }
- 
+
     #[test]
     fn test_two_messages_with_same_id_are_independent() {
         let m1 = TestMsg::request(10, req("first"));
@@ -856,34 +870,36 @@ mod messages_tests {
         let TestReq::Cmd(cmd2) = m2.into_request().unwrap().1;
         assert_ne!(cmd1, cmd2);
     }
- 
+
     #[test]
     fn test_event_id_not_correlated() {
         // Confirm events always carry id = 0 regardless of what's happening around them
-        let events: Vec<TestMsg> = (0..5).map(|i| TestMsg::event(ev(&format!("e{i}")))).collect();
+        let events: Vec<TestMsg> = (0..5)
+            .map(|i| TestMsg::event(ev(&format!("e{i}"))))
+            .collect();
         for e in &events {
             assert_eq!(e.id(), 0);
         }
     }
- 
+
     #[test]
     fn test_message_kind_debug_does_not_panic() {
         let req_kind: TestKind = MessageKind::Request(req("x"));
         let res_kind: TestKind = MessageKind::Response(res(true));
-        let ev_kind:  TestKind = MessageKind::Event(ev("e"));
+        let ev_kind: TestKind = MessageKind::Event(ev("e"));
         // Debug impl must not panic
         let _ = format!("{:?}", req_kind);
         let _ = format!("{:?}", res_kind);
         let _ = format!("{:?}", ev_kind);
     }
- 
+
     #[test]
     fn test_message_debug_does_not_panic() {
         let _ = format!("{:?}", TestMsg::request(1, req("dbg")));
         let _ = format!("{:?}", TestMsg::response(1, res(true)));
         let _ = format!("{:?}", TestMsg::event(ev("dbg")));
     }
- 
+
     #[test]
     fn test_large_metadata_map() {
         let mut msg = TestMsg::request(1, req("x"));
@@ -893,9 +909,9 @@ mod messages_tests {
         assert_eq!(msg.metadata.len(), 1_000);
         assert_eq!(msg.get_metadata("key_999"), Some("value_999"));
     }
- 
-    #[test]
-    fn test_into_parts_consumes_context() {
+
+    #[tokio::test]
+    async fn test_into_parts_consumes_context() {
         // Compile-time test: after into_parts(), ctx is moved and unavailable.
         // We just call it and verify the result is correct.
         let transport = make_transport();
