@@ -24,13 +24,16 @@ mod traits;
 pub use handler::*;
 pub use traits::*;
 
-type PendingResponse<TResponse> = oneshot::Sender<TResponse>;
+type MessageSender<S> = oneshot::Sender<
+    Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>,
+>;
+type PendingMap<S> = HashMap<u32, MessageSender<S>>;
 
 /// Internal state shared between the public API and the background read loop.
 #[derive(Debug)]
 pub struct SharedState<S: TransportSpec> {
     /// Tracks requests waiting for a response.
-    pub pending: Mutex<HashMap<u32, PendingResponse<S::Res>>>,
+    pub pending: Mutex<PendingMap<S>>,
     /// Channel to send incoming requests or unhandled responses to the consumer.
     pub inbox_tx: mpsc::Sender<Message<S::Req, S::Res, S::Ev>>,
 }
@@ -128,8 +131,8 @@ where
                     let mut pending = shared.pending.lock().await;
                     // If a specific caller is waiting for this ID, send it via oneshot
                     if let Some(tx) = pending.remove(&msg.id) {
-                        if let MessageKind::Response(payload) = msg.kind {
-                            let _ = tx.send(payload);
+                        if let MessageKind::Response(_) = msg.kind {
+                            let _ = tx.send(msg);
                         }
                     } else {
                         // Otherwise, push it to the general inbox
@@ -161,32 +164,52 @@ where
         p.add_middleware(middleware);
     }
 
-    /// Sends a low-level message envelope directly through the transport.
+    /// Sends a low-level message envelope through the outbound middleware pipeline.
     ///
-    /// This is a "fire-and-forget" operation. It does not track responses or
-    /// generate IDs; it simply encodes the provided [`Message`] and pushes
-    /// the frame to the underlying [`RawTransport`].
+    /// This is a "fire-and-forget" operation that performs the following steps:
+    /// 1. **Middleware Processing**: Passes the [`Message`] through the outbound pipeline
+    ///    via `execute_send`. Middleware may modify metadata or block the message.
+    /// 2. **Encoding**: Serializes the (potentially modified) message using the codec.
+    /// 3. **Transmission**: Pushes the resulting frame to the underlying [`RawTransport`].
     ///
-    /// Use this for emitting events or manual protocol handling.
-    pub async fn send(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
+    /// Use this for emitting events, manual protocol handling, or sending raw responses.
+    ///
+    /// # Errors
+    /// * Returns [`TransportError::MiddlewareBlocked`] if a middleware halts the execution.
+    /// * Returns [`TransportError::Codec`] if serialization fails.
+    pub async fn send(
+        &self,
+        mut msg: Message<S::Req, S::Res, S::Ev>,
+    ) -> Result<(), TransportError> {
+        self.pipeline.read().await.execute_send(&mut msg).await?;
         let encoded = S::C::encode(&msg)?;
         self.raw_transport.send_frame(&encoded).await
     }
 
-    /// Performs a synchronized Request-Response operation.
+    /// Performs a synchronized Request-Response operation with middleware interception.
     ///
-    /// This high-level method automates the entire RPC lifecycle:
-    /// 1. **ID Generation**: Atomically increments the internal counter to ensure a unique `id`.
-    /// 2. **Registration**: Creates a `oneshot` channel and registers it in the shared
-    ///    `pending` map so the background worker can route the response back.
-    /// 3. **Transmission**: Encodes and sends the request frame.
-    /// 4. **Awaiting**: Suspend execution until the matching response is received
-    ///    or the connection is dropped.
+    /// This high-level method automates the entire RPC lifecycle while ensuring all
+    /// outgoing and incoming data passes through the configured [`Middleware`] layers:
+    ///
+    /// ### Workflow:
+    /// 1. **Preparation**: Generates a unique `id` and registers a response observer.
+    /// 2. **Outbound Pipeline**: Wraps the request in a [`Message`] and sends it via
+    ///    [`Self::send`], triggering all `on_send` middleware hooks.
+    /// 3. **Awaiting Response**: Suspends execution until a matching response frame is
+    ///    received by the background worker.
+    /// 4. **Inbound Pipeline**: Once received, the response [`Message`] is passed through
+    ///    the `on_recv` middleware hooks via `execute_recv`.
+    /// 5. **Finalization**: Extracts the payload and returns it to the caller.
+    ///
+    /// # Arguments
+    /// * `request` - The request payload to send.
+    /// * `timeout_secs` - Maximum duration to wait for a response before returning a timeout error.
     ///
     /// # Errors
-    /// * Returns [`TransportError::SerializeError`] if serialization fails.
-    /// * Returns [`TransportError::ConnectionClosed`] if the background worker
-    ///   is unable to deliver the response (e.g., socket disconnected).
+    /// * Returns [`TransportError::Timeout`] if the duration is exceeded.
+    /// * Returns [`TransportError::MiddlewareBlocked`] if any middleware (inbound or outbound)
+    ///   rejects the message.
+    /// * Returns [`TransportError::ConnectionClosed`] if the transport becomes unreachable.
     pub async fn request(
         &self,
         request: S::Req,
@@ -201,16 +224,24 @@ where
         }
 
         let msg: Message<S::Req, S::Res, S::Ev> = Message::request(id, request);
-        let encoded = S::C::encode(&msg)?;
-
-        if let Err(e) = self.raw_transport.send_frame(&encoded).await {
+        if let Err(e) = self.send(msg).await {
             let mut pending = self.shared.pending.lock().await;
             pending.remove(&id);
             return Err(e);
         }
 
         match timeout(Duration::from_secs(timeout_secs), rx).await {
-            Ok(result) => result.map_err(|_| TransportError::ConnectionClosed),
+            Ok(result) => {
+                let msg = result.map_err(|_| TransportError::ConnectionClosed)?;
+                self.pipeline.read().await.execute_recv(&msg).await?;
+
+                match msg.into_response() {
+                    Some((_, res)) => Ok(res),
+                    None => Err(TransportError::DeserializeError {
+                        reason: "expected another message kind".to_string(),
+                    }),
+                }
+            }
             Err(_) => {
                 let mut pending = self.shared.pending.lock().await;
                 pending.remove(&id);
@@ -257,13 +288,13 @@ where
     /// Returns a [`MessageContext`] that has successfully passed through all
     /// middleware layers.
     pub async fn recv(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
-        let message = self.next().await?;
+        let ctx = self.next().await?;
         {
             let p = self.pipeline.read().await;
-            p.execute(&message).await?;
+            p.execute_recv(ctx.get()).await?;
         }
 
-        Ok(message)
+        Ok(ctx)
     }
 
     /// Starts a continuous message processing loop using the provided handler.
@@ -314,7 +345,7 @@ where
         F: for<'a> AsyncHandler<'a, R, S>,
     {
         while let Ok(ctx) = self.next().await {
-            if let Err(e) = self.pipeline.read().await.execute(&ctx).await {
+            if let Err(e) = self.pipeline.read().await.execute_recv(ctx.get()).await {
                 eprintln!("Middleware blocked message: {:?}", e);
                 continue;
             }

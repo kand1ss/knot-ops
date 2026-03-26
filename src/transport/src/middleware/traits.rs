@@ -5,8 +5,8 @@
 //! this trait, developers can hook into the message processing lifecycle
 //! to provide cross-cutting concerns like logging, validation, or security.
 use crate::{
-    messages::MessageContext,
-    middleware::Next,
+    messages::Message,
+    middleware::{Inbound, Outbound},
     transport::{RawTransport, TransportSpec},
 };
 use async_trait::async_trait;
@@ -26,43 +26,62 @@ use std::fmt::Debug;
 /// - Must implement `Debug` for easier troubleshooting and system introspection.
 #[async_trait]
 pub trait Middleware<R: RawTransport, S: TransportSpec>: Send + Sync + Debug + 'static {
-    /// Handles an incoming message context and controls the execution of the next layer.
+    /// Intercepts and processes incoming messages.
+    ///
+    /// This method is called when a message is received from the transport layer,
+    /// before it reaches the final application logic (Daemon or CLI handler).
     ///
     /// # Parameters
-    /// - `ctx`: A reference to the [`MessageContext`], providing access to the
-    ///   received message and transport capabilities.
-    /// - `next`: A handle to the next middleware in the pipeline.
+    /// - `msg`: A read-only reference to the incoming [`Message`].
+    /// - `next`: A handle to the next stage in the **inbound** pipeline.
     ///
     /// # Execution Flow
-    /// To allow the message to continue to the next middleware or the final
-    /// application logic, the implementation **must** call `next.run(ctx).await`.
-    ///
-    /// If `next.run(ctx).await` is not called, the pipeline is "short-circuited,"
-    /// and the message will be dropped or treated as handled by this layer.
+    /// To pass the message further down the pipeline, the implementation **must** /// call `next.run(msg).await`. Omitting this call "short-circuits" the flow,
+    /// effectively dropping the message.
     ///
     /// # Errors
-    /// Returns [`TransportError`] if the middleware fails. If an error is returned,
-    /// the pipeline execution stops immediately, and the error is propagated
-    /// to the transport's `recv` caller.
+    /// Returns [`TransportError`] to halt the pipeline. If an error is returned,
+    /// the message is not processed further, and the error is propagated
+    /// to the transport's receiver.
     ///
     /// # Example
     /// ```rust,ignore
-    /// #[async_trait]
-    /// impl<R, S> Middleware<R, S> for LoggerMiddleware {
-    ///     async fn handle(&self, ctx: &MessageContext<'_, R, S>, next: Next<'_, R, S>) -> Result<(), TransportError> {
-    ///         println!("Request received: {:?}", ctx.kind());
-    ///         
-    ///         // Continue to the next layer
-    ///         let result = next.run(ctx).await;
-    ///         
-    ///         println!("Request processed.");
-    ///         result
-    ///     }
+    /// async fn on_recv(&self, msg: &Message<S>, next: Inbound<'_, R, S>) -> Result<(), TransportError> {
+    ///     println!("Inbound message: {:?}", msg.kind());
+    ///     next.run(msg).await
     /// }
     /// ```
-    async fn handle(
+    async fn on_recv(
         &self,
-        ctx: &MessageContext<'_, R, S>,
-        next: Next<'_, R, S>,
-    ) -> Result<(), TransportError>;
+        msg: &Message<S::Req, S::Res, S::Ev>,
+        next: Inbound<'_, R, S>,
+    ) -> Result<(), TransportError> {
+        next.run(msg).await
+    }
+
+    /// Intercepts and potentially modifies outgoing messages.
+    ///
+    /// This method is called before a message is serialized and sent over the
+    /// transport. Unlike `on_recv`, this method provides a mutable reference,
+    /// allowing the middleware to transform the message or its metadata.
+    ///
+    /// # Parameters
+    /// - `msg`: A mutable reference to the outgoing [`Message`].
+    /// - `next`: A handle to the next stage in the **outbound** pipeline.
+    ///
+    /// # Key Capabilities
+    /// - **Transformation**: Modify the payload or headers before transmission.
+    /// - **Metadata Injection**: Add tracing IDs, timestamps, or system-level flags.
+    /// - **Filtering**: Prevent specific messages from being sent by returning an error.
+    ///
+    /// # Execution Flow
+    /// The implementation **must** call `next.run(msg).await` to allow the
+    /// message to proceed to the transport's sender.
+    async fn on_send(
+        &self,
+        msg: &mut Message<S::Req, S::Res, S::Ev>,
+        next: Outbound<'_, R, S>,
+    ) -> Result<(), TransportError> {
+        next.run(msg).await
+    }
 }

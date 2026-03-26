@@ -19,11 +19,11 @@ use std::fmt::Debug;
 /// This prevents type mismatches when setting up a `MessageTransport`.
 pub trait TransportSpec: Send + Sync + 'static {
     /// The type of request messages handled by this specification.
-    type Req: Serialize + DeserializeOwned + Send + Debug + 'static;
+    type Req: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
     /// The type of response messages handled by this specification.
-    type Res: Serialize + DeserializeOwned + Send + Debug + 'static;
+    type Res: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
     /// The type of asynchronous events handled by this specification.
-    type Ev: Serialize + DeserializeOwned + Send + Debug + 'static;
+    type Ev: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
     /// The codec responsible for serializing/deserializing these types.
     type C: MessageCodec<Raw = Vec<u8>>;
 }
