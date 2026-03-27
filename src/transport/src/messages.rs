@@ -29,71 +29,15 @@
 //! logic to be reused across different IPC or network protocols while
 //! maintaining strict type safety for the underlying payloads.
 
-use crate::transport::{MessageTransport, RawTransport, TransportSpec};
-use knot_core::errors::TransportError;
 use knot_core::utils::TimestampUtils;
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::borrow::Cow;
 
+mod context;
 pub mod daemon;
-
-/// A specialized container for message metadata, optimized for efficiency and flexibility.
-///
-/// `MetadataMap` acts as a key-value store (based on `HashMap`) where both keys and values
-/// are stored as `Cow<'static, str>`. This allows the transport to:
-/// 1. Use zero-cost static strings for common keys (e.g., `"content-type"`).
-/// 2. Seamlessly handle dynamic strings when necessary.
-///
-/// ### Behavioral Note
-/// Thanks to the implementation of [`Deref`] and [`DerefMut`], this structure
-/// transparently exposes all standard `HashMap` methods (like `.get()`, `.iter()`, etc.)
-/// while maintaining its specialized type constraints.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MetadataMap(HashMap<Cow<'static, str>, Cow<'static, str>>);
-impl MetadataMap {
-    /// Creates a new, empty `MetadataMap`.
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    /// Creates a new `MetadataMap` with a pre-allocated capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(HashMap::with_capacity(capacity))
-    }
-
-    /// Inserts a key-value pair into the map, automatically converting inputs
-    /// into optimized [`Cow`] strings.
-    ///
-    /// # Example
-    /// ```rust,ignore
-    /// let mut meta = MetadataMap::new();
-    /// meta.insert_str("service-id", "knot-daemon"); // Static &str (No allocation)
-    /// meta.insert_str("dynamic-key", format!("user-{}", 123)); // String (Owned)
-    /// ```
-    pub fn insert_str<K, V>(&mut self, key: K, value: V)
-    where
-        K: Into<Cow<'static, str>>,
-        V: Into<Cow<'static, str>>,
-    {
-        self.0.insert(key.into(), value.into());
-    }
-}
-impl Deref for MetadataMap {
-    type Target = HashMap<Cow<'static, str>, Cow<'static, str>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl DerefMut for MetadataMap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+mod metadata;
+pub use context::*;
+pub use metadata::*;
 
 /// The primary envelope for all system communication.
 ///
@@ -116,124 +60,6 @@ pub struct Message<Req, Res, Ev> {
     /// - **Static keys/values** (`&'static str`) are stored as references without heap allocation.
     /// - **Dynamic strings** (`String`) are automatically promoted to owned storage when needed.
     pub metadata: MetadataMap,
-}
-
-/// A high-level wrapper around an incoming message and its associated transport.
-///
-/// `MessageContext` tracks whether a response has been sent and automatically
-/// handles correlation IDs, ensuring that replies are correctly routed back
-/// to the requester.
-///
-/// ### Lifetime
-/// * `'a`: The lifetime of the reference to the underlying [`MessageTransport`].
-pub struct MessageContext<'a, R, S>
-where
-    R: RawTransport + 'static,
-    S: TransportSpec,
-{
-    /// A reference to the transport that received the message.
-    transport: &'a MessageTransport<R, S>,
-    /// The actual received message envelope.
-    message: Message<S::Req, S::Res, S::Ev>,
-    /// Internal flag to prevent or warn about multiple responses to the same request.
-    replied: bool,
-}
-
-/// A type alias for deconstructing a context into its raw components.
-///
-/// Useful when the ownership of the message is required.
-pub type MessageContextParts<'a, R, S> = (
-    Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>,
-    &'a MessageTransport<R, S>,
-);
-
-impl<'a, R, S> MessageContext<'a, R, S>
-where
-    R: RawTransport + 'static,
-    S: TransportSpec,
-{
-    /// Creates a new `MessageContext` from a message and a transport reference.
-    pub fn new(
-        message: Message<S::Req, S::Res, S::Ev>,
-        transport: &'a MessageTransport<R, S>,
-    ) -> Self {
-        Self {
-            transport,
-            message,
-            replied: false,
-        }
-    }
-
-    /// Sends a response back to the client.
-    ///
-    /// This method automatically uses the `id` of the original request for correlation.
-    /// It also tracks state to prevent accidental duplicate responses.
-    ///
-    /// # Warning
-    /// If called more than once, a warning will be logged to `stderr` indicating
-    /// a potential logic error in the request handler.
-    pub async fn reply(
-        &mut self,
-        msg: S::Res,
-        metadata: Option<MetadataMap>,
-    ) -> Result<(), TransportError> {
-        if !self.replied {
-            eprintln!(
-                "WARNING: MessageContext replied twice to request ID {}",
-                self.message.id
-            );
-        }
-
-        let message = Message::response(self.message.id, msg).maybe_with_metadata(metadata);
-
-        self.replied = true;
-        self.transport.send(message).await
-    }
-
-    /// Emits an arbitrary message (e.g., an Event) through the transport.
-    ///
-    /// Unlike `reply`, this does not affect the `replied` state and does not
-    /// automatically set correlation IDs.
-    pub async fn emit(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
-        self.transport.send(msg).await
-    }
-
-    /// Returns a reference to the encapsulated message.
-    pub fn get(&self) -> &Message<S::Req, S::Res, S::Ev> {
-        &self.message
-    }
-
-    /// Returns a reference to the message kind (Request, Response, or Event).
-    pub fn kind(&self) -> &MessageKind<S::Req, S::Res, S::Ev> {
-        &self.message.kind
-    }
-
-    /// Consumes the context and returns the original message and transport reference.
-    pub fn into_parts(self) -> MessageContextParts<'a, R, S> {
-        (self.message, self.transport)
-    }
-}
-
-impl<'a, R, S> Deref for MessageContext<'a, R, S>
-where
-    R: RawTransport,
-    S: TransportSpec,
-{
-    type Target = Message<S::Req, S::Res, S::Ev>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.message
-    }
-}
-
-impl<'a, R, S> DerefMut for MessageContext<'a, R, S>
-where
-    R: RawTransport,
-    S: TransportSpec,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.message
-    }
 }
 
 /// Differentiates between the roles of a message within the protocol.
@@ -418,8 +244,12 @@ where
 #[cfg(test)]
 mod messages_tests {
     use super::*;
-    use crate::codec::JsonCodec;
+    use crate::{
+        codec::JsonCodec,
+        transport::{MessageTransport, RawTransport, TransportSpec},
+    };
     use async_trait::async_trait;
+    use knot_core::errors::TransportError;
     use serde::{Deserialize, Serialize};
     use std::{fmt::Debug, sync::Arc};
     use tokio::sync::{Mutex, mpsc};
