@@ -180,7 +180,7 @@ where
     ///
     /// # Errors
     /// * Returns [`TransportError::MiddlewareBlocked`] if a middleware halts the execution.
-    /// * Returns [`TransportError::Codec`] if serialization fails.
+    /// * Returns [`TransportError::SerializeError`] if serialization fails.
     pub async fn send(
         &self,
         mut msg: Message<S::Req, S::Res, S::Ev>,
@@ -190,30 +190,31 @@ where
         self.raw_transport.send_frame(&encoded).await
     }
 
-    /// Performs a synchronized Request-Response operation with middleware interception.
+    /// Performs a synchronized Request-Response operation with full context and middleware interception.
     ///
-    /// This high-level method automates the entire RPC lifecycle while ensuring all
-    /// outgoing and incoming data passes through the configured [`Middleware`] layers:
+    /// This method automates the entire RPC lifecycle, ensuring that both the outgoing request
+    /// and the incoming response pass through the configured [`Middleware`] layers.
+    /// It returns a [`MessageContext`], allowing access to response metadata and the transport handle.
     ///
     /// ### Workflow:
-    /// 1. **Preparation**: Generates a unique `id` and registers a response observer.
-    /// 2. **Outbound Pipeline**: Wraps the request in a [`Message`] and sends it via
-    ///    [`Self::send`], triggering all `on_send` middleware hooks.
-    /// 3. **Awaiting Response**: Suspends execution until a matching response frame is
-    ///    received by the background worker.
-    /// 4. **Inbound Pipeline**: Once received, the response [`Message`] is passed through
-    ///    the `on_recv` middleware hooks via `execute_recv`.
-    /// 5. **Finalization**: Extracts the payload and returns it to the caller.
+    /// 1. **ID Generation**: Assigns a unique sequence ID to the request for correlation.
+    /// 2. **Outbound Pipeline**: Wraps the request and optional `metadata` into a [`Message`],
+    ///    then executes `on_send` middleware hooks via [`Self::send`].
+    /// 3. **Response Tracking**: Registers a `oneshot` observer in the internal pending map.
+    /// 4. **Await & Timeout**: Suspends execution until the background worker receives a matching
+    ///    frame or the `timeout_secs` duration expires.
+    /// 5. **Inbound Pipeline**: The received response is processed by `on_recv` middleware hooks.
+    /// 6. **Context Wrapping**: Returns a [`MessageContext`] containing the final processed message.
     ///
     /// # Arguments
-    /// * `request` - The request payload to send.
-    /// * `timeout_secs` - Maximum duration to wait for a response before returning a timeout error.
+    /// * `request` - The request payload (defined by the [`TransportSpec`]).
+    /// * `timeout_secs` - Seconds to wait before returning a [`TransportError::Timeout`].
+    /// * `metadata` - Optional key-value pairs to attach to the outgoing request.
     ///
     /// # Errors
-    /// * Returns [`TransportError::Timeout`] if the duration is exceeded.
-    /// * Returns [`TransportError::MiddlewareBlocked`] if any middleware (inbound or outbound)
-    ///   rejects the message.
-    /// * Returns [`TransportError::ConnectionClosed`] if the transport becomes unreachable.
+    /// * [`TransportError::Timeout`]: No response received within the allotted time.
+    /// * [`TransportError::MiddlewareBlocked`]: A middleware layer rejected the message.
+    /// * [`TransportError::ConnectionClosed`]: The underlying transport or worker task failed.
     pub async fn request_full(
         &self,
         request: S::Req,
@@ -253,6 +254,15 @@ where
         }
     }
 
+    /// A simplified version of [`Self::request_full`] that returns only the response payload.
+    ///
+    /// Use this method when you do not need to inspect response metadata or use the
+    /// [`MessageContext`] for further replies. It internally calls `request_full` and
+    /// extracts the inner response data.
+    ///
+    /// # Errors
+    /// In addition to the errors defined in [`Self::request_full`], this returns
+    /// [`TransportError::DeserializeError`] if the received message is not a valid response kind.
     pub async fn request(
         &self,
         request: S::Req,
@@ -340,7 +350,7 @@ where
     /// ### Example
     ///
     /// ```rust,ignore
-    /// transport.serve_with(async |ctx| {
+    /// transport.serve_with(async |mut ctx| {
     ///     match ctx.kind() {
     ///         MessageKind::Request(req) => {
     ///             println!("Received request: {:?}", req);

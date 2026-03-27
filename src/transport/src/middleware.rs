@@ -1,65 +1,74 @@
 //! Middleware system for the Knot transport layer.
 //!
 //! This module provides a flexible, asynchronous pipeline for intercepting and
-//! processing messages. It is built around the **Chain of Responsibility** pattern,
-//! allowing developers to wrap the core transport logic with cross-cutting
-//! concerns such as:
+//! processing messages. It is built around a recursive **Chain of Responsibility** //! pattern, allowing developers to wrap the core transport logic with
+//! cross-cutting concerns.
 //!
+//! ### Common Use Cases
 //! - **Observability**: Logging, distributed tracing, and metrics collection.
 //! - **Security**: Authentication, authorization, and IP filtering.
 //! - **Reliability**: Rate limiting, retries, and circuit breaking.
-//! - **Transformation**: Transparent encryption, compression, or data validation.
+//! - **Transformation**: Transparent encryption, compression, or metadata injection.
 //!
 //! ### Architecture Overview
 //!
 //! The middleware system consists of three primary components:
 //!
-//! 1. **[`Middleware`] Trait**: The interface that all custom layers must implement.
-//! 2. **[`Pipeline`]**: An internal manager that holds a sequence of middlewares
-//!    and coordinates their execution.
-//! 3. **[`Next`]**: A transient object passed to each middleware, representing
-//!    the "rest of the chain".
+//! 1. **[`Middleware`] Trait**: The core interface defining `on_recv` and `on_send` hooks.
+//! 2. **[`Pipeline`]**: A thread-safe manager that holds an ordered sequence of
+//!    middlewares in an `Arc<Vec<Box<dyn Middleware>>>`.
+//! 3. **[`Inbound`] / [`Outbound`]**: Transient handles passed to each middleware,
+//!    representing the "rest of the chain" (continuations).
 //!
+//! ### Execution Order and Interception
 //!
+//! Middlewares are executed in **FIFO** order (the order they were added). Each layer
+//! has total control over the message journey:
+//! - **Pre-processing**: Perform work before calling `next.run()`.
+//! - **Post-processing**: Perform work after `next.run().await` returns.
+//! - **Short-circuiting**: Stop the entire chain by **not** calling `next.run()`,
+//!   effectively dropping or blocking the message.
 //!
-//! ### Execution Order
+//! ### Thread Safety and Shared State
 //!
-//! Middlewares are executed in the order they were added to the transport via
-//! `add_middleware`. Each middleware has total control over the execution flow:
-//! it can perform work **before** the next layer, **after** the next layer,
-//! or **short-circuit** the entire process by not calling `next.run()`.
+//! Since the Knot daemon handles high concurrency via Tokio, all middlewares must be:
+//! - **`Send + Sync`**: Safe to be shared and moved between threads.
+//! - **`'static`**: Owned by the pipeline for the duration of the transport's life.
 //!
-//! ### Thread Safety and Lifetimes
+//! To maintain state (like metrics) across requests, it is recommended to use
+//! **Atomic** types or wrap shared data in an `Arc` before passing it to the
+//! middleware constructor.
 //!
-//! Since the Knot daemon is highly concurrent, all middlewares must be:
-//! - `Send + Sync`: Safe to share and move between threads.
-//! - `'static`: Living for the entire duration of the program.
-//!
-//! Messages are passed via a reference to [`MessageContext`], ensuring that
-//! middlewares do not unnecessarily clone large payloads while still being able
-//! to send replies or emit events.
-//!
-//! ### Example: A Simple Monitor Middleware
+//! ### Example: A Simple Logging Middleware
 //!
 //! ```rust,ignore
 //! use async_trait::async_trait;
 //!
 //! #[derive(Debug)]
-//! struct Monitor;
+//! struct Logger;
 //!
 //! #[async_trait]
-//! impl<R, S> Middleware<R, S> for Monitor
-//! where R: RawTransport, S: TransportSpec {
-//!     async fn handle(&self, ctx: &MessageContext<'_, R, S>, next: Next<'_, R, S>) -> Result<(), TransportError> {
-//!         let start = std::time::Instant::now();
-//!         
-//!         // Pass control to the next middleware or final handler
-//!         let result = next.run(ctx).await;
-//!         
-//!         let duration = start.elapsed();
-//!         println!("Message processed in {:?}", duration);
-//!         
-//!         result
+//! impl<R, S> Middleware<R, S> for Logger
+//! where
+//!     R: RawTransport,
+//!     S: TransportSpec
+//! {
+//!     async fn on_recv(
+//!         &self,
+//!         msg: &Message<S>,
+//!         next: Inbound<'_, R, S>
+//!     ) -> Result<(), TransportError> {
+//!         println!("Inbound message: {:?}", msg.id);
+//!         next.run(msg).await
+//!     }
+//!
+//!     async fn on_send(
+//!         &self,
+//!         msg: &mut Message<S>,
+//!         next: Outbound<'_, R, S>
+//!     ) -> Result<(), TransportError> {
+//!         msg.set_meta("processed-by", "logger-mw");
+//!         next.run(msg).await
 //!     }
 //! }
 //! ```
@@ -106,13 +115,14 @@ where
         self.middlewares.push(Box::new(middleware));
     }
 
-    /// Starts the execution of the middleware chain for a given context.
+    /// Initiates the inbound middleware processing for a received message.
     ///
-    /// This is the entry point for message processing. It begins by invoking
-    /// the first middleware at index `0`.
+    /// This is the primary entry point for processing data coming from the transport.
+    /// It starts the recursive execution from the first middleware (index 0).
     ///
     /// # Errors
-    /// Returns a [`TransportError`] if any middleware in the chain fails.
+    /// Returns a [`TransportError`] if any middleware in the chain fails or
+    /// explicitly blocks the message.
     pub async fn execute_recv(
         &self,
         msg: &Message<S::Req, S::Res, S::Ev>,
@@ -120,6 +130,13 @@ where
         self.invoke_recv(0, msg).await
     }
 
+    /// Initiates the outbound middleware processing for a message being sent.
+    ///
+    /// This method ensures that all outgoing data is intercepted by the middleware
+    /// chain (e.g., for adding metadata or encryption) before reaching the transport.
+    ///
+    /// # Errors
+    /// Returns a [`TransportError`] if the chain execution is interrupted.
     pub async fn execute_send(
         &self,
         msg: &mut Message<S::Req, S::Res, S::Ev>,
@@ -127,6 +144,10 @@ where
         self.invoke_send(0, msg).await
     }
 
+    /// Creates a state object for the next middleware in the chain.
+    ///
+    /// This internal helper tracks the current position in the `middlewares` vector
+    /// to ensure the message progresses linearly.
     async fn update_state(&self, index: usize) -> NextState<'_, R, S> {
         NextState {
             pipeline: self,
@@ -134,10 +155,13 @@ where
         }
     }
 
-    /// Internal recursive function to trigger the middleware at the specified index.
+    /// Recursively invokes the inbound middleware at the specified index.
     ///
-    /// If no middleware is found at the given index, the chain is considered
-    /// successfully completed, and it returns `Ok(())`.
+    /// If the index is out of bounds, it signifies the end of the pipeline,
+    /// and the processing is considered successful (`Ok(())`).
+    ///
+    /// The current middleware receives an [`Inbound`] handle, which it must call
+    /// to continue the chain.
     async fn invoke_recv(
         &self,
         index: usize,
@@ -151,6 +175,10 @@ where
         mw.on_recv(msg, Inbound(&mut state)).await
     }
 
+    /// Recursively invokes the outbound middleware at the specified index.
+    ///
+    /// Similar to `invoke_recv`, but operates on outgoing messages using the
+    /// [`Outbound`] handle.
     async fn invoke_send(
         &self,
         index: usize,
@@ -176,20 +204,30 @@ where
     }
 }
 
+/// A handle representing the remaining part of the inbound middleware chain.
+///
+/// Passed to [`Middleware::on_recv`], it allows the current layer to delegate
+/// processing to the next middleware in the pipeline.
 pub struct Inbound<'a, R: RawTransport, S: TransportSpec>(&'a mut NextState<'a, R, S>);
+
+/// A handle representing the remaining part of the outbound middleware chain.
+///
+/// Passed to [`Middleware::on_send`], it serves as a continuation for outgoing
+/// messages, moving them further down the stack towards the transport.
 pub struct Outbound<'a, R: RawTransport, S: TransportSpec>(&'a mut NextState<'a, R, S>);
 
-/// A handle passed to middlewares to trigger the next layer in the pipeline.
+/// An internal "cursor" that tracks the progression of a message through the [`Pipeline`].
 ///
-/// `Next` acts as a "continuation" or a pointer to the remaining part of the
-/// execution chain. It prevents middlewares from needing to know about the
-/// structure of the [`Pipeline`] or their current position within it.
+/// This structure maintains the current position within the middleware vector
+/// and provides a reference back to the pipeline itself. It is designed to be
+/// short-lived, existing only for the duration of a single message's journey.
 ///
 /// # Lifetimes
-/// The `'a` lifetime ensures that the `Next` handle does not outlive
-/// the [`Pipeline`] it references.
+/// * `'a`: Ties the state to the parent [`Pipeline`] to prevent dangling references.
 struct NextState<'a, R: RawTransport, S: TransportSpec> {
+    /// The index of the middleware to be executed next.
     next_index: usize,
+    /// A reference to the parent pipeline containing the middleware vector.
     pipeline: &'a Pipeline<R, S>,
 }
 

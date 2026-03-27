@@ -1,13 +1,33 @@
 //! # Knot Messages
 //!
-//! This module defines the core message structures used for communication
-//! between the Knot CLI and the Knot Daemon.
+//! This module defines the core message structures and communication protocols
+//! used for the high-level interaction between the Knot CLI and the Knot Daemon.
 //!
-//! The module supports three interaction patterns:
-//! 1. **Requests**: Initiated by the client, requiring a correlated response.
-//! 2. **Responses**: Sent by the server in reply to a specific request (matched via ID).
-//! 3. **Events**: One-way asynchronous notifications (e.g., logs or status updates)
-//!    that do not require an acknowledgment.
+//! ### Communication Patterns
+//! The module is designed around three fundamental interaction patterns:
+//! 1. **Requests**: Synchronous-like operations initiated by a client that expect
+//!    a correlated response (matched via a unique `u64` ID).
+//! 2. **Responses**: Data sent back by the server bound to a specific request ID.
+//! 3. **Events**: Asynchronous, one-way notifications (e.g., streaming logs,
+//!    status updates) that do not require acknowledgment or correlation.
+//!
+//! ### Message Structure
+//! Every exchange in Knot is encapsulated in a [`Message<S>`] structure, which
+//! acts as a unified container. It consists of:
+//! - **Header**: Metadata like `id` and a flexible [`MetadataMap`] for tracing,
+//!   authentication tokens, or versioning.
+//! - **Payload**: A type-safe enum ([`Payload`]) containing the actual
+//!   Request, Response, or Event data as defined by the [`TransportSpec`].
+//!
+//! ### Metadata & Extensibility
+//! Using the [`MetadataMap`], messages can carry out-of-band information through
+//! the middleware pipeline without modifying the core business logic or
+//! the `TransportSpec` definitions.
+//!
+//! ### Serialization
+//! Messages are generic over a [`TransportSpec`], allowing the same message
+//! logic to be reused across different IPC or network protocols while
+//! maintaining strict type safety for the underlying payloads.
 
 use crate::transport::{MessageTransport, RawTransport, TransportSpec};
 use knot_core::errors::TransportError;
@@ -21,17 +41,39 @@ use std::{
 
 pub mod daemon;
 
+/// A specialized container for message metadata, optimized for efficiency and flexibility.
+///
+/// `MetadataMap` acts as a key-value store (based on `HashMap`) where both keys and values
+/// are stored as `Cow<'static, str>`. This allows the transport to:
+/// 1. Use zero-cost static strings for common keys (e.g., `"content-type"`).
+/// 2. Seamlessly handle dynamic strings when necessary.
+///
+/// ### Behavioral Note
+/// Thanks to the implementation of [`Deref`] and [`DerefMut`], this structure
+/// transparently exposes all standard `HashMap` methods (like `.get()`, `.iter()`, etc.)
+/// while maintaining its specialized type constraints.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MetadataMap(HashMap<Cow<'static, str>, Cow<'static, str>>);
 impl MetadataMap {
+    /// Creates a new, empty `MetadataMap`.
     pub fn new() -> Self {
         Self(HashMap::new())
     }
 
+    /// Creates a new `MetadataMap` with a pre-allocated capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self(HashMap::with_capacity(capacity))
     }
 
+    /// Inserts a key-value pair into the map, automatically converting inputs
+    /// into optimized [`Cow`] strings.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let mut meta = MetadataMap::new();
+    /// meta.insert_str("service-id", "knot-daemon"); // Static &str (No allocation)
+    /// meta.insert_str("dynamic-key", format!("user-{}", 123)); // String (Owned)
+    /// ```
     pub fn insert_str<K, V>(&mut self, key: K, value: V)
     where
         K: Into<Cow<'static, str>>,
@@ -268,11 +310,31 @@ where
         Self::new(id, MessageKind::Request(payload))
     }
 
+    /// Merges an existing [`MetadataMap`] into the message's metadata.
+    ///
+    /// This method uses the builder pattern to extend the current metadata
+    /// with the provided map. If keys overlap, the values from the
+    /// new map will overwrite the existing ones.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let msg = Message::request(1, MyReq::Ping)
+    ///     .with_metadata(custom_meta);
+    /// ```
     pub fn with_metadata(mut self, metadata: MetadataMap) -> Self {
         self.metadata.extend(metadata.0);
         self
     }
 
+    /// Conditionally attaches metadata to the message if the provided
+    /// [`Option`] is `Some`.
+    ///
+    /// This is a convenience helper for cases where metadata is optional
+    /// (e.g., passed from a high-level API like `request_full`). It avoids
+    /// manual `if let` blocks during message construction.
+    ///
+    /// # Arguments
+    /// * `metadata` - An optional [`MetadataMap`] to be merged.
     pub fn maybe_with_metadata(self, metadata: Option<MetadataMap>) -> Self {
         if let Some(m) = metadata {
             self.with_metadata(m)

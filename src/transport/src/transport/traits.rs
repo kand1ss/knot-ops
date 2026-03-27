@@ -31,13 +31,23 @@ pub trait TransportSpec: Send + Sync + 'static {
     type C: MessageCodec<Raw = Vec<u8>>;
 }
 
-/// Defines a low-level byte-frame transport.
+/// Defines a low-level byte-oriented transport layer.
 ///
-/// Implementors are responsible for ensuring that a single call to `recv_frame`
-/// returns exactly one complete message frame.
+/// This trait serves as the foundation for all communication in Knot. It abstracts away
+/// the details of the underlying I/O (IPC, TCP, etc.), focusing strictly on sending
+/// and receiving discrete byte frames.
+///
+/// ### Frame Integrity
+/// Implementors must guarantee that a single call to [`Self::recv_frame`] returns
+/// exactly one complete message frame. Fragmentation and reassembly must be handled
+/// internally by the implementor.
 #[async_trait]
 pub trait RawTransport: Send + Sync + Sized + 'static {
-    fn check_frame_size<'a>(frame: &'a [u8]) -> Result<(), TransportError> {
+    /// Validates the size of a frame against [`MAX_MESSAGE_SIZE`].
+    ///
+    /// This is called automatically by the default implementations of
+    /// `send_frame` and `recv_frame`.
+    fn check_frame_size(frame: &[u8]) -> Result<(), TransportError> {
         let len = frame.len();
         if len > MAX_MESSAGE_SIZE {
             return Err(TransportError::MessageTooLarge { size: len });
@@ -45,27 +55,40 @@ pub trait RawTransport: Send + Sync + Sized + 'static {
         Ok(())
     }
 
-    /// Sends a raw byte slice as a single frame.
+    /// Sends a raw byte slice as a single atomic frame.
+    ///
+    /// This method performs a size check before calling the internal implementation.
+    /// It ensures that no oversized frames are sent into the network.
     async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
         Self::check_frame_size(frame)?;
         self.send_frame_internal(frame).await
     }
+
+    /// The underlying implementation for sending bytes.
+    ///
+    /// Must be implemented by specific transports (e.g., `IpcTransport`).
     async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError>;
 
     /// Receives a single complete byte frame from the transport.
     ///
-    /// This method should block or await until a full frame is available.
+    /// This method awaits a full frame from the internal implementation and
+    /// validates its size before returning. It is the primary way to read raw
+    /// data from the stream.
     async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
         let frame: Vec<u8> = self.recv_frame_internal().await?;
         Self::check_frame_size(&frame)?;
         Ok(frame)
     }
+
+    /// The underlying implementation for receiving bytes.
+    ///
+    /// Should block or await until a full frame is available or the connection is closed.
     async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError>;
 
-    /// Wraps the raw transport into a high-level `MessageTransport`.
+    /// Upcasts the raw byte transport into a high-level [`MessageTransport`].
     ///
-    /// This is the primary entry point for converting an I/O stream into
-    /// a typed communication channel.
+    /// This is the standard entry point for converting a raw I/O stream into
+    /// a typed RPC channel using a specific [`TransportSpec`].
     fn to_messaged<S: TransportSpec>(self) -> MessageTransport<Self, S> {
         MessageTransport::new(self)
     }

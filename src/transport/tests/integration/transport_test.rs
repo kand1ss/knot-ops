@@ -193,11 +193,11 @@ where
                         let mut current_val = *val;
                         let mut metadata = MetadataMap::new();
 
-                        if let Some(metadata_val) = ctx.get_meta("increment") {
-                            if let Ok(inc) = metadata_val.parse::<i32>() {
-                                current_val += inc;
-                                metadata.insert_str("incremented", "true");
-                            }
+                        if let Some(metadata_val) = ctx.get_meta("increment")
+                            && let Ok(inc) = metadata_val.parse::<i32>()
+                        {
+                            current_val += inc;
+                            metadata.insert_str("incremented", "true");
                         }
 
                         ctx.reply(Res::Pong(current_val), Some(metadata)).await
@@ -206,12 +206,11 @@ where
                         let Ev::Event(val) = ev;
                         let mut metadata = MetadataMap::new();
 
-                        if let Some(metadata_val) = ctx.get_meta("metadata") {
-                            if let Ok(inc) = metadata_val.parse::<bool>() {
-                                if inc {
-                                    metadata.insert_str("metadata", "true");
-                                }
-                            }
+                        if let Some(metadata_val) = ctx.get_meta("metadata")
+                            && let Ok(inc) = metadata_val.parse::<bool>()
+                            && inc
+                        {
+                            metadata.insert_str("metadata", "true");
                         }
 
                         let message = Msg::event(Ev::Event(*val)).with_metadata(metadata);
