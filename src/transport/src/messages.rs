@@ -13,7 +13,11 @@ use crate::transport::{MessageTransport, RawTransport, TransportSpec};
 use knot_core::errors::TransportError;
 use knot_core::utils::TimestampUtils;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::HashMap, ops::{Deref, DerefMut}};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
 
 pub mod daemon;
 
@@ -28,8 +32,8 @@ impl MetadataMap {
         Self(HashMap::with_capacity(capacity))
     }
 
-    pub fn insert_str<K, V>(&mut self, key: K, value: V) 
-    where 
+    pub fn insert_str<K, V>(&mut self, key: K, value: V)
+    where
         K: Into<Cow<'static, str>>,
         V: Into<Cow<'static, str>>,
     {
@@ -126,9 +130,11 @@ where
     /// # Warning
     /// If called more than once, a warning will be logged to `stderr` indicating
     /// a potential logic error in the request handler.
-    pub async fn reply(&mut self, msg: S::Res, metadata: Option<MetadataMap>) 
-        -> Result<(), TransportError> 
-    {
+    pub async fn reply(
+        &mut self,
+        msg: S::Res,
+        metadata: Option<MetadataMap>,
+    ) -> Result<(), TransportError> {
         if !self.replied {
             eprintln!(
                 "WARNING: MessageContext replied twice to request ID {}",
@@ -136,13 +142,10 @@ where
             );
         }
 
-        let message = Message::response(self.message.id, msg)
-            .maybe_with_metadata(metadata);
+        let message = Message::response(self.message.id, msg).maybe_with_metadata(metadata);
 
         self.replied = true;
-        self.transport
-            .send(message)
-            .await
+        self.transport.send(message).await
     }
 
     /// Emits an arbitrary message (e.g., an Event) through the transport.
@@ -170,9 +173,9 @@ where
 }
 
 impl<'a, R, S> Deref for MessageContext<'a, R, S>
-where 
-    R: RawTransport, 
-    S: TransportSpec 
+where
+    R: RawTransport,
+    S: TransportSpec,
 {
     type Target = Message<S::Req, S::Res, S::Ev>;
 
@@ -182,9 +185,9 @@ where
 }
 
 impl<'a, R, S> DerefMut for MessageContext<'a, R, S>
-where 
-    R: RawTransport, 
-    S: TransportSpec 
+where
+    R: RawTransport,
+    S: TransportSpec,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.message
@@ -248,7 +251,7 @@ where
     /// * `key` - The key to look up in the metadata map.
     pub fn get_meta<K>(&self, key: K) -> Option<&str>
     where
-        K: Into<Cow<'static, str>> 
+        K: Into<Cow<'static, str>>,
     {
         let key = key.into();
         self.metadata.get(&key).map(|v| v.as_ref())
@@ -729,7 +732,7 @@ mod messages_tests {
         }
         assert_eq!(msg.metadata.len(), 10);
     }
-    
+
     #[test]
     fn test_metadata_map_get_missing_returns_none() {
         let m = MetadataMap::new();

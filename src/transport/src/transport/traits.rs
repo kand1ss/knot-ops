@@ -5,7 +5,10 @@
 //!
 //! By using these traits, the Knot orchestrator can remain agnostic about the
 //! specific networking layer while maintaining strict type safety for its protocol.
-use crate::{codec::MessageCodec, transport::{MessageTransport, MAX_MESSAGE_SIZE}};
+use crate::{
+    codec::MessageCodec,
+    transport::{MAX_MESSAGE_SIZE, MessageTransport},
+};
 use async_trait::async_trait;
 use knot_core::errors::TransportError;
 use serde::Serialize;

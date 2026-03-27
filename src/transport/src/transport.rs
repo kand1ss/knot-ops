@@ -33,7 +33,6 @@ type PendingMap<S> = HashMap<u32, MessageSender<S>>;
 /// Acts as a safeguard against memory exhaustion from malformed packets.
 pub const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
 
-
 /// Internal state shared between the public API and the background read loop.
 #[derive(Debug)]
 pub struct SharedState<S: TransportSpec> {
@@ -219,7 +218,7 @@ where
         &self,
         request: S::Req,
         timeout_secs: u64,
-        metadata: Option<MetadataMap>
+        metadata: Option<MetadataMap>,
     ) -> Result<MessageContext<'_, R, S>, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
@@ -258,7 +257,7 @@ where
         &self,
         request: S::Req,
         timeout_secs: u64,
-        metadata: Option<MetadataMap>
+        metadata: Option<MetadataMap>,
     ) -> Result<S::Res, TransportError> {
         let ctx = self.request_full(request, timeout_secs, metadata).await?;
         let (msg, _) = ctx.into_parts();

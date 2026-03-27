@@ -18,7 +18,7 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::transport::{RawTransport, MAX_MESSAGE_SIZE};
+use crate::transport::{MAX_MESSAGE_SIZE, RawTransport};
 use knot_core::errors::TransportError;
 
 /// Resolves a filesystem path into a cross-platform local socket name.
