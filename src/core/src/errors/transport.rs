@@ -16,6 +16,9 @@ pub enum TransportError {
     #[error("client didn't expect a message")]
     UnexpectedMessage,
 
+    #[error("гnexpected message kind: expected {expected}, found {found}")]
+    UnexpectedKind { expected: String, found: String },
+
     #[error("daemon is not running (socket exists but connection refused)")]
     ConnectionRefused,
 
@@ -30,6 +33,9 @@ pub enum TransportError {
 
     #[error("failed to deserialize message: {reason}")]
     DeserializeError { reason: String },
+
+    #[error("middleware '{name}' blocked the message: {reason}")]
+    MiddlewareBlocked { name: String, reason: String },
 
     #[error("connection closed unexpectedly")]
     ConnectionClosed,
