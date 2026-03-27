@@ -251,12 +251,12 @@ mod pipeline_tests {
 
     #[async_trait]
     impl RawTransport for MockRaw {
-        async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+        async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
             self.outgoing_tx.send(frame.to_vec()).await.ok();
             Ok(())
         }
 
-        async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
+        async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
             let mut rx = self.incoming_rx.lock().await;
             rx.recv().await.ok_or(TransportError::UnexpectedMessage)
         }

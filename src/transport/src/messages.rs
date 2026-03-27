@@ -13,9 +13,41 @@ use crate::transport::{MessageTransport, RawTransport, TransportSpec};
 use knot_core::errors::TransportError;
 use knot_core::utils::TimestampUtils;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, ops::{Deref, DerefMut}};
 
 pub mod daemon;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MetadataMap(HashMap<Cow<'static, str>, Cow<'static, str>>);
+impl MetadataMap {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(HashMap::with_capacity(capacity))
+    }
+
+    pub fn insert_str<K, V>(&mut self, key: K, value: V) 
+    where 
+        K: Into<Cow<'static, str>>,
+        V: Into<Cow<'static, str>>,
+    {
+        self.0.insert(key.into(), value.into());
+    }
+}
+impl Deref for MetadataMap {
+    type Target = HashMap<Cow<'static, str>, Cow<'static, str>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for MetadataMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 /// The primary envelope for all system communication.
 ///
@@ -37,7 +69,7 @@ pub struct Message<Req, Res, Ev> {
     /// Using [`Cow<'static, str>`] enables high-performance storage:
     /// - **Static keys/values** (`&'static str`) are stored as references without heap allocation.
     /// - **Dynamic strings** (`String`) are automatically promoted to owned storage when needed.
-    pub metadata: HashMap<Cow<'static, str>, Cow<'static, str>>,
+    pub metadata: MetadataMap,
 }
 
 /// A high-level wrapper around an incoming message and its associated transport.
@@ -94,7 +126,9 @@ where
     /// # Warning
     /// If called more than once, a warning will be logged to `stderr` indicating
     /// a potential logic error in the request handler.
-    pub async fn reply(&mut self, msg: S::Res) -> Result<(), TransportError> {
+    pub async fn reply(&mut self, msg: S::Res, metadata: Option<MetadataMap>) 
+        -> Result<(), TransportError> 
+    {
         if !self.replied {
             eprintln!(
                 "WARNING: MessageContext replied twice to request ID {}",
@@ -102,9 +136,12 @@ where
             );
         }
 
+        let message = Message::response(self.message.id, msg)
+            .maybe_with_metadata(metadata);
+
         self.replied = true;
         self.transport
-            .send(Message::response(self.message.id, msg))
+            .send(message)
             .await
     }
 
@@ -132,6 +169,28 @@ where
     }
 }
 
+impl<'a, R, S> Deref for MessageContext<'a, R, S>
+where 
+    R: RawTransport, 
+    S: TransportSpec 
+{
+    type Target = Message<S::Req, S::Res, S::Ev>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.message
+    }
+}
+
+impl<'a, R, S> DerefMut for MessageContext<'a, R, S>
+where 
+    R: RawTransport, 
+    S: TransportSpec 
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.message
+    }
+}
+
 /// Differentiates between the roles of a message within the protocol.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MessageKind<Req, Res, Ev> {
@@ -154,7 +213,7 @@ where
             id,
             timestamp: TimestampUtils::now_ms(),
             kind,
-            metadata: HashMap::new(),
+            metadata: MetadataMap::new(),
         }
     }
 
@@ -168,12 +227,12 @@ where
     /// ### Arguments
     /// * `key` - The metadata key (e.g., "correlation_id" or "version").
     /// * `value` - The value associated with the key.
-    pub fn add_metadata(
-        &mut self,
-        key: impl Into<Cow<'static, str>>,
-        value: impl Into<Cow<'static, str>>,
-    ) {
-        self.metadata.insert(key.into(), value.into());
+    pub fn set_meta<K, V>(&mut self, key: K, value: V)
+    where
+        K: Into<Cow<'static, str>>,
+        V: Into<Cow<'static, str>>,
+    {
+        self.metadata.insert_str(key, value);
     }
 
     /// Retrieves a metadata value by its key.
@@ -187,7 +246,10 @@ where
     ///
     /// ### Arguments
     /// * `key` - The key to look up in the metadata map.
-    pub fn get_metadata(&self, key: impl Into<Cow<'static, str>>) -> Option<&str> {
+    pub fn get_meta<K>(&self, key: K) -> Option<&str>
+    where
+        K: Into<Cow<'static, str>> 
+    {
         let key = key.into();
         self.metadata.get(&key).map(|v| v.as_ref())
     }
@@ -201,6 +263,19 @@ where
     /// * `payload` - The specific data for the request.
     pub fn request(id: u32, payload: Req) -> Self {
         Self::new(id, MessageKind::Request(payload))
+    }
+
+    pub fn with_metadata(mut self, metadata: MetadataMap) -> Self {
+        self.metadata.extend(metadata.0);
+        self
+    }
+
+    pub fn maybe_with_metadata(self, metadata: Option<MetadataMap>) -> Self {
+        if let Some(m) = metadata {
+            self.with_metadata(m)
+        } else {
+            self
+        }
     }
 
     /// Creates a new `Message` initialized as a **Response**.
@@ -323,12 +398,12 @@ mod messages_tests {
 
     #[async_trait]
     impl RawTransport for MockRaw {
-        async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+        async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
             self.outgoing_tx.send(frame.to_vec()).await.ok();
             Ok(())
         }
 
-        async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
+        async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
             let mut rx = self.incoming_rx.lock().await;
             rx.recv().await.ok_or(TransportError::UnexpectedMessage)
         }
@@ -338,11 +413,11 @@ mod messages_tests {
     pub struct FailingRaw;
     #[async_trait]
     impl RawTransport for FailingRaw {
-        async fn send_frame<'a>(&self, _frame: &'a [u8]) -> Result<(), TransportError> {
+        async fn send_frame_internal<'a>(&self, _frame: &'a [u8]) -> Result<(), TransportError> {
             Err(TransportError::ConnectionClosed)
         }
 
-        async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
+        async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
             Err(TransportError::ConnectionClosed)
         }
     }
@@ -560,8 +635,8 @@ mod messages_tests {
     #[test]
     fn test_add_and_get_static_str_metadata() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata("version", "1.0");
-        assert_eq!(msg.get_metadata("version"), Some("1.0"));
+        msg.set_meta("version", "1.0");
+        assert_eq!(msg.get_meta("version"), Some("1.0"));
     }
 
     #[test]
@@ -569,55 +644,55 @@ mod messages_tests {
         let mut msg = TestMsg::request(1, req("x"));
         let key = String::from("trace_id");
         let value = String::from("abc-123");
-        msg.add_metadata(key, value);
-        assert_eq!(msg.get_metadata("trace_id"), Some("abc-123"));
+        msg.set_meta(key, value);
+        assert_eq!(msg.get_meta("trace_id"), Some("abc-123"));
     }
 
     #[test]
     fn test_get_metadata_missing_key_returns_none() {
         let msg = TestMsg::request(1, req("x"));
-        assert!(msg.get_metadata("nonexistent").is_none());
+        assert!(msg.get_meta("nonexistent").is_none());
     }
 
     #[test]
     fn test_add_metadata_overwrites_existing_key() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata("env", "staging");
-        msg.add_metadata("env", "production");
-        assert_eq!(msg.get_metadata("env"), Some("production"));
+        msg.set_meta("env", "staging");
+        msg.set_meta("env", "production");
+        assert_eq!(msg.get_meta("env"), Some("production"));
     }
 
     #[test]
     fn test_multiple_metadata_entries_stored_independently() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata("a", "1");
-        msg.add_metadata("b", "2");
-        msg.add_metadata("c", "3");
-        assert_eq!(msg.get_metadata("a"), Some("1"));
-        assert_eq!(msg.get_metadata("b"), Some("2"));
-        assert_eq!(msg.get_metadata("c"), Some("3"));
+        msg.set_meta("a", "1");
+        msg.set_meta("b", "2");
+        msg.set_meta("c", "3");
+        assert_eq!(msg.get_meta("a"), Some("1"));
+        assert_eq!(msg.get_meta("b"), Some("2"));
+        assert_eq!(msg.get_meta("c"), Some("3"));
     }
 
     #[test]
     fn test_metadata_empty_value_allowed() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata("empty", "");
-        assert_eq!(msg.get_metadata("empty"), Some(""));
+        msg.set_meta("empty", "");
+        assert_eq!(msg.get_meta("empty"), Some(""));
     }
 
     #[test]
     fn test_metadata_unicode_key_and_value() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata("описание", "тест");
-        assert_eq!(msg.get_metadata("описание"), Some("тест"));
+        msg.set_meta("описание", "тест");
+        assert_eq!(msg.get_meta("описание"), Some("тест"));
     }
 
     #[test]
     fn test_metadata_cow_borrowed_does_not_allocate() {
         // Compile-time check: &'static str → Cow::Borrowed, no heap alloc
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata(Cow::Borrowed("static_key"), Cow::Borrowed("static_val"));
-        assert_eq!(msg.get_metadata("static_key"), Some("static_val"));
+        msg.set_meta(Cow::Borrowed("static_key"), Cow::Borrowed("static_val"));
+        assert_eq!(msg.get_meta("static_key"), Some("static_val"));
     }
 
     #[test]
@@ -625,34 +700,40 @@ mod messages_tests {
         let mut msg = TestMsg::request(1, req("x"));
         let dynamic_key = format!("key_{}", 42);
         let dynamic_value = format!("val_{}", 99);
-        msg.add_metadata(
+        msg.set_meta(
             Cow::Owned(dynamic_key.clone()),
             Cow::Owned(dynamic_value.clone()),
         );
-        assert_eq!(msg.get_metadata(dynamic_key), Some(dynamic_value.as_str()));
+        assert_eq!(msg.get_meta(dynamic_key), Some(dynamic_value.as_str()));
     }
 
     #[test]
     fn test_metadata_present_on_response() {
         let mut msg = TestMsg::response(5, res(true));
-        msg.add_metadata("source", "handler");
-        assert_eq!(msg.get_metadata("source"), Some("handler"));
+        msg.set_meta("source", "handler");
+        assert_eq!(msg.get_meta("source"), Some("handler"));
     }
 
     #[test]
     fn test_metadata_present_on_event() {
         let mut msg = TestMsg::event(ev("ping"));
-        msg.add_metadata("node", "worker-1");
-        assert_eq!(msg.get_metadata("node"), Some("worker-1"));
+        msg.set_meta("node", "worker-1");
+        assert_eq!(msg.get_meta("node"), Some("worker-1"));
     }
 
     #[test]
     fn test_metadata_map_count() {
         let mut msg = TestMsg::request(1, req("x"));
         for i in 0..10 {
-            msg.add_metadata(format!("k{i}"), format!("v{i}"));
+            msg.set_meta(format!("k{i}"), format!("v{i}"));
         }
         assert_eq!(msg.metadata.len(), 10);
+    }
+    
+    #[test]
+    fn test_metadata_map_get_missing_returns_none() {
+        let m = MetadataMap::new();
+        assert!(m.get("absent").is_none());
     }
 
     #[test]
@@ -721,8 +802,8 @@ mod messages_tests {
         let transport = make_transport();
         let mut ctx = make_ctx(TestMsg::request(1, req("x")), &transport);
 
-        let r1 = ctx.reply(res(true)).await;
-        let r2 = ctx.reply(res(true)).await;
+        let r1 = ctx.reply(res(true), None).await;
+        let r2 = ctx.reply(res(true), None).await;
 
         assert!(r1.is_ok());
         assert!(r2.is_ok());
@@ -734,7 +815,7 @@ mod messages_tests {
         let mut ctx: MessageContext<'_, FailingRaw, TestSpec> =
             MessageContext::new(TestMsg::request(1, req("x")), &transport);
 
-        let result = ctx.reply(res(true)).await;
+        let result = ctx.reply(res(true), None).await;
         assert!(result.is_err(), "transport failure must propagate as Err");
     }
 
@@ -758,10 +839,10 @@ mod messages_tests {
     async fn test_into_parts_message_preserves_metadata() {
         let transport = make_transport();
         let mut msg = TestMsg::request(1, req("x"));
-        msg.add_metadata("trace", "t-001");
+        msg.set_meta("trace", "t-001");
         let ctx = make_ctx(msg, &transport);
         let (parts_msg, _) = ctx.into_parts();
-        assert_eq!(parts_msg.get_metadata("trace"), Some("t-001"));
+        assert_eq!(parts_msg.get_meta("trace"), Some("t-001"));
     }
 
     #[test]
@@ -806,14 +887,14 @@ mod messages_tests {
     #[test]
     fn test_metadata_survives_serde_roundtrip() {
         let mut original = TestMsg::request(7, req("x"));
-        original.add_metadata("key1", "val1");
-        original.add_metadata("key2", "val2");
+        original.set_meta("key1", "val1");
+        original.set_meta("key2", "val2");
 
         let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(decoded.get_metadata("key1"), Some("val1"));
-        assert_eq!(decoded.get_metadata("key2"), Some("val2"));
+        assert_eq!(decoded.get_meta("key1"), Some("val1"));
+        assert_eq!(decoded.get_meta("key2"), Some("val2"));
     }
 
     #[test]
@@ -904,10 +985,10 @@ mod messages_tests {
     fn test_large_metadata_map() {
         let mut msg = TestMsg::request(1, req("x"));
         for i in 0..1_000 {
-            msg.add_metadata(format!("key_{i}"), format!("value_{i}"));
+            msg.set_meta(format!("key_{i}"), format!("value_{i}"));
         }
         assert_eq!(msg.metadata.len(), 1_000);
-        assert_eq!(msg.get_metadata("key_999"), Some("value_999"));
+        assert_eq!(msg.get_meta("key_999"), Some("value_999"));
     }
 
     #[tokio::test]

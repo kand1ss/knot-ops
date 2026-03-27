@@ -4,7 +4,7 @@
 //! It handles frame-based I/O, serialization, and request-response synchronization.
 
 use crate::codec::MessageCodec;
-use crate::messages::{Message, MessageContext, MessageKind};
+use crate::messages::{Message, MessageContext, MessageKind, MetadataMap};
 use crate::middleware::{Pipeline, traits::Middleware};
 use knot_core::errors::TransportError;
 use std::collections::HashMap;
@@ -28,6 +28,11 @@ type MessageSender<S> = oneshot::Sender<
     Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>,
 >;
 type PendingMap<S> = HashMap<u32, MessageSender<S>>;
+
+/// Maximum allowed size for a single message (10 MB).
+/// Acts as a safeguard against memory exhaustion from malformed packets.
+pub const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+
 
 /// Internal state shared between the public API and the background read loop.
 #[derive(Debug)]
@@ -210,11 +215,12 @@ where
     /// * Returns [`TransportError::MiddlewareBlocked`] if any middleware (inbound or outbound)
     ///   rejects the message.
     /// * Returns [`TransportError::ConnectionClosed`] if the transport becomes unreachable.
-    pub async fn request(
+    pub async fn request_full(
         &self,
         request: S::Req,
         timeout_secs: u64,
-    ) -> Result<S::Res, TransportError> {
+        metadata: Option<MetadataMap>
+    ) -> Result<MessageContext<'_, R, S>, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
 
@@ -223,8 +229,9 @@ where
             pending.insert(id, tx);
         }
 
-        let msg: Message<S::Req, S::Res, S::Ev> = Message::request(id, request);
+        let msg = Message::request(id, request).maybe_with_metadata(metadata);
         if let Err(e) = self.send(msg).await {
+            eprintln!("error");
             let mut pending = self.shared.pending.lock().await;
             pending.remove(&id);
             return Err(e);
@@ -234,13 +241,7 @@ where
             Ok(result) => {
                 let msg = result.map_err(|_| TransportError::ConnectionClosed)?;
                 self.pipeline.read().await.execute_recv(&msg).await?;
-
-                match msg.into_response() {
-                    Some((_, res)) => Ok(res),
-                    None => Err(TransportError::DeserializeError {
-                        reason: "expected another message kind".to_string(),
-                    }),
-                }
+                Ok(MessageContext::new(msg, self))
             }
             Err(_) => {
                 let mut pending = self.shared.pending.lock().await;
@@ -250,6 +251,23 @@ where
                     seconds: timeout_secs,
                 })
             }
+        }
+    }
+
+    pub async fn request(
+        &self,
+        request: S::Req,
+        timeout_secs: u64,
+        metadata: Option<MetadataMap>
+    ) -> Result<S::Res, TransportError> {
+        let ctx = self.request_full(request, timeout_secs, metadata).await?;
+        let (msg, _) = ctx.into_parts();
+
+        match msg.into_response() {
+            Some((_, res)) => Ok(res),
+            None => Err(TransportError::DeserializeError {
+                reason: "expected another message kind".to_string(),
+            }),
         }
     }
 

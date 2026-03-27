@@ -5,7 +5,7 @@
 //!
 //! By using these traits, the Knot orchestrator can remain agnostic about the
 //! specific networking layer while maintaining strict type safety for its protocol.
-use crate::{codec::MessageCodec, transport::MessageTransport};
+use crate::{codec::MessageCodec, transport::{MessageTransport, MAX_MESSAGE_SIZE}};
 use async_trait::async_trait;
 use knot_core::errors::TransportError;
 use serde::Serialize;
@@ -34,13 +34,30 @@ pub trait TransportSpec: Send + Sync + 'static {
 /// returns exactly one complete message frame.
 #[async_trait]
 pub trait RawTransport: Send + Sync + Sized + 'static {
+    fn check_frame_size<'a>(frame: &'a [u8]) -> Result<(), TransportError> {
+        let len = frame.len();
+        if len > MAX_MESSAGE_SIZE {
+            return Err(TransportError::MessageTooLarge { size: len });
+        }
+        Ok(())
+    }
+
     /// Sends a raw byte slice as a single frame.
-    async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError>;
+    async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+        Self::check_frame_size(frame)?;
+        self.send_frame_internal(frame).await
+    }
+    async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError>;
 
     /// Receives a single complete byte frame from the transport.
     ///
     /// This method should block or await until a full frame is available.
-    async fn recv_frame(&self) -> Result<Vec<u8>, TransportError>;
+    async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
+        let frame: Vec<u8> = self.recv_frame_internal().await?;
+        Self::check_frame_size(&frame)?;
+        Ok(frame)
+    }
+    async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError>;
 
     /// Wraps the raw transport into a high-level `MessageTransport`.
     ///

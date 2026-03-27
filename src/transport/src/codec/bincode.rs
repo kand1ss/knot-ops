@@ -5,7 +5,7 @@
 //!
 //! It is optimized for Inter-Process Communication (IPC) within the Knot ecosystem.
 
-use crate::codec::MessageCodec;
+use crate::{codec::MessageCodec, transport::MAX_MESSAGE_SIZE};
 use bincode::{config, serde as bincode_serde};
 use knot_core::errors::TransportError;
 use serde::Serialize;
@@ -16,15 +16,14 @@ use serde::de::DeserializeOwned;
 /// * **Little Endian**: Standardizes byte order across different CPU architectures.
 /// * **Fixed Integer Encoding**: Uses a fixed size for integers (faster but potentially
 ///   less compact than variable encoding for small numbers).
-/// * **Limit (4KB)**: Rejects any message larger than 4096 bytes to prevent DoS.
 const BINCODE_CONFIG: config::Configuration<
     config::LittleEndian,
     config::Fixint,
-    config::Limit<4096>,
+    config::Limit<MAX_MESSAGE_SIZE>,
 > = config::standard()
     .with_little_endian()
     .with_fixed_int_encoding()
-    .with_limit::<4096>();
+    .with_limit::<MAX_MESSAGE_SIZE>();
 
 /// A binary codec that uses `bincode` for serialization.
 ///

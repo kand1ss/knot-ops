@@ -18,12 +18,8 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::transport::RawTransport;
+use crate::transport::{RawTransport, MAX_MESSAGE_SIZE};
 use knot_core::errors::TransportError;
-
-/// Maximum allowed size for a single IPC message (10 MB).
-/// Acts as a safeguard against memory exhaustion from malformed packets.
-const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
 
 /// Resolves a filesystem path into a cross-platform local socket name.
 ///
@@ -130,7 +126,7 @@ impl IpcTransport {
 #[async_trait]
 impl RawTransport for IpcTransport {
     /// Encodes and sends a frame using a 4-byte length prefix (Big-Endian).
-    async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+    async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
         let mut writer = self.writer.lock().await;
         let len = frame.len() as u32;
 
@@ -150,7 +146,7 @@ impl RawTransport for IpcTransport {
     }
 
     /// Locks the reader and waits for the next incoming frame.
-    async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
+    async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
         let mut reader = self.reader.lock().await;
         Self::read_frame_internal(&mut reader).await
     }
