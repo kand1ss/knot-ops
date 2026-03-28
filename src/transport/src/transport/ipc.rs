@@ -17,6 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     sync::Mutex,
 };
+use tracing::{instrument, debug, info, error};
 
 use crate::transport::{MAX_MESSAGE_SIZE, RawTransport};
 use knot_core::errors::TransportError;
@@ -80,8 +81,11 @@ impl IpcTransport {
     }
 
     /// Establishes a new connection to a local socket at the specified path.
+    #[instrument(skip(socket_path), fields(path = %socket_path.display()), err)]
     pub async fn connect(socket_path: PathBuf) -> Result<Self, TransportError> {
         let name = resolve_socket_name(&socket_path)?;
+
+        debug!("Connecting to local socket...");
         let stream = LocalSocketStream::connect(name).await.map_err(|e| {
             TransportError::ConnectionFailed {
                 path: socket_path.clone(),
@@ -89,6 +93,7 @@ impl IpcTransport {
             }
         })?;
 
+        info!("Connection established");
         Ok(Self::from_socket(stream))
     }
 
@@ -127,6 +132,7 @@ impl IpcTransport {
 impl RawTransport for IpcTransport {
     /// Encodes and sends a frame using a 4-byte length prefix (Big-Endian).
     async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+        debug!("Locking writer...");
         let mut writer = self.writer.lock().await;
         let len = frame.len() as u32;
 
@@ -142,11 +148,13 @@ impl RawTransport for IpcTransport {
             .await
             .map_err(|e| TransportError::Io { source: e })?;
 
+        debug!("Frame sent successfully");
         Ok(())
     }
 
     /// Locks the reader and waits for the next incoming frame.
     async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
+        debug!("Waiting for reader lock...");
         let mut reader = self.reader.lock().await;
         Self::read_frame_internal(&mut reader).await
     }
@@ -174,23 +182,33 @@ impl Server for IpcServer {
     type Transport = IpcTransport;
 
     /// Binds a local socket listener to the provided path.
+    #[instrument(skip(socket_path), fields(path = %socket_path.display()), err)]
     async fn bind(socket_path: PathBuf) -> Result<Self, TransportError> {
         #[cfg(unix)]
         {
-            if socket_path.exists() {
-                let _ = tokio::fs::remove_file(&socket_path).await;
-            }
+            debug!("Socket file already exists, attempting to remove...");
+                if let Err(e) = tokio::fs::remove_file(&socket_path).await {
+                    warn!(error = %e, "Failed to remove existing socket file, bind might fail");
+                } else {
+                    debug!("Existing socket file removed successfully");
+                }
         }
+
         let name = resolve_socket_name(&socket_path)?;
 
+        debug!("Creating tokio local socket listener...");
         let listener = ListenerOptions::new()
             .name(name)
             .create_tokio()
-            .map_err(|e| TransportError::ConnectionFailed {
-                path: socket_path.clone(),
-                source: e,
+            .map_err(|e| {
+                error!(error = %e, "Failed to create listener");
+                TransportError::ConnectionFailed {
+                    path: socket_path.clone(),
+                    source: e,
+                }
             })?;
-
+        
+        info!("IpcServer successfully bound to socket");
         Ok(Self {
             listener,
             socket_path,
@@ -201,27 +219,52 @@ impl Server for IpcServer {
     /// Performs an orderly shutdown of the server.
     ///
     /// On Unix systems, it removes the socket file from the filesystem.
+    #[instrument(skip(self), fields(path = %self.socket_path.display()))]
     async fn shutdown(&mut self) {
         if self.is_closed {
+            debug!("Shutdown called, but server is already closed");
             return;
         }
+
+        info!("Shutting down IpcServer...");
 
         #[cfg(unix)]
         {
             if self.socket_path.exists() {
-                let _ = tokio::fs::remove_file(&self.socket_path).await;
+                debug!("Removing socket file from filesystem...");
+                if let Err(e) = tokio::fs::remove_file(&self.socket_path).await {
+                    error!(error = %e, "Failed to remove socket file during shutdown");
+                } else {
+                    debug!("Socket file removed");
+                }
             }
         }
         self.is_closed = true;
+        info!("IpcServer shutdown complete");
     }
 
     /// Accepts the next incoming IPC connection.
+    #[instrument(skip(self), name = "ipc_server_accept", err)]
     async fn accept(&self) -> Result<Self::Transport, TransportError> {
+        info!("Waiting for next incoming connection...");
+
         let stream = self
             .listener
             .accept()
             .await
-            .map_err(|e| TransportError::Io { source: e })?;
+            .map_err(|e| {
+                error!(error = %e, "Error while accepting connection");
+                TransportError::Io { source: e }
+            })?;
+
+        info!("Accepted new connection...");
+        
+        #[cfg(unix)]
+        if let Ok(cred) = stream.peer_cred() {
+            info!(peer_pid = ?cred.pid(), "Accepted new connection...");
+        } else {
+            info!("Accepted new connection (could not retrieve peer credentials)...");
+        }
 
         Ok(IpcTransport::from_socket(stream))
     }

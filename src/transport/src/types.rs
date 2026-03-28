@@ -8,6 +8,7 @@ use crate::{
     messages::daemon::{DaemonEvent, DaemonRequest, DaemonResponse},
     transport::{MessageTransport, TransportSpec, ipc::IpcTransport},
 };
+use std::fmt::Debug;
 
 /// The default protocol specification for the Knot Daemon.
 ///
@@ -15,6 +16,7 @@ use crate::{
 /// interaction patterns between the CLI and the background process.
 /// It binds together the command set, response types, and the binary
 /// serialization format used in production.
+#[derive(Debug)]
 pub struct DaemonTransportSpec;
 impl TransportSpec for DaemonTransportSpec {
     type Req = DaemonRequest;

@@ -16,6 +16,7 @@ use tokio::{
     sync::{Mutex, RwLock, mpsc, oneshot},
     time::{Duration, timeout},
 };
+use tracing::{debug, warn, info, error, instrument, info_span, Span, Instrument, field};
 
 mod handler;
 pub mod ipc;
@@ -78,6 +79,7 @@ where
     /// Zero-cost marker to link the transport to a specific serialization format.
     _phantom: PhantomData<S::C>,
     pipeline: RwLock<Pipeline<R, S>>,
+    shutdown_rx: Mutex<oneshot::Receiver<()>>,
 }
 
 impl<R, S> MessageTransport<R, S>
@@ -89,6 +91,7 @@ where
     pub fn new(raw: R) -> Self {
         let (inbox_tx, inbox_rx) = mpsc::channel(32);
         let raw_transport = Arc::new(raw);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
         let shared = Arc::new(SharedState {
             pending: Mutex::new(HashMap::new()),
@@ -99,6 +102,7 @@ where
         tokio::spawn(Self::read_loop(
             Arc::clone(&raw_transport),
             Arc::clone(&shared),
+            shutdown_tx
         ));
 
         Self {
@@ -108,49 +112,66 @@ where
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
             pipeline: RwLock::new(Pipeline::default()),
+            shutdown_rx: Mutex::new(shutdown_rx)
         }
     }
 
     /// Background worker that reads frames from the raw transport and dispatches them.
-    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<S>>) {
+    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<S>>, shutdown_tx: oneshot::Sender<()>) {
+        debug!("Initialized message transport read loop...");
         loop {
             let raw_bytes = match raw.recv_frame().await {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    eprintln!("[read_loop] Transport closed: {:?}", e);
+                    warn!(error=%e, "Transport was closed...");
                     break;
                 }
             };
 
+            let msg_span = info_span!("process_message", id = field::Empty, kind = field::Empty);
             let msg: Message<S::Req, S::Res, S::Ev> = match S::C::decode(raw_bytes) {
                 Ok(msg) => msg,
                 Err(e) => {
-                    eprintln!("[read_loop] Codec error: {:?}", e);
+                    warn!(error=%e, "Error when decoding incoming message...");
                     continue;
                 }
             };
 
-            match &msg.kind {
-                MessageKind::Response(_) => {
-                    let mut pending = shared.pending.lock().await;
-                    // If a specific caller is waiting for this ID, send it via oneshot
-                    if let Some(tx) = pending.remove(&msg.id) {
-                        if let MessageKind::Response(_) = msg.kind {
-                            let _ = tx.send(msg);
+            msg_span.record("id", msg.id);
+            msg_span.record("kind", tracing::field::debug(&msg.kind));
+
+            async {
+                match &msg.kind {
+                    MessageKind::Response(_) => {
+                        debug!("Locking pending requests queue...");
+                        let mut pending = shared.pending.lock().await;
+                        // If a specific caller is waiting for this ID, send it via oneshot
+                        if let Some(tx) = pending.remove(&msg.id) {
+                            debug!("Removed a request from pending queue...");
+                            if let MessageKind::Response(_) = msg.kind {
+                                debug!("Sending a response to a waiting transport...");
+                                let _ = tx.send(msg);
+                            }
+                        } else {
+                            // Otherwise, push it to the general inbox
+                            debug!("Sending a message to the incoming message queue...");
+                            let _ = shared.inbox_tx.send(msg).await;
                         }
-                    } else {
-                        // Otherwise, push it to the general inbox
+                    }
+                    _ => {
+                        // Other always go to the general inbox
+                        debug!("Sending a message to the incoming message queue...");
                         let _ = shared.inbox_tx.send(msg).await;
                     }
                 }
-                _ => {
-                    // Other always go to the general inbox
-                    let _ = shared.inbox_tx.send(msg).await;
-                }
-            }
+            }.instrument(msg_span).await;
         }
 
+        debug!("Sending shutdown request...");
+        shutdown_tx.send(()).ok();
+
         // Clean up pending requests on transport failure
+        warn!("Cleanup pending messages...");
         shared.pending.lock().await.clear();
     }
 
@@ -181,12 +202,26 @@ where
     /// # Errors
     /// * Returns [`TransportError::MiddlewareBlocked`] if a middleware halts the execution.
     /// * Returns [`TransportError::SerializeError`] if serialization fails.
+    #[instrument(
+        skip(self, msg), 
+        fields(
+            msg_id = msg.id, 
+            kind = ?msg.kind
+        ),
+        err
+    )]
     pub async fn send(
         &self,
         mut msg: Message<S::Req, S::Res, S::Ev>,
     ) -> Result<(), TransportError> {
+        self.ensure_is_alive()?;
+        debug!("Executing outbound pipeline...");
         self.pipeline.read().await.execute_send(&mut msg).await?;
+
+        debug!("Encoding message...");
         let encoded = S::C::encode(&msg)?;
+
+        debug!("Forwarding to raw transport...");
         self.raw_transport.send_frame(&encoded).await
     }
 
@@ -215,38 +250,63 @@ where
     /// * [`TransportError::Timeout`]: No response received within the allotted time.
     /// * [`TransportError::MiddlewareBlocked`]: A middleware layer rejected the message.
     /// * [`TransportError::ConnectionClosed`]: The underlying transport or worker task failed.
+    #[instrument(
+        skip(self, request), 
+        fields(
+            msg_id = field::Empty, 
+            status = field::Empty
+        ),
+        err
+    )]
     pub async fn request_full(
         &self,
         request: S::Req,
         timeout_secs: u64,
         metadata: Option<MetadataMap>,
     ) -> Result<MessageContext<'_, R, S>, TransportError> {
+        self.ensure_is_alive()?;
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        Span::current().record("msg_id", id);
+
         let (tx, rx) = oneshot::channel();
 
         {
+            debug!("Registering pending request...");
             let mut pending = self.shared.pending.lock().await;
             pending.insert(id, tx);
         }
 
         let msg = Message::request(id, request).maybe_with_metadata(metadata);
         if let Err(e) = self.send(msg).await {
-            eprintln!("error");
+            warn!(error = %e, "Failed to send request, cleaning up...");
             let mut pending = self.shared.pending.lock().await;
             pending.remove(&id);
             return Err(e);
         }
 
+        debug!("Request sent, awaiting response from channel...");
+
         match timeout(Duration::from_secs(timeout_secs), rx).await {
             Ok(result) => {
-                let msg = result.map_err(|_| TransportError::ConnectionClosed)?;
+                let msg = result.map_err(|e| {
+                    warn!(error=%e, "Error when waiting a response...");
+                    TransportError::ConnectionClosed
+                })?;
+
+                debug!("Response received, executing inbound pipeline...");
                 self.pipeline.read().await.execute_recv(&msg).await?;
+
+                Span::current().record("status", "success");
                 Ok(MessageContext::new(msg, self))
             }
             Err(_) => {
+                warn!("Request timed out after {}s", timeout_secs);
                 let mut pending = self.shared.pending.lock().await;
+
+                debug!("Removed pending request from messages queue...");
                 pending.remove(&id);
 
+                Span::current().record("status", "timeout");
                 Err(TransportError::Timeout {
                     seconds: timeout_secs,
                 })
@@ -295,6 +355,7 @@ where
     /// This method locks the internal `inbox_rx` mutex. Multiple tasks can call
     /// `next`, but they will be processed sequentially.
     pub async fn next(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
+         self.ensure_is_alive()?;
         let mut rx = self.inbox_rx.lock().await;
         let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
         Ok(MessageContext::new(message, self))
@@ -367,19 +428,78 @@ where
     /// This method does not typically panic, but it will propagate panics that
     /// occur within the `handler` or `middleware` unless they are caught
     /// by a specific middleware layer.
+    #[instrument(
+        skip(self, handler), 
+        name = "transport_serve"
+    )]
     pub async fn serve_with<F>(&self, handler: F)
     where
         F: for<'a> AsyncHandler<'a, R, S>,
     {
-        while let Ok(ctx) = self.next().await {
-            if let Err(e) = self.pipeline.read().await.execute_recv(ctx.get()).await {
-                eprintln!("Middleware blocked message: {:?}", e);
-                continue;
-            }
+        debug!("Starting serve_with loop for transport...");
+        let mut rx_guard = self.shutdown_rx.lock().await;
 
-            if let Err(e) = handler.call(ctx).await {
-                eprintln!("Handler error: {:?}", e);
+        loop {
+            tokio::select! {
+                biased;
+
+                _ = &mut *rx_guard => {
+                    info!("Shutdown signal received: transport connection lost. Exiting serve_with.");
+                    break;
+                }
+                maybe_ctx = self.next() => {
+                    match maybe_ctx {
+                        Ok(ctx) => {
+                            if let Err(e) = self.pipeline.read().await.execute_recv(ctx.get()).await {
+                                warn!(error = ?e, "Middleware blocked message");
+                                continue;
+                            }
+
+                            if let Err(e) = handler.call(ctx).await {
+                                error!(error = ?e, "Handler execution error");
+                            }
+                        }
+                        Err(_) => {
+                            debug!("Inbox stream closed, exiting serve_with");
+                            break;
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    /// Checks if the transport's background read loop is still running.
+    ///
+    /// This method attempts to non-blockingly check the shutdown signal. 
+    /// If the signal has been sent (the channel is no longer empty or has been closed), 
+    /// the transport is considered "dead".
+    ///
+    /// Returns `true` if the connection is active, or if the status is currently 
+    /// being polled by another process (locked).
+    pub fn is_alive(&self) -> bool {
+        if let Ok(mut rx) = self.shutdown_rx.try_lock() {
+            // If try_recv returns Empty, it means no shutdown signal has been sent yet.
+            matches!(rx.try_recv(), Err(oneshot::error::TryRecvError::Empty))
+        } else {
+            // If the mutex is locked, we assume serve_with is currently running,
+            // which implies the transport is still considered alive.
+            true
+        }
+    }
+
+    /// Ensures the transport is alive, returning a `TransportError` if it is not.
+    ///
+    /// This is a helper method used before performing I/O operations to fail fast 
+    /// if the background task has already encountered an error or the peer disconnected.
+    ///
+    /// # Errors
+    /// Returns [`TransportError::ConnectionClosed`] if the background read loop has terminated.
+    fn ensure_is_alive(&self) -> Result<(), TransportError> {
+        if self.is_alive() {
+            Ok(())
+        } else {
+            Err(TransportError::ConnectionClosed)
         }
     }
 }

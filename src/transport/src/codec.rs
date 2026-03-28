@@ -7,6 +7,7 @@
 use knot_core::errors::TransportError;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::fmt::Debug;
 
 mod bincode;
 mod json;
@@ -19,7 +20,7 @@ pub use json::JsonCodec;
 /// Implementations of this trait define how a specific data format
 /// (like JSON or Bincode) handles the transformation of Rust types
 /// into a `Raw` format (typically `Vec<u8>`).
-pub trait MessageCodec: Send + Sync + 'static {
+pub trait MessageCodec: Send + Sync + Debug + 'static {
     /// The resulting type of the encoding process.
     /// Usually `Vec<u8>` for network or IPC transports.
     type Raw;

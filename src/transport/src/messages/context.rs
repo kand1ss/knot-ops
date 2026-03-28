@@ -3,7 +3,11 @@ use crate::{
     transport::{MessageTransport, RawTransport, TransportSpec},
 };
 use knot_core::errors::TransportError;
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut}, 
+    fmt::Debug
+};
+use tracing::{warn, error, info, debug, instrument};
 
 /// A high-level wrapper around an incoming message and its associated transport.
 ///
@@ -13,6 +17,7 @@ use std::ops::{Deref, DerefMut};
 ///
 /// ### Lifetime
 /// * `'a`: The lifetime of the reference to the underlying [`MessageTransport`].
+#[derive(Debug)]
 pub struct MessageContext<'a, R, S>
 where
     R: RawTransport + 'static,
@@ -59,30 +64,61 @@ where
     /// # Warning
     /// If called more than once, a warning will be logged to `stderr` indicating
     /// a potential logic error in the request handler.
+    #[instrument(
+        skip(self, msg, metadata), 
+        fields(
+            msg_id = %self.message.id,
+            re_reply = self.replied
+        ),
+        name = "message_reply"
+    )]
     pub async fn reply(
         &mut self,
         msg: S::Res,
         metadata: Option<MetadataMap>,
     ) -> Result<(), TransportError> {
-        if !self.replied {
-            eprintln!(
-                "WARNING: MessageContext replied twice to request ID {}",
-                self.message.id
+        if self.replied {
+            warn!(
+                request_id = %self.message.id,
+                "Logic error: attempted to reply twice to the same request"
             );
         }
 
         let message = Message::response(self.message.id, msg).maybe_with_metadata(metadata);
+        debug!("Sending response back to transport...");
 
-        self.replied = true;
-        self.transport.send(message).await
+        match self.transport.send(message).await {
+            Ok(_) => {
+                self.replied = true;
+                info!("Successfully sent reply to client");
+                Ok(())
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to send reply to transport");
+                Err(e)
+            }
+        }
     }
 
     /// Emits an arbitrary message (e.g., an Event) through the transport.
     ///
     /// Unlike `reply`, this does not affect the `replied` state and does not
     /// automatically set correlation IDs.
+    #[instrument(
+        skip(self, msg), 
+        fields(msg_kind = ?msg.kind),
+        name = "message_emit"
+    )]
     pub async fn emit(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
-        self.transport.send(msg).await
+        info!("Emitting arbitrary message...");
+        
+        if let Err(e) = self.transport.send(msg).await {
+            error!(error = %e, "Failed to emit message");
+            return Err(e);
+        }
+        
+        info!("Message emitted successfully");
+        Ok(())
     }
 
     /// Returns a reference to the encapsulated message.

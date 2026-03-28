@@ -319,6 +319,7 @@ mod messages_tests {
 
     // TRANSPORT SPEC STUB
 
+    #[derive(Debug)]
     pub struct TestSpec;
     impl TransportSpec for TestSpec {
         type Req = TestReq;

@@ -14,13 +14,14 @@ use knot_core::errors::TransportError;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
+use tracing::{instrument, field};
 
 /// Defines the type requirements for a specific communication protocol.
 ///
 /// `TransportSpec` acts as a "trait bundle" that links a specific set of
 /// Request, Response, and Event types with a compatible Codec.
 /// This prevents type mismatches when setting up a `MessageTransport`.
-pub trait TransportSpec: Send + Sync + 'static {
+pub trait TransportSpec: Send + Sync + Debug + 'static {
     /// The type of request messages handled by this specification.
     type Req: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
     /// The type of response messages handled by this specification.
@@ -28,7 +29,7 @@ pub trait TransportSpec: Send + Sync + 'static {
     /// The type of asynchronous events handled by this specification.
     type Ev: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
     /// The codec responsible for serializing/deserializing these types.
-    type C: MessageCodec<Raw = Vec<u8>>;
+    type C: MessageCodec<Raw = Vec<u8>> + Debug;
 }
 
 /// Defines a low-level byte-oriented transport layer.
@@ -59,6 +60,7 @@ pub trait RawTransport: Send + Sync + Sized + 'static {
     ///
     /// This method performs a size check before calling the internal implementation.
     /// It ensures that no oversized frames are sent into the network.
+    #[instrument(skip(self, frame), fields(frame_len = frame.len()))]
     async fn send_frame<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
         Self::check_frame_size(frame)?;
         self.send_frame_internal(frame).await
@@ -74,6 +76,7 @@ pub trait RawTransport: Send + Sync + Sized + 'static {
     /// This method awaits a full frame from the internal implementation and
     /// validates its size before returning. It is the primary way to read raw
     /// data from the stream.
+    #[instrument(skip(self), fields(frame_len = field::Empty), err)]
     async fn recv_frame(&self) -> Result<Vec<u8>, TransportError> {
         let frame: Vec<u8> = self.recv_frame_internal().await?;
         Self::check_frame_size(&frame)?;
