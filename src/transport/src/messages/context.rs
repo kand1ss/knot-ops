@@ -4,10 +4,10 @@ use crate::{
 };
 use knot_core::errors::TransportError;
 use std::{
-    ops::{Deref, DerefMut}, 
-    fmt::Debug
+    fmt::Debug,
+    ops::{Deref, DerefMut},
 };
-use tracing::{warn, error, info, debug, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 /// A high-level wrapper around an incoming message and its associated transport.
 ///
@@ -65,7 +65,7 @@ where
     /// If called more than once, a warning will be logged to `stderr` indicating
     /// a potential logic error in the request handler.
     #[instrument(
-        skip(self, msg, metadata), 
+        skip(self, msg, metadata),
         fields(
             msg_id = %self.message.id,
             re_reply = self.replied
@@ -105,18 +105,18 @@ where
     /// Unlike `reply`, this does not affect the `replied` state and does not
     /// automatically set correlation IDs.
     #[instrument(
-        skip(self, msg), 
+        skip(self, msg),
         fields(msg_kind = ?msg.kind),
         name = "message_emit"
     )]
     pub async fn emit(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
         info!("Emitting arbitrary message...");
-        
+
         if let Err(e) = self.transport.send(msg).await {
             error!(error = %e, "Failed to emit message");
             return Err(e);
         }
-        
+
         info!("Message emitted successfully");
         Ok(())
     }

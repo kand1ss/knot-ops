@@ -17,7 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     sync::Mutex,
 };
-use tracing::{instrument, debug, info, error};
+use tracing::{debug, error, info, instrument};
 
 use crate::transport::{MAX_MESSAGE_SIZE, RawTransport};
 use knot_core::errors::TransportError;
@@ -187,11 +187,11 @@ impl Server for IpcServer {
         #[cfg(unix)]
         {
             debug!("Socket file already exists, attempting to remove...");
-                if let Err(e) = tokio::fs::remove_file(&socket_path).await {
-                    warn!(error = %e, "Failed to remove existing socket file, bind might fail");
-                } else {
-                    debug!("Existing socket file removed successfully");
-                }
+            if let Err(e) = tokio::fs::remove_file(&socket_path).await {
+                warn!(error = %e, "Failed to remove existing socket file, bind might fail");
+            } else {
+                debug!("Existing socket file removed successfully");
+            }
         }
 
         let name = resolve_socket_name(&socket_path)?;
@@ -207,7 +207,7 @@ impl Server for IpcServer {
                     source: e,
                 }
             })?;
-        
+
         info!("IpcServer successfully bound to socket");
         Ok(Self {
             listener,
@@ -248,17 +248,13 @@ impl Server for IpcServer {
     async fn accept(&self) -> Result<Self::Transport, TransportError> {
         info!("Waiting for next incoming connection...");
 
-        let stream = self
-            .listener
-            .accept()
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Error while accepting connection");
-                TransportError::Io { source: e }
-            })?;
+        let stream = self.listener.accept().await.map_err(|e| {
+            error!(error = %e, "Error while accepting connection");
+            TransportError::Io { source: e }
+        })?;
 
         info!("Accepted new connection...");
-        
+
         #[cfg(unix)]
         if let Ok(cred) = stream.peer_cred() {
             info!(peer_pid = ?cred.pid(), "Accepted new connection...");

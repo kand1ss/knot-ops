@@ -16,7 +16,7 @@ use tokio::{
     sync::{Mutex, RwLock, mpsc, oneshot},
     time::{Duration, timeout},
 };
-use tracing::{debug, warn, info, error, instrument, info_span, Span, Instrument, field};
+use tracing::{Instrument, Span, debug, error, field, info, info_span, instrument, warn};
 
 mod handler;
 pub mod ipc;
@@ -102,7 +102,7 @@ where
         tokio::spawn(Self::read_loop(
             Arc::clone(&raw_transport),
             Arc::clone(&shared),
-            shutdown_tx
+            shutdown_tx,
         ));
 
         Self {
@@ -112,7 +112,7 @@ where
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
             pipeline: RwLock::new(Pipeline::default()),
-            shutdown_rx: Mutex::new(shutdown_rx)
+            shutdown_rx: Mutex::new(shutdown_rx),
         }
     }
 
@@ -164,7 +164,9 @@ where
                         let _ = shared.inbox_tx.send(msg).await;
                     }
                 }
-            }.instrument(msg_span).await;
+            }
+            .instrument(msg_span)
+            .await;
         }
 
         debug!("Sending shutdown request...");
@@ -203,9 +205,9 @@ where
     /// * Returns [`TransportError::MiddlewareBlocked`] if a middleware halts the execution.
     /// * Returns [`TransportError::SerializeError`] if serialization fails.
     #[instrument(
-        skip(self, msg), 
+        skip(self, msg),
         fields(
-            msg_id = msg.id, 
+            msg_id = msg.id,
             kind = ?msg.kind
         ),
         err
@@ -251,9 +253,9 @@ where
     /// * [`TransportError::MiddlewareBlocked`]: A middleware layer rejected the message.
     /// * [`TransportError::ConnectionClosed`]: The underlying transport or worker task failed.
     #[instrument(
-        skip(self, request), 
+        skip(self, request),
         fields(
-            msg_id = field::Empty, 
+            msg_id = field::Empty,
             status = field::Empty
         ),
         err
@@ -355,7 +357,7 @@ where
     /// This method locks the internal `inbox_rx` mutex. Multiple tasks can call
     /// `next`, but they will be processed sequentially.
     pub async fn next(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
-         self.ensure_is_alive()?;
+        self.ensure_is_alive()?;
         let mut rx = self.inbox_rx.lock().await;
         let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
         Ok(MessageContext::new(message, self))
@@ -428,11 +430,8 @@ where
     /// This method does not typically panic, but it will propagate panics that
     /// occur within the `handler` or `middleware` unless they are caught
     /// by a specific middleware layer.
-    #[instrument(
-        skip(self, handler), 
-        name = "transport_serve"
-    )]
-    pub async fn serve_with<F>(&self, handler: F)
+    #[instrument(skip(self, handler), name = "transport_serve")]
+    pub async fn serve_with<F>(&self, handler: F) -> Result<(), TransportError>
     where
         F: for<'a> AsyncHandler<'a, R, S>,
     {
@@ -445,7 +444,7 @@ where
 
                 _ = &mut *rx_guard => {
                     info!("Shutdown signal received: transport connection lost. Exiting serve_with.");
-                    break;
+                    return Ok(());
                 }
                 maybe_ctx = self.next() => {
                     match maybe_ctx {
@@ -459,9 +458,9 @@ where
                                 error!(error = ?e, "Handler execution error");
                             }
                         }
-                        Err(_) => {
+                        Err(e) => {
                             debug!("Inbox stream closed, exiting serve_with");
-                            break;
+                            return Err(e);
                         }
                     }
                 }
@@ -471,11 +470,11 @@ where
 
     /// Checks if the transport's background read loop is still running.
     ///
-    /// This method attempts to non-blockingly check the shutdown signal. 
-    /// If the signal has been sent (the channel is no longer empty or has been closed), 
+    /// This method attempts to non-blockingly check the shutdown signal.
+    /// If the signal has been sent (the channel is no longer empty or has been closed),
     /// the transport is considered "dead".
     ///
-    /// Returns `true` if the connection is active, or if the status is currently 
+    /// Returns `true` if the connection is active, or if the status is currently
     /// being polled by another process (locked).
     pub fn is_alive(&self) -> bool {
         if let Ok(mut rx) = self.shutdown_rx.try_lock() {
@@ -490,7 +489,7 @@ where
 
     /// Ensures the transport is alive, returning a `TransportError` if it is not.
     ///
-    /// This is a helper method used before performing I/O operations to fail fast 
+    /// This is a helper method used before performing I/O operations to fail fast
     /// if the background task has already encountered an error or the peer disconnected.
     ///
     /// # Errors

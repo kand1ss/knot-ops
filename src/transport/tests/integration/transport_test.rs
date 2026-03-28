@@ -219,7 +219,8 @@ where
                     MessageKind::Response(_) => Ok(()),
                 },
             )
-            .await;
+            .await
+            .ok();
     })
 }
 
@@ -735,7 +736,8 @@ where
                     Ok(())
                 }
             })
-            .await;
+            .await
+            .ok();
         }
     });
 
@@ -832,7 +834,8 @@ where
                     }
                 },
             )
-            .await;
+            .await
+            .ok();
         }
     });
 
@@ -876,7 +879,8 @@ where
                     }
                 },
             )
-            .await;
+            .await
+            .ok();
         }
     });
 
@@ -920,7 +924,8 @@ where
                     }
                 },
             )
-            .await;
+            .await
+            .ok();
         }
     });
 
@@ -1005,7 +1010,8 @@ where
                     Ok(())
                 }
             })
-            .await;
+            .await
+            .ok();
         }
     });
 
