@@ -131,17 +131,21 @@ pub trait Server {
     async fn accept(&self) -> Result<Self::Transport, TransportError>;
 
     /// Accepts incoming connections in a loop and spawns a handler for each.
-    async fn accept_with<F, S, Fut>(&self, mut handler: F) -> Result<(), TransportError>
+    async fn accept_with<F, S, Fut>(&self, handler: F) -> Result<(), TransportError>
     where
-        F: FnMut(MessageTransport<Self::Transport, S>) -> Fut + Send + 'static,
+        F: FnMut(MessageTransport<Self::Transport, S>) -> Fut + Clone + Send + 'static,
         S: TransportSpec,
         Fut: Future<Output = Result<(), TransportError>> + Send,
     {
         loop {
             let transport = self.accept().await?.to_messaged::<S>();
-            if let Err(e) = handler(transport).await {
-                error!(error = ?e, "Handler execution error");
-            }
+            let mut h = handler.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = h(transport).await {
+                    error!(error = ?e, "Handler execution error");
+                }
+            });
         }
     }
 }

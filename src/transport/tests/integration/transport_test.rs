@@ -183,10 +183,8 @@ where
 {
     tokio::spawn(async move {
         let server = IpcServer::bind(socket_path).await.unwrap();
-        let transport: Trans<IpcTransport, Cod> = server.accept().await.unwrap().to_messaged();
-
-        transport
-            .serve_with(
+        server.accept_with(async |transport: MessageTransport<IpcTransport, Spec<Cod>>| {
+            transport.serve_with(
                 async |mut ctx: MessageContext<'_, IpcTransport, Spec<Cod>>| match ctx.kind() {
                     MessageKind::Request(req) => {
                         let Req::Ping(val) = req;
@@ -220,7 +218,7 @@ where
                 },
             )
             .await
-            .ok();
+        }).await.unwrap()
     })
 }
 
@@ -785,6 +783,35 @@ where
     for h in handles {
         h.await.unwrap();
     }
+    srv.abort();
+}
+
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
+#[tokio::test]
+async fn test_dropped_transport_server_survives<C>(#[case] _m: PhantomData<C>)
+where
+    C: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
+{
+    let path = sock("dropped_transport");
+    let srv = echo_server::<C>(path.clone()).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    {
+        let client: Trans<IpcTransport, C> =
+            IpcTransport::connect(path.clone()).await.unwrap().to_messaged();
+
+        client.send(Msg::event(Ev::Event(0))).await.unwrap();
+    }
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let client: Trans<IpcTransport, C> =
+        IpcTransport::connect(path).await.unwrap().to_messaged();
+
+    let response = client.request(Req::Ping(0), 5, None).await.unwrap();
+    assert!(matches!(response, Res::Pong(0)));
     srv.abort();
 }
 
