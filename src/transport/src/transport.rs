@@ -112,7 +112,7 @@ where
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
             pipeline: RwLock::new(Pipeline::default()),
-            shutdown_rx: shutdown_rx,
+            shutdown_rx,
         }
     }
 

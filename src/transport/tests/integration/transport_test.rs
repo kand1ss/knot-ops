@@ -183,42 +183,51 @@ where
 {
     tokio::spawn(async move {
         let server = IpcServer::bind(socket_path).await.unwrap();
-        server.accept_with(async |transport: MessageTransport<IpcTransport, Spec<Cod>>| {
-            transport.serve_with(
-                async |mut ctx: MessageContext<'_, IpcTransport, Spec<Cod>>| match ctx.kind() {
-                    MessageKind::Request(req) => {
-                        let Req::Ping(val) = req;
-                        let mut current_val = *val;
-                        let mut metadata = MetadataMap::new();
+        server
+            .accept_with(
+                async |transport: MessageTransport<IpcTransport, Spec<Cod>>| {
+                    transport
+                        .serve_with(
+                            async |mut ctx: MessageContext<'_, IpcTransport, Spec<Cod>>| match ctx
+                                .kind()
+                            {
+                                MessageKind::Request(req) => {
+                                    let Req::Ping(val) = req;
+                                    let mut current_val = *val;
+                                    let mut metadata = MetadataMap::new();
 
-                        if let Some(metadata_val) = ctx.get_meta("increment")
-                            && let Ok(inc) = metadata_val.parse::<i32>()
-                        {
-                            current_val += inc;
-                            metadata.insert_str("incremented", "true");
-                        }
+                                    if let Some(metadata_val) = ctx.get_meta("increment")
+                                        && let Ok(inc) = metadata_val.parse::<i32>()
+                                    {
+                                        current_val += inc;
+                                        metadata.insert_str("incremented", "true");
+                                    }
 
-                        ctx.reply(Res::Pong(current_val), Some(metadata)).await
-                    }
-                    MessageKind::Event(ev) => {
-                        let Ev::Event(val) = ev;
-                        let mut metadata = MetadataMap::new();
+                                    ctx.reply(Res::Pong(current_val), Some(metadata)).await
+                                }
+                                MessageKind::Event(ev) => {
+                                    let Ev::Event(val) = ev;
+                                    let mut metadata = MetadataMap::new();
 
-                        if let Some(metadata_val) = ctx.get_meta("metadata")
-                            && let Ok(inc) = metadata_val.parse::<bool>()
-                            && inc
-                        {
-                            metadata.insert_str("metadata", "true");
-                        }
+                                    if let Some(metadata_val) = ctx.get_meta("metadata")
+                                        && let Ok(inc) = metadata_val.parse::<bool>()
+                                        && inc
+                                    {
+                                        metadata.insert_str("metadata", "true");
+                                    }
 
-                        let message = Msg::event(Ev::Event(*val)).with_metadata(metadata);
-                        ctx.emit(message).await
-                    }
-                    MessageKind::Response(_) => Ok(()),
+                                    let message =
+                                        Msg::event(Ev::Event(*val)).with_metadata(metadata);
+                                    ctx.emit(message).await
+                                }
+                                MessageKind::Response(_) => Ok(()),
+                            },
+                        )
+                        .await
                 },
             )
             .await
-        }).await.unwrap()
+            .unwrap()
     })
 }
 
@@ -799,16 +808,17 @@ where
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     {
-        let client: Trans<IpcTransport, C> =
-            IpcTransport::connect(path.clone()).await.unwrap().to_messaged();
+        let client: Trans<IpcTransport, C> = IpcTransport::connect(path.clone())
+            .await
+            .unwrap()
+            .to_messaged();
 
         client.send(Msg::event(Ev::Event(0))).await.unwrap();
     }
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let client: Trans<IpcTransport, C> =
-        IpcTransport::connect(path).await.unwrap().to_messaged();
+    let client: Trans<IpcTransport, C> = IpcTransport::connect(path).await.unwrap().to_messaged();
 
     let response = client.request(Req::Ping(0), 5, None).await.unwrap();
     assert!(matches!(response, Res::Pong(0)));
