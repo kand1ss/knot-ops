@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::{
-    sync::{Mutex, RwLock, mpsc, oneshot},
+    sync::{Mutex, RwLock, mpsc, oneshot, watch},
     time::{Duration, timeout},
 };
 use tracing::{Instrument, Span, debug, error, field, info, info_span, instrument, warn};
@@ -79,7 +79,7 @@ where
     /// Zero-cost marker to link the transport to a specific serialization format.
     _phantom: PhantomData<S::C>,
     pipeline: RwLock<Pipeline<R, S>>,
-    shutdown_rx: Mutex<oneshot::Receiver<()>>,
+    shutdown_rx: watch::Receiver<bool>,
 }
 
 impl<R, S> MessageTransport<R, S>
@@ -91,7 +91,7 @@ where
     pub fn new(raw: R) -> Self {
         let (inbox_tx, inbox_rx) = mpsc::channel(32);
         let raw_transport = Arc::new(raw);
-        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = watch::channel(true);
 
         let shared = Arc::new(SharedState {
             pending: Mutex::new(HashMap::new()),
@@ -112,12 +112,12 @@ where
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
             pipeline: RwLock::new(Pipeline::default()),
-            shutdown_rx: Mutex::new(shutdown_rx),
+            shutdown_rx: shutdown_rx,
         }
     }
 
     /// Background worker that reads frames from the raw transport and dispatches them.
-    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<S>>, shutdown_tx: oneshot::Sender<()>) {
+    async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<S>>, shutdown_tx: watch::Sender<bool>) {
         debug!("Initialized message transport read loop...");
         loop {
             let raw_bytes = match raw.recv_frame().await {
@@ -170,7 +170,7 @@ where
         }
 
         debug!("Sending shutdown request...");
-        shutdown_tx.send(()).ok();
+        shutdown_tx.send(false).ok();
 
         // Clean up pending requests on transport failure
         warn!("Cleanup pending messages...");
@@ -436,15 +436,17 @@ where
         F: for<'a> AsyncHandler<'a, R, S>,
     {
         debug!("Starting serve_with loop for transport...");
-        let mut rx_guard = self.shutdown_rx.lock().await;
+        let mut shutdown = self.shutdown_rx.clone();
 
         loop {
             tokio::select! {
                 biased;
 
-                _ = &mut *rx_guard => {
-                    info!("Shutdown signal received: transport connection lost. Exiting serve_with.");
-                    return Ok(());
+                _ = shutdown.changed() => {
+                    if !*shutdown.borrow() {
+                        info!("Shutdown signal received: transport connection lost. Exiting serve_with.");
+                        return Ok(());
+                    }
                 }
                 maybe_ctx = self.next() => {
                     match maybe_ctx {
@@ -477,14 +479,7 @@ where
     /// Returns `true` if the connection is active, or if the status is currently
     /// being polled by another process (locked).
     pub fn is_alive(&self) -> bool {
-        if let Ok(mut rx) = self.shutdown_rx.try_lock() {
-            // If try_recv returns Empty, it means no shutdown signal has been sent yet.
-            matches!(rx.try_recv(), Err(oneshot::error::TryRecvError::Empty))
-        } else {
-            // If the mutex is locked, we assume serve_with is currently running,
-            // which implies the transport is still considered alive.
-            true
-        }
+        *self.shutdown_rx.borrow()
     }
 
     /// Ensures the transport is alive, returning a `TransportError` if it is not.
