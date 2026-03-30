@@ -258,7 +258,7 @@ impl Server for IpcServer {
         info!("Accepted new connection...");
 
         #[cfg(unix)]
-        if let Ok(cred) = stream.peer_cred() {
+        if let Ok(cred) = stream.peer_creds() {
             info!(peer_pid = ?cred.pid(), "Accepted new connection...");
         } else {
             info!("Accepted new connection (could not retrieve peer credentials)...");
