@@ -186,6 +186,8 @@ impl Server for IpcServer {
     async fn bind(socket_path: PathBuf) -> Result<Self, TransportError> {
         #[cfg(unix)]
         {
+            use tracing::warn;
+
             debug!("Socket file already exists, attempting to remove...");
             if let Err(e) = tokio::fs::remove_file(&socket_path).await {
                 warn!(error = %e, "Failed to remove existing socket file, bind might fail");
