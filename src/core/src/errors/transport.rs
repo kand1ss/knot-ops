@@ -46,3 +46,15 @@ pub enum TransportError {
         source: std::io::Error,
     },
 }
+impl TransportError {
+    #[must_use]
+    pub fn is_fatal(&self) -> bool {
+        matches!(
+            self,
+            Self::ConnectionFailed { .. }
+                | Self::ConnectionRefused { .. }
+                | Self::InvalidSocketPath { .. }
+                | Self::ConnectionClosed
+        )
+    }
+}

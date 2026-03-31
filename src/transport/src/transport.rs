@@ -16,7 +16,7 @@ use tokio::{
     sync::{Mutex, RwLock, mpsc, oneshot, watch},
     time::{Duration, timeout},
 };
-use tracing::{Instrument, Span, debug, error, field, info, info_span, instrument, warn};
+use tracing::{Span, debug, error, field, info, instrument, warn};
 
 mod handler;
 pub mod ipc;
@@ -89,7 +89,7 @@ where
 {
     /// Creates a new `MessageTransport` and spawns a background read loop.
     pub fn new(raw: R) -> Self {
-        let (inbox_tx, inbox_rx) = mpsc::channel(32);
+        let (inbox_tx, inbox_rx) = mpsc::channel(128);
         let raw_transport = Arc::new(raw);
         let (shutdown_tx, shutdown_rx) = watch::channel(true);
 
@@ -116,61 +116,70 @@ where
         }
     }
 
-    /// Background worker that reads frames from the raw transport and dispatches them.
+    #[instrument(
+    skip_all,
+    fields(
+        msg_id = %msg.id,
+        kind = ?msg.kind
+    )
+    )]
+    async fn process_incoming(msg: Message<S::Req, S::Res, S::Ev>, shared: Arc<SharedState<S>>)
+    where
+        R: RawTransport,
+        S: TransportSpec,
+    {
+        match &msg.kind {
+            MessageKind::Response(_) => {
+                info!("Handling incoming response...");
+                debug!("Locking pending requests queue...");
+                let mut pending = shared.pending.lock().await;
+
+                if let Some(tx) = pending.remove(&msg.id) {
+                    debug!("Dispatching response to waiting caller...");
+                    let _ = tx.send(msg);
+                } else {
+                    debug!("No pending caller found, forwarding to general inbox...");
+                    let _ = shared.inbox_tx.send(msg).await;
+                }
+            }
+            _ => {
+                debug!("Forwarding message to general inbox...");
+                let _ = shared.inbox_tx.send(msg).await;
+            }
+        }
+        debug!("Pending requests queue was unlocked");
+    }
+
+    /// Background worker that reads frames from the raw transport and dispatches them.\
+    #[instrument(skip_all, name = "transport_read_loop")]
     async fn read_loop(raw: Arc<R>, shared: Arc<SharedState<S>>, shutdown_tx: watch::Sender<bool>) {
-        debug!("Initialized message transport read loop...");
+        info!("Starting transport read loop...");
         loop {
             let raw_bytes = match raw.recv_frame().await {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    warn!(error=%e, "Transport was closed...");
-                    break;
-                }
-            };
-
-            let msg_span = info_span!("process_message", id = field::Empty, kind = field::Empty);
-            let msg: Message<S::Req, S::Res, S::Ev> = match S::C::decode(raw_bytes) {
-                Ok(msg) => msg,
-                Err(e) => {
-                    warn!(error=%e, "Error when decoding incoming message...");
+                    if e.is_fatal() {
+                        error!(error = %e, "Fatal transport error, shutting down...");
+                        break;
+                    }
+                    warn!(error = %e, "Transient error, retrying...");
                     continue;
                 }
             };
 
-            msg_span.record("id", msg.id);
-            msg_span.record("kind", tracing::field::debug(&msg.kind));
-
-            async {
-                match &msg.kind {
-                    MessageKind::Response(_) => {
-                        debug!("Locking pending requests queue...");
-                        let mut pending = shared.pending.lock().await;
-                        // If a specific caller is waiting for this ID, send it via oneshot
-                        if let Some(tx) = pending.remove(&msg.id) {
-                            debug!("Removed a request from pending queue...");
-                            if let MessageKind::Response(_) = msg.kind {
-                                debug!("Sending a response to a waiting transport...");
-                                let _ = tx.send(msg);
-                            }
-                        } else {
-                            // Otherwise, push it to the general inbox
-                            debug!("Sending a message to the incoming message queue...");
-                            let _ = shared.inbox_tx.send(msg).await;
-                        }
-                    }
-                    _ => {
-                        // Other always go to the general inbox
-                        debug!("Sending a message to the incoming message queue...");
-                        let _ = shared.inbox_tx.send(msg).await;
-                    }
+            let msg = match S::C::decode(raw_bytes) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    error!(error = %e, "Failed to decode frame, skipping...");
+                    continue;
                 }
-            }
-            .instrument(msg_span)
-            .await;
+            };
+
+            Self::process_incoming(msg, Arc::clone(&shared)).await;
         }
 
         debug!("Sending shutdown request...");
-        shutdown_tx.send(false).ok();
+        let _ = shutdown_tx.send(false);
 
         // Clean up pending requests on transport failure
         warn!("Cleanup pending messages...");
@@ -189,6 +198,7 @@ where
     pub async fn add_middleware<M: Middleware<R, S>>(&mut self, middleware: M) {
         let mut p = self.pipeline.write().await;
         p.add_middleware(middleware);
+        info!("Registered new pipeline");
     }
 
     /// Sends a low-level message envelope through the outbound middleware pipeline.
@@ -219,12 +229,16 @@ where
         self.ensure_is_alive()?;
         debug!("Executing outbound pipeline...");
         self.pipeline.read().await.execute_send(&mut msg).await?;
+        debug!("Outbound pipeline executed");
 
         debug!("Encoding message...");
         let encoded = S::C::encode(&msg)?;
+        debug!("Message encoded");
 
         debug!("Forwarding to raw transport...");
-        self.raw_transport.send_frame(&encoded).await
+        let res = self.raw_transport.send_frame(&encoded).await;
+        debug!("Message to raw transport forwarded");
+        res
     }
 
     /// Performs a synchronized Request-Response operation with full context and middleware interception.
@@ -358,9 +372,15 @@ where
     /// `next`, but they will be processed sequentially.
     pub async fn next(&self) -> Result<MessageContext<'_, R, S>, TransportError> {
         self.ensure_is_alive()?;
+
         let mut rx = self.inbox_rx.lock().await;
-        let message = rx.recv().await.ok_or(TransportError::ConnectionClosed)?;
-        Ok(MessageContext::new(message, self))
+        match rx.recv().await {
+            Some(message) => Ok(MessageContext::new(message, self)),
+            None => {
+                warn!("Inbox channel closed - background read_loop has terminated");
+                Err(TransportError::ConnectionClosed)
+            }
+        }
     }
 
     /// Receives the next incoming message and processes it through the middleware pipeline.

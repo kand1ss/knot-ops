@@ -70,7 +70,7 @@ where
             msg_id = %self.message.id,
             re_reply = self.replied
         ),
-        name = "message_reply"
+        name = "context_reply"
     )]
     pub async fn reply(
         &mut self,
@@ -107,7 +107,7 @@ where
     #[instrument(
         skip(self, msg),
         fields(msg_kind = ?msg.kind),
-        name = "message_emit"
+        name = "context_emit"
     )]
     pub async fn emit(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
         info!("Emitting arbitrary message...");

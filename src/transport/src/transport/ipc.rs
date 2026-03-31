@@ -17,7 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     sync::Mutex,
 };
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::transport::{MAX_MESSAGE_SIZE, RawTransport};
 use knot_core::errors::TransportError;
@@ -116,6 +116,7 @@ impl IpcTransport {
 
         // Safety check to prevent allocating huge buffers from corrupted data
         if len > MAX_MESSAGE_SIZE {
+            warn!("Too large message, frame skipped...");
             return Err(TransportError::MessageTooLarge { size: len });
         }
 
@@ -134,6 +135,7 @@ impl RawTransport for IpcTransport {
     async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
         debug!("Locking writer...");
         let mut writer = self.writer.lock().await;
+        debug!("Writer locked");
         let len = frame.len() as u32;
 
         // Write header
@@ -148,7 +150,7 @@ impl RawTransport for IpcTransport {
             .await
             .map_err(|e| TransportError::Io { source: e })?;
 
-        debug!("Frame sent successfully");
+        debug!("Frame sent successfully, unlocking writer...");
         Ok(())
     }
 
@@ -156,7 +158,10 @@ impl RawTransport for IpcTransport {
     async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
         debug!("Waiting for reader lock...");
         let mut reader = self.reader.lock().await;
-        Self::read_frame_internal(&mut reader).await
+        debug!("Reader locked");
+        let res = Self::read_frame_internal(&mut reader).await;
+        debug!("Unlocking reader lock...");
+        res
     }
 }
 
