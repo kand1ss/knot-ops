@@ -107,7 +107,7 @@ where
 
         Self {
             raw_transport,
-            next_id: AtomicU32::new(0),
+            next_id: AtomicU32::new(1),
             shared,
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
