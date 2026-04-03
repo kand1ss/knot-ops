@@ -81,6 +81,7 @@ mod pipeline;
 /// this trait, developers can hook into the message processing lifecycle
 /// to provide cross-cutting concerns like logging, validation, or security.
 pub mod traits;
+pub mod types;
 pub use pipeline::*;
 
 #[cfg(test)]

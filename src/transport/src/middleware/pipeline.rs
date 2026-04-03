@@ -125,13 +125,13 @@ where
 ///
 /// Passed to [`Middleware::on_recv`], it allows the current layer to delegate
 /// processing to the next middleware in the pipeline.
-pub struct Inbound<'a, R: RawTransport, S: TransportSpec>(&'a mut NextState<'a, R, S>);
+pub struct Inbound<'a, R: RawTransport, S: TransportSpec>(pub(crate) &'a mut NextState<'a, R, S>);
 
 /// A handle representing the remaining part of the outbound middleware chain.
 ///
 /// Passed to [`Middleware::on_send`], it serves as a continuation for outgoing
 /// messages, moving them further down the stack towards the transport.
-pub struct Outbound<'a, R: RawTransport, S: TransportSpec>(&'a mut NextState<'a, R, S>);
+pub struct Outbound<'a, R: RawTransport, S: TransportSpec>(pub(crate) &'a mut NextState<'a, R, S>);
 
 /// An internal "cursor" that tracks the progression of a message through the [`Pipeline`].
 ///
@@ -141,11 +141,11 @@ pub struct Outbound<'a, R: RawTransport, S: TransportSpec>(&'a mut NextState<'a,
 ///
 /// # Lifetimes
 /// * `'a`: Ties the state to the parent [`Pipeline`] to prevent dangling references.
-struct NextState<'a, R: RawTransport, S: TransportSpec> {
+pub(crate) struct NextState<'a, R: RawTransport, S: TransportSpec> {
     /// The index of the middleware to be executed next.
-    next_index: usize,
+    pub(crate) next_index: usize,
     /// A reference to the parent pipeline containing the middleware vector.
-    pipeline: &'a Pipeline<R, S>,
+    pub(crate) pipeline: &'a Pipeline<R, S>,
 }
 
 impl<'a, R, S> Inbound<'a, R, S>
