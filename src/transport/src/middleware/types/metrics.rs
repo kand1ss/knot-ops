@@ -11,11 +11,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 use std::time::Instant;
-
-// Собирает статистику, метрики
-// Общее количество отправленных/полученных сообщений, из них запросов
-// Измерение времени получения ответа после отправки запроса
-// Количество провалившихся отправок
+use tracing::{debug, instrument, trace, warn};
 
 #[derive(Debug)]
 pub struct MessagesStatsData {
@@ -31,15 +27,24 @@ pub struct MessagesStats {
     pub total_failed: AtomicU64,
 }
 impl MessagesStats {
+    #[instrument(skip(self), name = "message_sent_metrics", level = "trace")]
     fn send(&self) {
-        self.total_sent.fetch_add(1, Ordering::Relaxed);
+        let n = self.total_sent.fetch_add(1, Ordering::Relaxed) + 1;
+        trace!(total_sent = n, "Message sent recorded");
     }
+
+    #[instrument(skip(self), name = "message_received_metrics", level = "trace")]
     fn receive(&self) {
-        self.total_received.fetch_add(1, Ordering::Relaxed);
+        let n = self.total_received.fetch_add(1, Ordering::Relaxed) + 1;
+        trace!(total_received = n, "Message received recorded");
     }
+
+    #[instrument(skip(self), name = "message_failed_metrics", level = "warn")]
     fn fail(&self) {
-        self.total_failed.fetch_add(1, Ordering::Relaxed);
+        let n = self.total_failed.fetch_add(1, Ordering::Relaxed) + 1;
+        warn!(total_failed = n, "Message failed recorded");
     }
+
     pub fn get(&self) -> MessagesStatsData {
         MessagesStatsData {
             total_sent: self.total_sent.load(Ordering::Acquire),
@@ -103,15 +108,24 @@ impl Default for RequestsStats {
     }
 }
 impl RequestsStats {
+    #[instrument(skip(self), name = "request_sent_metrics", level = "trace")]
     async fn send(&self, msg_id: u32) {
-        self.total_sent.fetch_add(1, Ordering::Relaxed);
+        let total = self.total_sent.fetch_add(1, Ordering::Relaxed) + 1;
         let mut shared = self.shared.write().await;
 
         shared.pending_requests.insert(msg_id, Instant::now());
         if shared.failed.remove(&msg_id) {
-            self.total_retried.fetch_add(1, Ordering::Relaxed);
+            let retried = self.total_retried.fetch_add(1, Ordering::Relaxed) + 1;
+            debug!(
+                total_retried = retried,
+                "Request retried after previous failure"
+            );
+        } else {
+            trace!(total_sent = total, "Request sent recorded");
         }
     }
+
+    #[instrument(skip(self), name = "request_received_metrics", level = "trace")]
     async fn receive(&self, msg_id: u32) {
         let mut shared = self.shared.write().await;
 
@@ -125,16 +139,35 @@ impl RequestsStats {
             let avg = shared.avg_latency as i64;
             let new_avg = avg + (ms as i64 - avg) / shared.total_received as i64;
             shared.avg_latency = new_avg as u64;
-        }
 
-        self.total_received.fetch_add(1, Ordering::Relaxed);
+            let total = self.total_received.fetch_add(1, Ordering::Relaxed) + 1;
+            debug!(
+                latency_ms = ms,
+                avg_latency_ms = shared.avg_latency,
+                min_latency_ms = shared.min_latency,
+                max_latency_ms = shared.max_latency,
+                total_received = total,
+                "Request completed recorded"
+            );
+        } else {
+            self.total_received.fetch_add(1, Ordering::Relaxed);
+            warn!("Received response for unknown or duplicate request id");
+        }
     }
+
+    #[instrument(skip(self), name = "request_failed_metrics", level = "warn")]
     async fn fail(&self, msg_id: u32) {
         let mut shared = self.shared.write().await;
 
         if shared.pending_requests.remove(&msg_id).is_some() {
-            self.total_failed.fetch_add(1, Ordering::Relaxed);
+            let total = self.total_failed.fetch_add(1, Ordering::Relaxed) + 1;
             shared.failed.insert(msg_id);
+            warn!(
+                total_failed = total,
+                "Request failed, queued for retry tracking"
+            );
+        } else {
+            trace!("Fail called for id not in pending, ignoring...");
         }
     }
     pub async fn get(&self) -> RequestsStatsData {
@@ -166,15 +199,24 @@ pub struct EventsStats {
     pub total_failed: AtomicU64,
 }
 impl EventsStats {
+    #[instrument(skip(self), name = "event_sent_metrics", level = "trace")]
     fn send(&self) {
-        self.total_sent.fetch_add(1, Ordering::Relaxed);
+        let n = self.total_sent.fetch_add(1, Ordering::Relaxed) + 1;
+        trace!(total_sent = n, "Event sent recorded");
     }
+
+    #[instrument(skip(self), name = "event_received_metrics", level = "trace")]
     fn receive(&self) {
-        self.total_received.fetch_add(1, Ordering::Relaxed);
+        let n = self.total_received.fetch_add(1, Ordering::Relaxed) + 1;
+        trace!(total_received = n, "Event received recorded");
     }
+
+    #[instrument(skip(self), name = "event_failed_metrics", level = "warn")]
     fn fail(&self) {
-        self.total_failed.fetch_add(1, Ordering::Relaxed);
+        let n = self.total_failed.fetch_add(1, Ordering::Relaxed) + 1;
+        warn!(total_failed = n, "Event failed recorded");
     }
+
     pub fn get(&self) -> EventsStatsData {
         EventsStatsData {
             total_sent: self.total_sent.load(Ordering::Acquire),
@@ -192,15 +234,17 @@ pub struct TransportMetrics<S: TransportSpec> {
     _marker: PhantomData<S>,
 }
 impl<S: TransportSpec> TransportMetrics<S> {
+    #[instrument(skip(self, msg), fields(msg_id = msg.id(), kind = ?msg.kind), name = "sent_metrics", level = "trace")]
     async fn send(&self, msg: &Message<S::Req, S::Res, S::Ev>) {
         self.messages.send();
         match msg.kind {
             MessageKind::Request(_) => self.requests.send(msg.id()).await,
             MessageKind::Event(_) => self.events.send(),
-            _ => {}
+            _ => trace!("Outbound message (non-tracked kind)"),
         }
     }
 
+    #[instrument(skip(self, msg), fields(msg_id = msg.id(), kind = ?msg.kind), name = "received_metrics", level = "trace")]
     async fn receive(&self, msg: &Message<S::Req, S::Res, S::Ev>) {
         self.messages.receive();
         match msg.kind {
@@ -210,6 +254,7 @@ impl<S: TransportSpec> TransportMetrics<S> {
         }
     }
 
+    #[instrument(skip(self, msg), fields(msg_id = msg.id(), kind = ?msg.kind), name = "failed_metrics", level = "warn")]
     async fn fail(&self, msg: &Message<S::Req, S::Res, S::Ev>) {
         self.messages.fail();
         match msg.kind {
@@ -243,6 +288,7 @@ where
     R: RawTransport,
     S: TransportSpec,
 {
+    #[instrument(skip(self, msg, next), fields(msg_id = msg.id(), kind = ?msg.kind), name = "metrics_middleware_recv", level = "trace")]
     async fn on_recv(
         &self,
         msg: &Message<S::Req, S::Res, S::Ev>,
@@ -250,12 +296,14 @@ where
     ) -> Result<(), TransportError> {
         self.0.receive(msg).await;
         if let Err(e) = next.run(msg).await {
+            warn!(error = %e, "inbound pipeline error");
             self.0.fail(msg).await;
             return Err(e);
         }
         Ok(())
     }
 
+    #[instrument(skip(self, msg, next), fields(msg_id = msg.id(), kind = ?msg.kind), name = "metrics_middleware_send", level = "trace")]
     async fn on_send(
         &self,
         msg: &mut Message<S::Req, S::Res, S::Ev>,
@@ -263,6 +311,7 @@ where
     ) -> Result<(), TransportError> {
         self.0.send(msg).await;
         if let Err(e) = next.run(msg).await {
+            warn!(error = %e, "outbound pipeline error");
             self.0.fail(msg).await;
             return Err(e);
         }

@@ -16,7 +16,7 @@ use std::fmt::Debug;
 /// interaction patterns between the CLI and the background process.
 /// It binds together the command set, response types, and the binary
 /// serialization format used in production.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DaemonTransportSpec;
 impl TransportSpec for DaemonTransportSpec {
     type Req = DaemonRequest;
