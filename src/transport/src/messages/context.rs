@@ -110,7 +110,7 @@ where
         name = "context_emit"
     )]
     pub async fn emit(&self, msg: Message<S::Req, S::Res, S::Ev>) -> Result<(), TransportError> {
-        info!("Emitting arbitrary message...");
+        debug!("Emitting arbitrary message...");
 
         if let Err(e) = self.transport.send(msg).await {
             error!(error = %e, "Failed to emit message");

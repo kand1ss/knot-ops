@@ -17,7 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     sync::Mutex,
 };
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::transport::{MAX_MESSAGE_SIZE, RawTransport};
 use knot_core::errors::TransportError;
@@ -133,9 +133,9 @@ impl IpcTransport {
 impl RawTransport for IpcTransport {
     /// Encodes and sends a frame using a 4-byte length prefix (Big-Endian).
     async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
-        debug!("Locking writer...");
+        trace!("Locking writer...");
         let mut writer = self.writer.lock().await;
-        debug!("Writer locked");
+        trace!("Writer locked");
         let len = frame.len() as u32;
 
         // Write header
@@ -156,11 +156,11 @@ impl RawTransport for IpcTransport {
 
     /// Locks the reader and waits for the next incoming frame.
     async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
-        debug!("Waiting for reader lock...");
+        trace!("Waiting for reader lock...");
         let mut reader = self.reader.lock().await;
-        debug!("Reader locked");
+        trace!("Reader locked");
         let res = Self::read_frame_internal(&mut reader).await;
-        debug!("Unlocking reader lock...");
+        trace!("Unlocking reader lock...");
         res
     }
 }
@@ -203,7 +203,7 @@ impl Server for IpcServer {
 
         let name = resolve_socket_name(&socket_path)?;
 
-        debug!("Creating tokio local socket listener...");
+        trace!("Creating tokio local socket listener...");
         let listener = ListenerOptions::new()
             .name(name)
             .create_tokio()

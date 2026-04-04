@@ -16,7 +16,7 @@ use tokio::{
     sync::{Mutex, RwLock, mpsc, oneshot, watch},
     time::{Duration, timeout},
 };
-use tracing::{Span, debug, error, field, info, instrument, warn};
+use tracing::{Span, debug, error, field, info, instrument, trace, warn};
 
 mod handler;
 pub mod ipc;
@@ -131,7 +131,7 @@ where
         match &msg.kind {
             MessageKind::Response(_) => {
                 info!("Handling incoming response...");
-                debug!("Locking pending requests queue...");
+                trace!("Locking pending requests queue...");
                 let mut pending = shared.pending.lock().await;
 
                 if let Some(tx) = pending.remove(&msg.id) {
@@ -147,7 +147,7 @@ where
                 let _ = shared.inbox_tx.send(msg).await;
             }
         }
-        debug!("Pending requests queue was unlocked");
+        trace!("Pending requests queue was unlocked");
     }
 
     /// Background worker that reads frames from the raw transport and dispatches them.\
@@ -227,13 +227,13 @@ where
         mut msg: Message<S::Req, S::Res, S::Ev>,
     ) -> Result<(), TransportError> {
         self.ensure_is_alive()?;
-        debug!("Executing outbound pipeline...");
+        trace!("Executing outbound pipeline...");
         self.pipeline.read().await.execute_send(&mut msg).await?;
-        debug!("Outbound pipeline executed");
+        trace!("Outbound pipeline executed");
 
-        debug!("Encoding message...");
+        trace!("Encoding message...");
         let encoded = S::C::encode(&msg)?;
-        debug!("Message encoded");
+        trace!("Message encoded");
 
         debug!("Forwarding to raw transport...");
         let res = self.raw_transport.send_frame(&encoded).await;
