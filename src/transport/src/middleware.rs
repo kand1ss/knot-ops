@@ -81,6 +81,11 @@ mod pipeline;
 /// this trait, developers can hook into the message processing lifecycle
 /// to provide cross-cutting concerns like logging, validation, or security.
 pub mod traits;
+/// A collection of ready-to-use middleware implementations for the transport.
+///
+/// This module provides concrete types that implement the [`Middleware`] trait,
+/// offering common functionality like logging, metrics, and authentication
+/// out of the box.
 pub mod types;
 pub use pipeline::*;
 

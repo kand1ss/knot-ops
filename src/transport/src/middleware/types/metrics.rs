@@ -1,3 +1,24 @@
+//! Transport layer metrics and instrumentation.
+//!
+//! This module provides comprehensive metrics collection for message and request tracking
+//! across the transport layer. It includes real-time statistics on message throughput,
+//! request latency, and failure tracking with minimal synchronization overhead.
+//!
+//! # Architecture
+//!
+//! The module is organized around three main statistics types:
+//! - **Messages**: High-level throughput metrics (sent, received, failed).
+//! - **Requests**: Low-level request/response tracking with latency percentiles.
+//! - **Events**: Event-specific throughput metrics.
+//!
+//! Statistics are collected through the [`MetricsMiddleware`], which hooks into
+//! the inbound and outbound message pipeline.
+//!
+//! # Thread Safety
+//!
+//! All stats types use atomic operations (`AtomicU64`) for counters and a `RwLock`-protected
+//! shared state for latency calculations, ensuring safe concurrent access without locks
+//! on the hot path for simple increments.
 use crate::{
     messages::{Message, MessageKind},
     middleware::{Inbound, Outbound, traits::Middleware},
@@ -13,6 +34,17 @@ use std::sync::{
 use std::time::Instant;
 use tracing::{debug, instrument, trace, warn};
 
+/// Snapshot of message-level statistics.
+///
+/// This struct holds immutable counts of messages processed at the transport layer.
+/// It represents a point-in-time snapshot of metrics and is useful for reporting
+/// or monitoring overall message health without concern for latency details.
+///
+/// # Fields
+///
+/// * `total_sent` - Total number of messages sent since the start of the session.
+/// * `total_received` - Total number of messages received since the start of the session.
+/// * `total_failed` - Total number of messages that failed to process.
 #[derive(Debug)]
 pub struct MessagesStatsData {
     pub total_sent: u64,
@@ -20,6 +52,22 @@ pub struct MessagesStatsData {
     pub total_failed: u64,
 }
 
+/// Real-time message statistics collector.
+///
+/// This struct tracks message throughput using atomic counters. It is designed to be
+/// embedded in middleware or background services with minimal contention. All operations
+/// use relaxed atomic ordering except for the final `get()` snapshot, which uses
+/// acquire semantics to ensure visibility of prior writes.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let stats = MessagesStats::default();
+/// stats.send();      // Increment sent counter
+/// stats.receive();   // Increment received counter
+/// let data = stats.get();
+/// println!("Sent: {}, Received: {}", data.total_sent, data.total_received);
+/// ```
 #[derive(Debug, Default)]
 pub struct MessagesStats {
     pub total_sent: AtomicU64,
@@ -27,24 +75,44 @@ pub struct MessagesStats {
     pub total_failed: AtomicU64,
 }
 impl MessagesStats {
+    /// Record that a message was sent.
+    ///
+    /// Increments the `total_sent` counter and logs the new total at trace level.
+    /// This operation is lock-free and uses relaxed atomic ordering.
     #[instrument(skip(self), name = "message_sent_metrics", level = "trace")]
     fn send(&self) {
         let n = self.total_sent.fetch_add(1, Ordering::Relaxed) + 1;
         trace!(total_sent = n, "Message sent recorded");
     }
 
+    /// Record that a message was received.
+    ///
+    /// Increments the `total_received` counter and logs the new total at trace level.
+    /// This operation is lock-free and uses relaxed atomic ordering.
     #[instrument(skip(self), name = "message_received_metrics", level = "trace")]
     fn receive(&self) {
         let n = self.total_received.fetch_add(1, Ordering::Relaxed) + 1;
         trace!(total_received = n, "Message received recorded");
     }
 
+    /// Record that a message failed.
+    ///
+    /// Increments the `total_failed` counter and logs the new total at warn level.
+    /// This operation is lock-free and uses relaxed atomic ordering.
     #[instrument(skip(self), name = "message_failed_metrics", level = "warn")]
     fn fail(&self) {
         let n = self.total_failed.fetch_add(1, Ordering::Relaxed) + 1;
         warn!(total_failed = n, "Message failed recorded");
     }
 
+    /// Retrieve a snapshot of current message statistics.
+    ///
+    /// Returns a [`MessagesStatsData`] struct containing the current values of all counters.
+    /// Uses acquire ordering to ensure visibility of all prior increments across threads.
+    ///
+    /// # Returns
+    ///
+    /// A [`MessagesStatsData`] snapshot containing current totals.
     pub fn get(&self) -> MessagesStatsData {
         MessagesStatsData {
             total_sent: self.total_sent.load(Ordering::Acquire),
@@ -57,9 +125,20 @@ impl MessagesStats {
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
+/// Shared mutable state for request-level statistics.
+///
+/// This internal struct maintains detailed per-request tracking data:
+/// - Active pending requests indexed by message ID.
+/// - Failed requests that may be retried.
+/// - Latency calculations (min, max, average).
+///
+/// It is protected by a [`RwLock`] to allow concurrent reads during statistics snapshots
+/// and exclusive writes during latency updates.
 #[derive(Debug, Default)]
 struct RequestsSharedState {
+    /// Map of in-flight requests: message ID -> timestamp when sent.
     pending_requests: HashMap<u32, Instant>,
+    /// Set of request IDs that failed and may be retried.
     failed: HashSet<u32>,
 
     total_received: u64,
@@ -68,6 +147,10 @@ struct RequestsSharedState {
     max_latency: u64,
 }
 impl RequestsSharedState {
+    /// Create a new requests shared state with latency boundaries initialized.
+    ///
+    /// Sets `min_latency` to `u64::MAX` so that the first measurement properly
+    /// updates it to the actual minimum.
     fn new() -> Self {
         Self {
             min_latency: u64::MAX,
@@ -76,6 +159,21 @@ impl RequestsSharedState {
     }
 }
 
+/// Snapshot of request-level statistics including latency metrics.
+///
+/// This struct captures a point-in-time view of request/response performance,
+/// including throughput counts and latency percentiles (min, max, average).
+/// Useful for monitoring request performance and diagnosing transport issues.
+///
+/// # Fields
+///
+/// * `total_sent` - Total number of requests sent.
+/// * `total_received` - Total number of responses received.
+/// * `total_failed` - Total number of requests that failed.
+/// * `total_retried` - Total number of requests retried after failure.
+/// * `min_latency` - Minimum observed latency in milliseconds.
+/// * `max_latency` - Maximum observed latency in milliseconds.
+/// * `avg_latency` - Average latency in milliseconds (computed via running mean).
 #[derive(Debug)]
 pub struct RequestsStatsData {
     pub total_sent: u64,
@@ -87,8 +185,35 @@ pub struct RequestsStatsData {
     pub avg_latency: u64,
 }
 
+/// Real-time request/response statistics with latency tracking.
+///
+/// This struct tracks individual request lifecycle events (send, receive, fail) and
+/// computes latency statistics on response arrival. Atomic counters handle throughput,
+/// while a lock-protected shared state handles per-request timing data.
+///
+/// Request IDs are used to correlate sends with responses. If a request fails and is
+/// retried, it is marked in the `failed` set and the retry is counted separately.
+///
+/// # Latency Calculation
+///
+/// Average latency is computed using Welford's online algorithm to avoid overflow:
+/// ```text
+/// new_avg = old_avg + (sample - old_avg) / count
+/// ```
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let stats = RequestsStats::default();
+/// stats.send(request_id).await;
+/// // ... request is processed ...
+/// stats.receive(request_id).await;  // Latency is recorded
+/// let data = stats.get().await;
+/// println!("Avg latency: {} ms", data.avg_latency);
+/// ```
 #[derive(Debug)]
 pub struct RequestsStats {
+    /// Lock-protected state for per-request tracking and latency computation.
     shared: RwLock<RequestsSharedState>,
 
     pub total_sent: AtomicU64,
@@ -108,6 +233,15 @@ impl Default for RequestsStats {
     }
 }
 impl RequestsStats {
+    /// Record that a request was sent.
+    ///
+    /// Stores the send timestamp for the given message ID and increments the sent counter.
+    /// If this request was previously marked as failed, increments the retry counter instead
+    /// of logging a simple send.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_id` - Unique identifier for this request, used to correlate with responses.
     #[instrument(skip(self), name = "request_sent_metrics", level = "trace")]
     async fn send(&self, msg_id: u32) {
         let total = self.total_sent.fetch_add(1, Ordering::Relaxed) + 1;
@@ -125,6 +259,15 @@ impl RequestsStats {
         }
     }
 
+    /// Record that a response was received for a request.
+    ///
+    /// Looks up the corresponding send timestamp, computes the request latency in milliseconds,
+    /// and updates min/max/average latency statistics. If no pending request is found,
+    /// logs a warning (duplicate or unsolicited response).
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_id` - Unique identifier for the request that this response completes.
     #[instrument(skip(self), name = "request_received_metrics", level = "trace")]
     async fn receive(&self, msg_id: u32) {
         let mut shared = self.shared.write().await;
@@ -155,6 +298,15 @@ impl RequestsStats {
         }
     }
 
+    /// Record that a request failed.
+    ///
+    /// Removes the request from pending, increments the failed counter, and marks it
+    /// in the failed set for potential retry tracking. If the request ID was not found
+    /// in pending requests, this is a no-op.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_id` - Unique identifier for the request that failed.
     #[instrument(skip(self), name = "request_failed_metrics", level = "warn")]
     async fn fail(&self, msg_id: u32) {
         let mut shared = self.shared.write().await;
@@ -170,6 +322,15 @@ impl RequestsStats {
             trace!("Fail called for id not in pending, ignoring...");
         }
     }
+
+    /// Retrieve a snapshot of current request statistics.
+    ///
+    /// Returns a [`RequestsStatsData`] struct containing current counters and latency metrics.
+    /// Acquires a read lock to safely access latency data.
+    ///
+    /// # Returns
+    ///
+    /// A [`RequestsStatsData`] snapshot containing current totals and latency statistics.
     pub async fn get(&self) -> RequestsStatsData {
         let shared = self.shared.read().await;
 
@@ -185,6 +346,17 @@ impl RequestsStats {
     }
 }
 
+/// Snapshot of event-level statistics.
+///
+/// Similar to [`MessagesStatsData`], this struct holds immutable counts of events
+/// processed at the transport layer. It is useful for monitoring event throughput
+/// and failure rates independently from message and request metrics.
+///
+/// # Fields
+///
+/// * `total_sent` - Total number of events sent since the start of the session.
+/// * `total_received` - Total number of events received since the start of the session.
+/// * `total_failed` - Total number of events that failed to process.
 #[derive(Debug)]
 pub struct EventsStatsData {
     pub total_sent: u64,
@@ -192,6 +364,20 @@ pub struct EventsStatsData {
     pub total_failed: u64,
 }
 
+/// Real-time event statistics collector.
+///
+/// This struct tracks event throughput using atomic counters, similar to [`MessagesStats`].
+/// It is designed for efficient concurrent access with minimal overhead.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let stats = EventsStats::default();
+/// stats.send();      // Increment sent counter
+/// stats.receive();   // Increment received counter
+/// let data = stats.get();
+/// println!("Events sent: {}", data.total_sent);
+/// ```
 #[derive(Debug, Default)]
 pub struct EventsStats {
     pub total_sent: AtomicU64,
@@ -199,24 +385,44 @@ pub struct EventsStats {
     pub total_failed: AtomicU64,
 }
 impl EventsStats {
+    /// Record that an event was sent.
+    ///
+    /// Increments the `total_sent` counter and logs the new total at trace level.
+    /// This operation is lock-free and uses relaxed atomic ordering.
     #[instrument(skip(self), name = "event_sent_metrics", level = "trace")]
     fn send(&self) {
         let n = self.total_sent.fetch_add(1, Ordering::Relaxed) + 1;
         trace!(total_sent = n, "Event sent recorded");
     }
 
+    /// Record that an event was received.
+    ///
+    /// Increments the `total_received` counter and logs the new total at trace level.
+    /// This operation is lock-free and uses relaxed atomic ordering.
     #[instrument(skip(self), name = "event_received_metrics", level = "trace")]
     fn receive(&self) {
         let n = self.total_received.fetch_add(1, Ordering::Relaxed) + 1;
         trace!(total_received = n, "Event received recorded");
     }
 
+    /// Record that an event failed.
+    ///
+    /// Increments the `total_failed` counter and logs the new total at warn level.
+    /// This operation is lock-free and uses relaxed atomic ordering.
     #[instrument(skip(self), name = "event_failed_metrics", level = "warn")]
     fn fail(&self) {
         let n = self.total_failed.fetch_add(1, Ordering::Relaxed) + 1;
         warn!(total_failed = n, "Event failed recorded");
     }
 
+    /// Retrieve a snapshot of current event statistics.
+    ///
+    /// Returns an [`EventsStatsData`] struct containing the current values of all counters.
+    /// Uses acquire ordering to ensure visibility of all prior increments across threads.
+    ///
+    /// # Returns
+    ///
+    /// An [`EventsStatsData`] snapshot containing current totals.
     pub fn get(&self) -> EventsStatsData {
         EventsStatsData {
             total_sent: self.total_sent.load(Ordering::Acquire),
@@ -226,6 +432,24 @@ impl EventsStats {
     }
 }
 
+/// Unified metrics collector for all transport message types.
+///
+/// This generic struct aggregates [`MessagesStats`], [`RequestsStats`], and [`EventsStats`]
+/// into a single metrics container parameterized by a [`TransportSpec`] type. It provides
+/// a cohesive interface for recording lifecycle events across all message kinds (requests,
+/// responses, and events) and retrieving unified snapshots.
+///
+/// # Generic Parameters
+///
+/// * `S` - The transport specification type defining request, response, and event types.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let metrics = Arc::new(TransportMetrics::<MySpec>::default());
+/// metrics.send(&msg).await;
+/// let (msg_data, req_data, ev_data) = metrics.get().await;
+/// ```
 #[derive(Debug, Default)]
 pub struct TransportMetrics<S: TransportSpec> {
     messages: MessagesStats,
@@ -234,6 +458,14 @@ pub struct TransportMetrics<S: TransportSpec> {
     _marker: PhantomData<S>,
 }
 impl<S: TransportSpec> TransportMetrics<S> {
+    /// Record that a message was sent.
+    ///
+    /// Increments the general message counter and dispatches to the appropriate
+    /// message-kind-specific handler (request, event, etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The message being sent.
     #[instrument(skip(self, msg), fields(msg_id = msg.id(), kind = ?msg.kind), name = "sent_metrics", level = "trace")]
     async fn send(&self, msg: &Message<S::Req, S::Res, S::Ev>) {
         self.messages.send();
@@ -244,6 +476,14 @@ impl<S: TransportSpec> TransportMetrics<S> {
         }
     }
 
+    /// Record that a message was received.
+    ///
+    /// Increments the general message counter and dispatches to the appropriate
+    /// message-kind-specific handler (request, response, event, etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The message being received.
     #[instrument(skip(self, msg), fields(msg_id = msg.id(), kind = ?msg.kind), name = "received_metrics", level = "trace")]
     async fn receive(&self, msg: &Message<S::Req, S::Res, S::Ev>) {
         self.messages.receive();
@@ -254,6 +494,14 @@ impl<S: TransportSpec> TransportMetrics<S> {
         }
     }
 
+    /// Record that a message failed.
+    ///
+    /// Increments the general failure counter and dispatches to the appropriate
+    /// message-kind-specific failure handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The message that failed.
     #[instrument(skip(self, msg), fields(msg_id = msg.id(), kind = ?msg.kind), name = "failed_metrics", level = "warn")]
     async fn fail(&self, msg: &Message<S::Req, S::Res, S::Ev>) {
         self.messages.fail();
@@ -264,6 +512,14 @@ impl<S: TransportSpec> TransportMetrics<S> {
         }
     }
 
+    /// Retrieve a unified snapshot of all metrics.
+    ///
+    /// Returns a tuple of `(MessagesStatsData, RequestsStatsData, EventsStatsData)`
+    /// representing the current state of all three metric categories.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing snapshots for messages, requests, and events.
     pub async fn get(&self) -> (MessagesStatsData, RequestsStatsData, EventsStatsData) {
         (
             self.messages.get(),
@@ -273,21 +529,61 @@ impl<S: TransportSpec> TransportMetrics<S> {
     }
 }
 
+/// Middleware layer for transparent metrics collection.
+///
+/// This middleware component integrates [`TransportMetrics`] into the message processing
+/// pipeline. It records metrics for inbound and outbound messages while propagating
+/// the message to subsequent middleware or handlers.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let metrics = Arc::new(TransportMetrics::default());
+/// let mw = MetricsMiddleware::new(metrics.clone());
+/// // Add to middleware chain...
+/// ```
 #[derive(Debug, Default)]
 pub struct MetricsMiddleware<S: TransportSpec>(Arc<TransportMetrics<S>>);
 
 impl<S: TransportSpec> MetricsMiddleware<S> {
+    /// Create a new metrics middleware from an existing metrics collector.
+    ///
+    /// # Arguments
+    ///
+    /// * `metrics` - An `Arc<TransportMetrics<S>>` to use for recording.
+    ///
+    /// # Returns
+    ///
+    /// A new `MetricsMiddleware` instance wrapping the provided metrics.
     pub fn new(metrics: Arc<TransportMetrics<S>>) -> Self {
         MetricsMiddleware(metrics)
     }
 }
 
+/// Implementation of the middleware pipeline for metrics recording.
+///
+/// This trait implementation allows `MetricsMiddleware` to intercept both inbound
+/// and outbound messages, recording metrics before delegating to the next middleware.
+/// If the downstream pipeline encounters an error, the failure is also recorded.
 #[async_trait]
 impl<R, S> Middleware<R, S> for MetricsMiddleware<S>
 where
     R: RawTransport,
     S: TransportSpec,
 {
+    /// Handle an inbound message in the middleware chain.
+    ///
+    /// Records the received message and invokes the next middleware. If an error occurs,
+    /// the message failure is recorded and the error is propagated.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The received message.
+    /// * `next` - The next middleware in the chain.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if processing succeeds, or a [`TransportError`] if any middleware fails.
     #[instrument(skip(self, msg, next), fields(msg_id = msg.id(), kind = ?msg.kind), name = "metrics_middleware_recv", level = "trace")]
     async fn on_recv(
         &self,
@@ -296,13 +592,26 @@ where
     ) -> Result<(), TransportError> {
         self.0.receive(msg).await;
         if let Err(e) = next.run(msg).await {
-            warn!(error = %e, "inbound pipeline error");
+            warn!(error = %e, "Inbound pipeline error");
             self.0.fail(msg).await;
             return Err(e);
         }
         Ok(())
     }
 
+    /// Handle an outbound message in the middleware chain.
+    ///
+    /// Records the sent message and invokes the next middleware. If an error occurs,
+    /// the message failure is recorded and the error is propagated.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The message being sent (mutable to allow downstream modifications).
+    /// * `next` - The next middleware in the chain.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if processing succeeds, or a [`TransportError`] if any middleware fails.
     #[instrument(skip(self, msg, next), fields(msg_id = msg.id(), kind = ?msg.kind), name = "metrics_middleware_send", level = "trace")]
     async fn on_send(
         &self,
@@ -311,7 +620,7 @@ where
     ) -> Result<(), TransportError> {
         self.0.send(msg).await;
         if let Err(e) = next.run(msg).await {
-            warn!(error = %e, "outbound pipeline error");
+            warn!(error = %e, "Outbound pipeline error");
             self.0.fail(msg).await;
             return Err(e);
         }
