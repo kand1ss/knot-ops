@@ -6,8 +6,8 @@
 use crate::codec::MessageCodec;
 use crate::messages::{Message, MessageContext, MessageKind, MetadataMap};
 use crate::middleware::{Pipeline, traits::Middleware};
+use dashmap::DashMap;
 use knot_core::errors::TransportError;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,7 +28,6 @@ pub use traits::*;
 type MessageSender<S> = oneshot::Sender<
     Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>,
 >;
-type PendingMap<S> = HashMap<u32, MessageSender<S>>;
 
 /// Maximum allowed size for a single message (10 MB).
 /// Acts as a safeguard against memory exhaustion from malformed packets.
@@ -38,7 +37,7 @@ pub const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
 #[derive(Debug)]
 pub struct SharedState<S: TransportSpec> {
     /// Tracks requests waiting for a response.
-    pub pending: Mutex<PendingMap<S>>,
+    pub pending: DashMap<u32, MessageSender<S>>,
     /// Channel to send incoming requests or unhandled responses to the consumer.
     pub inbox_tx: mpsc::Sender<Message<S::Req, S::Res, S::Ev>>,
 }
@@ -89,12 +88,12 @@ where
 {
     /// Creates a new `MessageTransport` and spawns a background read loop.
     pub fn new(raw: R) -> Self {
-        let (inbox_tx, inbox_rx) = mpsc::channel(128);
+        let (inbox_tx, inbox_rx) = mpsc::channel(512);
         let raw_transport = Arc::new(raw);
         let (shutdown_tx, shutdown_rx) = watch::channel(true);
 
         let shared = Arc::new(SharedState {
-            pending: Mutex::new(HashMap::new()),
+            pending: DashMap::new(),
             inbox_tx,
         });
 
@@ -132,9 +131,8 @@ where
             MessageKind::Response(_) => {
                 info!("Handling incoming response...");
                 trace!("Locking pending requests queue...");
-                let mut pending = shared.pending.lock().await;
 
-                if let Some(tx) = pending.remove(&msg.id) {
+                if let Some((_, tx)) = shared.pending.remove(&msg.id) {
                     debug!("Dispatching response to waiting caller...");
                     let _ = tx.send(msg);
                 } else {
@@ -183,7 +181,7 @@ where
 
         // Clean up pending requests on transport failure
         warn!("Cleanup pending messages...");
-        shared.pending.lock().await.clear();
+        shared.pending.clear();
     }
 
     /// Registers a new middleware into the transport's processing pipeline.
@@ -288,15 +286,13 @@ where
 
         {
             debug!("Registering pending request...");
-            let mut pending = self.shared.pending.lock().await;
-            pending.insert(id, tx);
+            self.shared.pending.insert(id, tx);
         }
 
         let msg = Message::request(id, request).maybe_with_metadata(metadata);
         if let Err(e) = self.send(msg).await {
             warn!(error = %e, "Failed to send request, cleaning up...");
-            let mut pending = self.shared.pending.lock().await;
-            pending.remove(&id);
+            self.shared.pending.remove(&id);
             return Err(e);
         }
 
@@ -317,10 +313,8 @@ where
             }
             Err(_) => {
                 warn!("Request timed out after {}s", timeout_secs);
-                let mut pending = self.shared.pending.lock().await;
-
                 debug!("Removed pending request from messages queue...");
-                pending.remove(&id);
+                self.shared.pending.remove(&id);
 
                 Span::current().record("status", "timeout");
                 Err(TransportError::Timeout {

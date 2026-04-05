@@ -25,6 +25,9 @@ pub enum TransportError {
     #[error("invalid socket path: '{path}'")]
     InvalidSocketPath { path: PathBuf },
 
+    #[error("invalid metadata: '{metadata}'")]
+    InvalidMetadata { metadata: String },
+
     #[error("operation timed out after {seconds}s")]
     Timeout { seconds: u64 },
 
