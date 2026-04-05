@@ -2,55 +2,23 @@ use async_trait::async_trait;
 use knot_core::errors::TransportError;
 use knot_transport::{
     codec::{BinaryCodec, JsonCodec, MessageCodec},
-    messages::{Message, MessageContext, MessageKind, MetadataMap},
+    messages::{MessageContext, MessageKind, MetadataMap},
     middleware::{Inbound, Outbound, traits::Middleware},
     transport::{
-        MAX_MESSAGE_SIZE, MessageTransport, RawTransport, Server, TransportSpec,
+        MAX_MESSAGE_SIZE, RawTransport, Server,
         ipc::{IpcServer, IpcTransport},
     },
 };
 use rstest::*;
-use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::path::PathBuf;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use tokio::task::JoinHandle;
 
-fn sock(suffix: &str) -> PathBuf {
-    let mut path = std::env::temp_dir();
-    let thread_id = std::thread::current().id();
-    path.push(format!("knot-test-{}-{:?}.sock", suffix, thread_id));
-    path
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-enum Req {
-    Ping(i32),
-}
-#[derive(Serialize, Deserialize, Debug)]
-enum Res {
-    Pong(i32),
-}
-#[derive(Serialize, Deserialize, Debug)]
-enum Ev {
-    Event(i32),
-}
-
-#[derive(Debug)]
-struct Spec<C: MessageCodec<Raw = Vec<u8>>>(PhantomData<C>);
-impl<C: MessageCodec<Raw = Vec<u8>>> TransportSpec for Spec<C> {
-    type Req = Req;
-    type Res = Res;
-    type Ev = Ev;
-    type C = C;
-}
-
-type Trans<T, C> = MessageTransport<T, Spec<C>>;
-type Msg = Message<Req, Res, Ev>;
+mod fixtures;
+use fixtures::*;
 
 #[derive(Debug, Default)]
 pub struct Counter {
@@ -175,60 +143,6 @@ where
         msg.set_meta(self.tag, "1").unwrap();
         next.run(msg).await
     }
-}
-
-async fn echo_server<Cod>(socket_path: PathBuf) -> JoinHandle<()>
-where
-    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
-{
-    tokio::spawn(async move {
-        let server = IpcServer::bind(socket_path).await.unwrap();
-        server
-            .accept_with(
-                async |transport: MessageTransport<IpcTransport, Spec<Cod>>| {
-                    transport
-                        .serve_with(
-                            async |mut ctx: MessageContext<'_, IpcTransport, Spec<Cod>>| match ctx
-                                .kind()
-                            {
-                                MessageKind::Request(req) => {
-                                    let Req::Ping(val) = req;
-                                    let mut current_val = *val;
-                                    let mut metadata = MetadataMap::new();
-
-                                    if let Some(metadata_val) = ctx.get_meta("increment")
-                                        && let Ok(inc) = metadata_val.parse::<i32>()
-                                    {
-                                        current_val += inc;
-                                        metadata.insert_str("incremented", "true");
-                                    }
-
-                                    ctx.reply(Res::Pong(current_val), Some(metadata)).await
-                                }
-                                MessageKind::Event(ev) => {
-                                    let Ev::Event(val) = ev;
-                                    let mut metadata = MetadataMap::new();
-
-                                    if let Some(metadata_val) = ctx.get_meta("metadata")
-                                        && let Ok(inc) = metadata_val.parse::<bool>()
-                                        && inc
-                                    {
-                                        metadata.insert_str("metadata", "true");
-                                    }
-
-                                    let message =
-                                        Msg::event(Ev::Event(*val)).with_metadata(metadata);
-                                    ctx.emit(message).await
-                                }
-                                MessageKind::Response(_) => Ok(()),
-                            },
-                        )
-                        .await
-                },
-            )
-            .await
-            .unwrap()
-    })
 }
 
 #[rstest]
@@ -824,28 +738,6 @@ where
     assert!(matches!(response, Res::Pong(0)));
     srv.abort();
 }
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-enum BigReq {
-    Payload(String),
-}
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-enum BigRes {
-    Echo(String),
-}
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-enum BigEv {}
-
-#[derive(Debug)]
-struct BigSpec<C: MessageCodec<Raw = Vec<u8>>>(PhantomData<C>);
-impl<C: MessageCodec<Raw = Vec<u8>>> TransportSpec for BigSpec<C> {
-    type Req = BigReq;
-    type Res = BigRes;
-    type Ev = BigEv;
-    type C = C;
-}
-
-type BigTrans<C> = MessageTransport<IpcTransport, BigSpec<C>>;
 
 #[rstest]
 #[case::json(PhantomData::<JsonCodec>)]
