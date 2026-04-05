@@ -4,6 +4,7 @@ use knot_transport::{
     codec::{BinaryCodec, JsonCodec, MessageCodec},
     messages::{MessageContext, MessageKind, MetadataMap},
     middleware::{Inbound, Outbound, traits::Middleware},
+    test_utils::*,
     transport::{
         MAX_MESSAGE_SIZE, RawTransport, Server,
         ipc::{IpcServer, IpcTransport},
@@ -16,9 +17,6 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-
-mod fixtures;
-use fixtures::*;
 
 #[derive(Debug, Default)]
 pub struct Counter {

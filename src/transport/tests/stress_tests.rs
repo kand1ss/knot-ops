@@ -1,28 +1,22 @@
-use knot_transport::{
-    transport::{RawTransport, Server, ipc::{IpcTransport, IpcServer}},
-    messages::{MessageContext, MessageKind},
-    codec::{BinaryCodec, MessageCodec, JsonCodec},
-};
 use knot_core::errors::TransportError;
+use knot_transport::{
+    codec::{BinaryCodec, JsonCodec, MessageCodec},
+    messages::{MessageContext, MessageKind},
+    test_utils::*,
+    transport::{
+        RawTransport, Server,
+        ipc::{IpcServer, IpcTransport},
+    },
+};
 use rstest::*;
-use std::{
-    time::Instant,
-    marker::PhantomData,
-    sync::Arc
-};
-use tokio::{
-    time::Duration, 
-    task::JoinHandle
-};
-
-mod fixtures;
-use fixtures::*;
+use std::{marker::PhantomData, sync::Arc, time::Instant};
+use tokio::{task::JoinHandle, time::Duration};
 
 #[rstest]
 #[case::json(PhantomData::<JsonCodec>)]
 #[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 16)]
-async fn stress_concurrent_requests_10k<Cod>(#[case] _marker: PhantomData<Cod>) 
+async fn stress_concurrent_requests_10k<Cod>(#[case] _marker: PhantomData<Cod>)
 where
     Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
@@ -30,7 +24,7 @@ where
     let server = echo_server::<Cod>(path.clone()).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let client: Arc<Trans<IpcTransport, Cod>> = 
+    let client: Arc<Trans<IpcTransport, Cod>> =
         Arc::new(IpcTransport::connect(path).await.unwrap().to_messaged());
 
     let start = Instant::now();
@@ -62,7 +56,7 @@ where
 #[case::json(PhantomData::<JsonCodec>)]
 #[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test(flavor = "multi_thread")]
-async fn stress_sequential_requests_10k<Cod>(#[case] _marker: PhantomData<Cod>) 
+async fn stress_sequential_requests_10k<Cod>(#[case] _marker: PhantomData<Cod>)
 where
     Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
@@ -70,8 +64,7 @@ where
     let server = echo_server::<Cod>(path.clone()).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let client: Trans<IpcTransport, Cod> = 
-        IpcTransport::connect(path).await.unwrap().to_messaged();
+    let client: Trans<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
 
     let start = Instant::now();
 
@@ -83,7 +76,7 @@ where
             }
             Err(e) => panic!("Request {i} failed: {e}"),
         }
-        
+
         if i % 1_000 == 0 {
             println!("Progress: {i}/10000");
         }
@@ -100,9 +93,9 @@ where
 #[case::json(PhantomData::<JsonCodec>)]
 #[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test(flavor = "multi_thread")]
-async fn stress_large_payloads<C>(#[case] _marker: PhantomData<C>) 
+async fn stress_large_payloads<C>(#[case] _marker: PhantomData<C>)
 where
-    C: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static, 
+    C: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
     let path = sock("large_payload");
 
@@ -113,11 +106,12 @@ where
             let t: BigTrans<C> = server.accept().await.unwrap().to_messaged();
             t.serve_with(
                 async |mut ctx: MessageContext<'_, IpcTransport, BigSpec<C>>| {
-                    let res: Result<(), TransportError> = if let MessageKind::Request(BigReq::Payload(s)) = ctx.kind() {
-                        ctx.reply(BigRes::Echo(s.clone()), None).await
-                    } else {
-                        Ok(())
-                    };
+                    let res: Result<(), TransportError> =
+                        if let MessageKind::Request(BigReq::Payload(s)) = ctx.kind() {
+                            ctx.reply(BigRes::Echo(s.clone()), None).await
+                        } else {
+                            Ok(())
+                        };
                     res
                 },
             )
@@ -127,22 +121,24 @@ where
     });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
-    let client: BigTrans<C> = 
-        IpcTransport::connect(path).await.unwrap().to_messaged();
+    let client: BigTrans<C> = IpcTransport::connect(path).await.unwrap().to_messaged();
 
     let start = Instant::now();
 
     // Test with increasing sizes: 1MB, 2MB, 4MB, 8MB
     for size_mb in [1, 2, 4, 8] {
         let payload = "x".repeat(size_mb * 1024 * 1024);
-        
-        match client.request(BigReq::Payload(payload.clone()), 60, None).await {
+
+        match client
+            .request(BigReq::Payload(payload.clone()), 60, None)
+            .await
+        {
             Ok(BigRes::Echo(echo)) => {
                 assert_eq!(echo.len(), payload.len());
             }
             Err(e) => panic!("Failed for {size_mb}MB: {e}"),
         }
-        
+
         println!("{size_mb}MB roundtrip: OK");
     }
 
@@ -154,7 +150,7 @@ where
 #[case::json(PhantomData::<JsonCodec>)]
 #[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test]
-async fn stress_connection_churn<C>(#[case] _marker: PhantomData<C>) 
+async fn stress_connection_churn<C>(#[case] _marker: PhantomData<C>)
 where
     C: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
 {
@@ -169,13 +165,12 @@ where
                     tokio::spawn(async move {
                         t.serve_with(async |mut ctx: MessageContext<'_, IpcTransport, Spec<C>>| {
                             if let MessageKind::Request(Req::Ping(i)) = ctx.kind() {
-                                ctx.reply(
-                                    Res::Pong(*i),
-                                    None
-                                ).await.ok();
+                                ctx.reply(Res::Pong(*i), None).await.ok();
                             }
                             Ok(())
-                        }).await.ok();
+                        })
+                        .await
+                        .ok();
                     });
                 }
             }
@@ -190,10 +185,10 @@ where
     for i in 0..1000 {
         let raw = IpcTransport::connect(path.clone()).await.unwrap();
         let client = raw.to_messaged::<Spec<C>>();
-        
+
         client.request(Req::Ping(0), 10, None).await.ok();
         drop(client);
-        
+
         if i % 100 == 0 {
             println!("Created/destroyed {i} connections");
         }

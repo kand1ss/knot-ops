@@ -29,7 +29,7 @@
 //! logic to be reused across different IPC or network protocols while
 //! maintaining strict type safety for the underlying payloads.
 
-use knot_core::{utils::TimestampUtils, errors::TransportError};
+use knot_core::{errors::TransportError, utils::TimestampUtils};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -93,13 +93,20 @@ where
 
     pub fn validate_metadata(meta: &str, max_len: usize) -> Result<(), TransportError> {
         if meta.is_empty() || meta.len() > max_len {
-            return Err(TransportError::InvalidMetadata { metadata: meta.to_string() });
+            return Err(TransportError::InvalidMetadata {
+                metadata: meta.to_string(),
+            });
         }
-        
-        if !meta.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.') {
-            return Err(TransportError::InvalidMetadata { metadata: meta.to_string() });
+
+        if !meta
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+        {
+            return Err(TransportError::InvalidMetadata {
+                metadata: meta.to_string(),
+            });
         }
-        
+
         Ok(())
     }
 
@@ -122,7 +129,7 @@ where
         let val_str = value.into();
         Self::validate_metadata(&key_str, MAX_METADATA_KEY_LEN)?;
         Self::validate_metadata(&val_str, MAX_METADATA_VALUE_LEN)?;
-        
+
         self.metadata.insert_str(key_str, val_str);
         Ok(())
     }
@@ -629,7 +636,8 @@ mod messages_tests {
     fn test_metadata_cow_borrowed_does_not_allocate() {
         // Compile-time check: &'static str → Cow::Borrowed, no heap alloc
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta(Cow::Borrowed("static_key"), Cow::Borrowed("static_val")).unwrap();
+        msg.set_meta(Cow::Borrowed("static_key"), Cow::Borrowed("static_val"))
+            .unwrap();
         assert_eq!(msg.get_meta("static_key"), Some("static_val"));
     }
 
@@ -641,7 +649,8 @@ mod messages_tests {
         msg.set_meta(
             Cow::Owned(dynamic_key.clone()),
             Cow::Owned(dynamic_value.clone()),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(msg.get_meta(dynamic_key), Some(dynamic_value.as_str()));
     }
 
@@ -923,7 +932,8 @@ mod messages_tests {
     fn test_large_metadata_map() {
         let mut msg = TestMsg::request(1, req("x"));
         for i in 0..1_000 {
-            msg.set_meta(format!("key_{i}"), format!("value_{i}")).unwrap();
+            msg.set_meta(format!("key_{i}"), format!("value_{i}"))
+                .unwrap();
         }
         assert_eq!(msg.metadata.len(), 1_000);
         assert_eq!(msg.get_meta("key_999"), Some("value_999"));

@@ -64,3 +64,19 @@ pub mod transport;
 /// pre-configured with the standard Knot Daemon protocol types
 /// (`DaemonRequest`, `DaemonResponse`, and `DaemonEvent`).
 pub mod types;
+
+/// Internal utilities for testing and benchmarking the transport layer.
+///
+/// # Warning
+/// This module is **hidden** from the public API documentation because it is intended
+/// exclusively for internal use within the crate's integration tests and benchmarks.
+/// It should not be used by external consumers of the library.
+///
+/// # Contents
+/// - **Mock Servers**: Pre-configured echo servers for different codecs (JSON, Binary).
+/// - **Environment Management**: Helpers like `BenchEnv` for managing Tokio runtimes
+///   and unique socket paths during high-frequency benchmarking.
+/// - **Protocol Specs**: Simple and Large payload specifications used to stress-test
+///   the IPC transport limits.
+#[doc(hidden)]
+pub mod test_utils;
