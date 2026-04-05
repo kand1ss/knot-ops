@@ -219,7 +219,7 @@ impl Server for IpcServer {
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
-                .map_err(|e| TransportError::InvalidSocketPath {
+                .map_err(|_| TransportError::InvalidSocketPath {
                     path: socket_path.clone(),
                 })?;
         }
