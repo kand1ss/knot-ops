@@ -90,7 +90,7 @@ where
         }
         self.0.send_counter.fetch_add(1, Ordering::Relaxed);
 
-        msg.set_meta("counter_middleware", "true");
+        msg.set_meta("counter_middleware", "true").unwrap();
         next.run(msg).await
     }
 }
@@ -172,7 +172,7 @@ where
         msg: &mut Msg,
         next: Outbound<'_, IpcTransport, Spec<C>>,
     ) -> Result<(), TransportError> {
-        msg.set_meta(self.tag, "1");
+        msg.set_meta(self.tag, "1").unwrap();
         next.run(msg).await
     }
 }
@@ -437,7 +437,7 @@ where
 
     let client: Trans<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
     let mut message = Msg::event(Ev::Event(1));
-    message.set_meta("metadata", "true");
+    message.set_meta("metadata", "true").unwrap();
 
     client.send(message).await.unwrap();
     let ctx = client.recv().await.unwrap();

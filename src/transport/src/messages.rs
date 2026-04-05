@@ -29,7 +29,7 @@
 //! logic to be reused across different IPC or network protocols while
 //! maintaining strict type safety for the underlying payloads.
 
-use knot_core::utils::TimestampUtils;
+use knot_core::{utils::TimestampUtils, errors::TransportError};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -38,6 +38,9 @@ pub mod daemon;
 mod metadata;
 pub use context::*;
 pub use metadata::*;
+
+const MAX_METADATA_KEY_LEN: usize = 256;
+const MAX_METADATA_VALUE_LEN: usize = 512;
 
 /// The primary envelope for all system communication.
 ///
@@ -59,7 +62,7 @@ pub struct Message<Req, Res, Ev> {
     /// Using [`Cow<'static, str>`] enables high-performance storage:
     /// - **Static keys/values** (`&'static str`) are stored as references without heap allocation.
     /// - **Dynamic strings** (`String`) are automatically promoted to owned storage when needed.
-    pub metadata: MetadataMap,
+    metadata: MetadataMap,
 }
 
 /// Differentiates between the roles of a message within the protocol.
@@ -88,6 +91,18 @@ where
         }
     }
 
+    pub fn validate_metadata(meta: &str, max_len: usize) -> Result<(), TransportError> {
+        if meta.is_empty() || meta.len() > max_len {
+            return Err(TransportError::InvalidMetadata { metadata: meta.to_string() });
+        }
+        
+        if !meta.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.') {
+            return Err(TransportError::InvalidMetadata { metadata: meta.to_string() });
+        }
+        
+        Ok(())
+    }
+
     /// Adds or updates a metadata entry for the message.
     ///
     /// This method uses [`Cow<'static, str>`] for both keys and values, allowing
@@ -98,12 +113,18 @@ where
     /// ### Arguments
     /// * `key` - The metadata key (e.g., "correlation_id" or "version").
     /// * `value` - The value associated with the key.
-    pub fn set_meta<K, V>(&mut self, key: K, value: V)
+    pub fn set_meta<K, V>(&mut self, key: K, value: V) -> Result<(), TransportError>
     where
         K: Into<Cow<'static, str>>,
         V: Into<Cow<'static, str>>,
     {
-        self.metadata.insert_str(key, value);
+        let key_str = key.into();
+        let val_str = value.into();
+        Self::validate_metadata(&key_str, MAX_METADATA_KEY_LEN)?;
+        Self::validate_metadata(&val_str, MAX_METADATA_VALUE_LEN)?;
+        
+        self.metadata.insert_str(key_str, val_str);
+        Ok(())
     }
 
     /// Retrieves a metadata value by its key.
@@ -531,7 +552,7 @@ mod messages_tests {
     #[test]
     fn test_add_and_get_static_str_metadata() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta("version", "1.0");
+        msg.set_meta("version", "1.0").unwrap();
         assert_eq!(msg.get_meta("version"), Some("1.0"));
     }
 
@@ -540,7 +561,7 @@ mod messages_tests {
         let mut msg = TestMsg::request(1, req("x"));
         let key = String::from("trace_id");
         let value = String::from("abc-123");
-        msg.set_meta(key, value);
+        msg.set_meta(key, value).unwrap();
         assert_eq!(msg.get_meta("trace_id"), Some("abc-123"));
     }
 
@@ -553,41 +574,62 @@ mod messages_tests {
     #[test]
     fn test_add_metadata_overwrites_existing_key() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta("env", "staging");
-        msg.set_meta("env", "production");
+        msg.set_meta("env", "staging").unwrap();
+        msg.set_meta("env", "production").unwrap();
         assert_eq!(msg.get_meta("env"), Some("production"));
     }
 
     #[test]
     fn test_multiple_metadata_entries_stored_independently() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta("a", "1");
-        msg.set_meta("b", "2");
-        msg.set_meta("c", "3");
+        msg.set_meta("a", "1").unwrap();
+        msg.set_meta("b", "2").unwrap();
+        msg.set_meta("c", "3").unwrap();
         assert_eq!(msg.get_meta("a"), Some("1"));
         assert_eq!(msg.get_meta("b"), Some("2"));
         assert_eq!(msg.get_meta("c"), Some("3"));
     }
 
     #[test]
-    fn test_metadata_empty_value_allowed() {
+    fn test_metadata_empty_value_denied() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta("empty", "");
-        assert_eq!(msg.get_meta("empty"), Some(""));
+        let res = msg.set_meta("empty", "");
+
+        assert!(res.is_err());
+        assert_eq!(msg.get_meta("empty"), None);
     }
 
     #[test]
     fn test_metadata_unicode_key_and_value() {
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta("описание", "тест");
+        msg.set_meta("описание", "тест").unwrap();
         assert_eq!(msg.get_meta("описание"), Some("тест"));
+    }
+
+    #[test]
+    fn test_metadata_large_key() {
+        let mut msg = TestMsg::request(1, req("x"));
+        let large_key = "x".repeat(MAX_METADATA_KEY_LEN * 2);
+
+        let res = msg.set_meta(large_key.clone(), "value");
+        assert!(res.is_err());
+        assert_eq!(msg.get_meta(large_key), None)
+    }
+
+    #[test]
+    fn test_metadata_large_value() {
+        let mut msg = TestMsg::request(1, req("x"));
+        let res = msg.set_meta("key", "x".repeat(MAX_METADATA_VALUE_LEN * 2));
+
+        assert!(res.is_err());
+        assert_eq!(msg.get_meta("key"), None);
     }
 
     #[test]
     fn test_metadata_cow_borrowed_does_not_allocate() {
         // Compile-time check: &'static str → Cow::Borrowed, no heap alloc
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta(Cow::Borrowed("static_key"), Cow::Borrowed("static_val"));
+        msg.set_meta(Cow::Borrowed("static_key"), Cow::Borrowed("static_val")).unwrap();
         assert_eq!(msg.get_meta("static_key"), Some("static_val"));
     }
 
@@ -599,21 +641,21 @@ mod messages_tests {
         msg.set_meta(
             Cow::Owned(dynamic_key.clone()),
             Cow::Owned(dynamic_value.clone()),
-        );
+        ).unwrap();
         assert_eq!(msg.get_meta(dynamic_key), Some(dynamic_value.as_str()));
     }
 
     #[test]
     fn test_metadata_present_on_response() {
         let mut msg = TestMsg::response(5, res(true));
-        msg.set_meta("source", "handler");
+        msg.set_meta("source", "handler").unwrap();
         assert_eq!(msg.get_meta("source"), Some("handler"));
     }
 
     #[test]
     fn test_metadata_present_on_event() {
         let mut msg = TestMsg::event(ev("ping"));
-        msg.set_meta("node", "worker-1");
+        msg.set_meta("node", "worker-1").unwrap();
         assert_eq!(msg.get_meta("node"), Some("worker-1"));
     }
 
@@ -621,7 +663,7 @@ mod messages_tests {
     fn test_metadata_map_count() {
         let mut msg = TestMsg::request(1, req("x"));
         for i in 0..10 {
-            msg.set_meta(format!("k{i}"), format!("v{i}"));
+            msg.set_meta(format!("k{i}"), format!("v{i}")).unwrap();
         }
         assert_eq!(msg.metadata.len(), 10);
     }
@@ -735,7 +777,7 @@ mod messages_tests {
     async fn test_into_parts_message_preserves_metadata() {
         let transport = make_transport();
         let mut msg = TestMsg::request(1, req("x"));
-        msg.set_meta("trace", "t-001");
+        msg.set_meta("trace", "t-001").unwrap();
         let ctx = make_ctx(msg, &transport);
         let (parts_msg, _) = ctx.into_parts();
         assert_eq!(parts_msg.get_meta("trace"), Some("t-001"));
@@ -783,8 +825,8 @@ mod messages_tests {
     #[test]
     fn test_metadata_survives_serde_roundtrip() {
         let mut original = TestMsg::request(7, req("x"));
-        original.set_meta("key1", "val1");
-        original.set_meta("key2", "val2");
+        original.set_meta("key1", "val1").unwrap();
+        original.set_meta("key2", "val2").unwrap();
 
         let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
@@ -881,7 +923,7 @@ mod messages_tests {
     fn test_large_metadata_map() {
         let mut msg = TestMsg::request(1, req("x"));
         for i in 0..1_000 {
-            msg.set_meta(format!("key_{i}"), format!("value_{i}"));
+            msg.set_meta(format!("key_{i}"), format!("value_{i}")).unwrap();
         }
         assert_eq!(msg.metadata.len(), 1_000);
         assert_eq!(msg.get_meta("key_999"), Some("value_999"));
