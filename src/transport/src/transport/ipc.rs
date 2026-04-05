@@ -215,6 +215,15 @@ impl Server for IpcServer {
                 }
             })?;
 
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| TransportError::InvalidSocketPath {
+                    path: socket_path.clone(),
+                })?;
+        }
+
         info!("IpcServer successfully bound to socket");
         Ok(Self {
             listener,
