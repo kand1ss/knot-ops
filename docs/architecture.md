@@ -263,6 +263,7 @@ server.accept_with(async |transport: DaemonTransport| {
 
 ## See Also
 
-- [`src/transport/src/`](src/transport/src/) — Full implementation.
-- [`src/transport/tests/integration/`](src/transport/tests/integration/) — Integration test suite.
-- [`src/transport/Cargo.toml`](src/transport/Cargo.toml) — Dependencies (`tokio`, `interprocess`, `serde`, `tracing`).
+- [`src/transport/src/`](src/transport/src/) - Full implementation.
+- [`src/transport/tests/`](src/transport/tests/) - Integration & Stress test suite.
+- [`src/transport/benches/`](src/transport/benches) - Benchmarks.
+- [`src/transport/Cargo.toml`](src/transport/Cargo.toml) - Dependencies (`tokio`, `interprocess`, `serde`, `tracing`).
