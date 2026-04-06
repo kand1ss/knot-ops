@@ -63,7 +63,7 @@ where
     let mb_sizes = [1, 2, 4, 8];
     for size in mb_sizes {
         let data = "x".repeat(size * 1024 * 1024);
-        
+
         let t1 = Instant::now();
         let encoded = Cod::encode(&data).unwrap();
         let encode_time = t1.elapsed();
