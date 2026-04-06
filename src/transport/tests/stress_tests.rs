@@ -55,6 +55,33 @@ where
 #[rstest]
 #[case::json(PhantomData::<JsonCodec>)]
 #[case::binary(PhantomData::<BinaryCodec>)]
+#[test]
+fn stress_codec_roundtrip<Cod>(#[case] _marker: PhantomData<Cod>)
+where
+    Cod: MessageCodec<Raw = Vec<u8>> + Send + Sync + 'static,
+{
+    let mb_sizes = [1, 2, 4, 8];
+    for size in mb_sizes {
+        let data = "x".repeat(size * 1024 * 1024);
+        
+        let t1 = Instant::now();
+        let encoded = Cod::encode(&data).unwrap();
+        let encode_time = t1.elapsed();
+        let encoded_len = encoded.len();
+
+        let t2 = Instant::now();
+        let decoded: String = Cod::decode(encoded).unwrap();
+        let decode_time = t2.elapsed();
+
+        let decoded_len = Cod::encode(&decoded).unwrap().len();
+        assert_eq!(encoded_len, decoded_len);
+        println!("{size}MB: encode={encode_time:?}, decode={decode_time:?}");
+    }
+}
+
+#[rstest]
+#[case::json(PhantomData::<JsonCodec>)]
+#[case::binary(PhantomData::<BinaryCodec>)]
 #[tokio::test(flavor = "multi_thread")]
 async fn stress_sequential_requests_10k<Cod>(#[case] _marker: PhantomData<Cod>)
 where
