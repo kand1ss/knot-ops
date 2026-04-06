@@ -39,8 +39,8 @@ mod metadata;
 pub use context::*;
 pub use metadata::*;
 
-const MAX_METADATA_KEY_LEN: usize = 256;
-const MAX_METADATA_VALUE_LEN: usize = 512;
+pub const MAX_METADATA_KEY_LEN: usize = 256;
+pub const MAX_METADATA_VALUE_LEN: usize = 512;
 
 /// The primary envelope for all system communication.
 ///
