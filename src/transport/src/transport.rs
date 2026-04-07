@@ -279,7 +279,12 @@ where
         metadata: Option<MetadataMap>,
     ) -> Result<MessageContext<'_, R, S>, TransportError> {
         self.ensure_is_alive()?;
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let id = if id == 0 {
+            self.next_id.fetch_add(1, Ordering::Relaxed)
+        } else {
+            id
+        };
         Span::current().record("msg_id", id);
 
         let (tx, rx) = oneshot::channel();
