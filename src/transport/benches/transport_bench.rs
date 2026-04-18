@@ -386,7 +386,7 @@ async fn spawn_simple_echo_server<C: BenchCodec>(
             .accept_with(
                 async |transport: MessageTransport<IpcTransport, SimpleSpec<C>>| {
                     while let Ok(mut ctx) = transport.next().await {
-                        ctx.reply(SimpleRes::Pong, None).await?;
+                        ctx.reply(SimpleRes::Pong).await?;
                     }
                     Ok(())
                 },
@@ -404,7 +404,7 @@ async fn spawn_large_payload_server(path: &std::path::Path) -> tokio::task::Join
                 async |transport: MessageTransport<IpcTransport, LargePayloadSpec>| {
                     while let Ok(mut ctx) = transport.next().await {
                         if let MessageKind::Request(LargePayloadReq::Payload(s)) = ctx.kind() {
-                            ctx.reply(LargePayloadRes::Echo(s.clone()), None).await?;
+                            ctx.reply(LargePayloadRes::Echo(s.clone())).await?;
                         }
                     }
                     Ok(())

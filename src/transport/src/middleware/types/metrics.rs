@@ -672,7 +672,7 @@ mod tests {
     }
 
     fn make_event() -> Message<TestReq, TestRes, TestEv> {
-        Message::event(TestEv::Event)
+        Message::event(0, TestEv::Event)
     }
 
     mod messages_stats {

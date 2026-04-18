@@ -1,6 +1,6 @@
 use crate::{
     codec::MessageCodec,
-    messages::{Message, MessageContext, MessageKind, MetadataMap},
+    messages::{Message, MessageContext, MessageKind},
     transport::{
         MessageTransport, Server, TransportSpec,
         ipc::{IpcServer, IpcTransport},
@@ -83,31 +83,28 @@ where
                                 MessageKind::Request(req) => {
                                     let Req::Ping(val) = req;
                                     let mut current_val = *val;
-                                    let mut metadata = MetadataMap::new();
 
                                     if let Some(metadata_val) = ctx.get_meta("increment")
                                         && let Ok(inc) = metadata_val.parse::<i32>()
                                     {
                                         current_val += inc;
-                                        metadata.insert_str("incremented", "true");
+                                        ctx.set_meta("incremented", "true").unwrap();
                                     }
 
-                                    ctx.reply(Res::Pong(current_val), Some(metadata)).await
+                                    ctx.reply(Res::Pong(current_val)).await
                                 }
                                 MessageKind::Event(ev) => {
                                     let Ev::Event(val) = ev;
-                                    let mut metadata = MetadataMap::new();
+                                    let current_val = *val;
 
                                     if let Some(metadata_val) = ctx.get_meta("metadata")
                                         && let Ok(inc) = metadata_val.parse::<bool>()
                                         && inc
                                     {
-                                        metadata.insert_str("metadata", "true");
+                                        ctx.set_meta("metadata", "true").unwrap();
                                     }
 
-                                    let message =
-                                        Msg::event(Ev::Event(*val)).with_metadata(metadata);
-                                    ctx.emit(message).await
+                                    ctx.event(Ev::Event(current_val)).await
                                 }
                                 MessageKind::Response(_) => Ok(()),
                             },

@@ -163,7 +163,7 @@ where
             tokio::spawn(async move {
                 while let Ok(mut msg) = transport.recv().await {
                     if let MessageKind::Request(Req::Ping(val)) = msg.kind() {
-                        msg.reply(Res::Pong(*val), None).await.ok();
+                        msg.reply(Res::Pong(*val)).await.ok();
                     }
                 }
             });
@@ -324,7 +324,7 @@ where
 
     let client: Trans<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
     client
-        .send(Msg::event(Ev::Event(0)))
+        .send(Msg::event(0, Ev::Event(0)))
         .await
         .expect("failed event sending");
     let response = client.recv().await.expect("failed receiving response");
@@ -348,7 +348,7 @@ where
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let client: Trans<IpcTransport, Cod> = IpcTransport::connect(path).await.unwrap().to_messaged();
-    let mut message = Msg::event(Ev::Event(1));
+    let mut message = Msg::event(0, Ev::Event(1));
     message.set_meta("metadata", "true").unwrap();
 
     client.send(message).await.unwrap();
@@ -379,7 +379,7 @@ where
     let mut client: Trans<IpcTransport, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
     client.add_middleware(cm).await;
-    let message = Msg::event(Ev::Event(1));
+    let message = Msg::event(0, Ev::Event(1));
 
     client.send(message).await.unwrap();
     let ctx = client.recv().await.unwrap();
@@ -411,7 +411,7 @@ where
     let cm = CounterMiddleware(counter.clone(), PhantomData);
     let mut client: Trans<IpcTransport, Cod> =
         IpcTransport::connect(path).await.unwrap().to_messaged();
-    let message = Msg::event(Ev::Event(1));
+    let message = Msg::event(0, Ev::Event(1));
 
     client.send(message).await.unwrap();
     client.add_middleware(cm).await;
@@ -603,7 +603,7 @@ where
         .add_middleware(AbortMiddleware::<C>(PhantomData))
         .await;
 
-    let result = client.send(Msg::event(Ev::Event(0))).await;
+    let result = client.send(Msg::event(0, Ev::Event(0))).await;
     assert!(result.is_err(), "aborted send must propagate Err");
     srv.abort();
 }
@@ -645,12 +645,13 @@ where
             let server = IpcServer::bind(path).await.unwrap();
             let t: Trans<IpcTransport, C> = server.accept().await.unwrap().to_messaged();
             t.serve_with(async |mut ctx: MessageContext<'_, IpcTransport, Spec<C>>| {
-                if let MessageKind::Request(Req::Ping(v)) = ctx.kind() {
-                    let mut meta = MetadataMap::new();
+                if let MessageKind::Request(Req::Ping(v_ref)) = ctx.kind() {
+                    let v = *v_ref;
+
                     if ctx.get_meta("add_tag") == Some("yes") {
-                        meta.insert_str("tag_added", "true");
+                        ctx.set_meta("tag_added", "true").unwrap();
                     }
-                    ctx.reply(Res::Pong(*v), Some(meta)).await
+                    ctx.reply(Res::Pong(v)).await
                 } else {
                     Ok(())
                 }
@@ -725,7 +726,7 @@ where
             .unwrap()
             .to_messaged();
 
-        client.send(Msg::event(Ev::Event(0))).await.unwrap();
+        client.send(Msg::event(0, Ev::Event(0))).await.unwrap();
     }
 
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -755,7 +756,7 @@ where
             t.serve_with(
                 async |mut ctx: MessageContext<'_, IpcTransport, BigSpec<C>>| {
                     if let MessageKind::Request(BigReq::Payload(s)) = ctx.kind() {
-                        ctx.reply(BigRes::Echo(s.clone()), None).await
+                        ctx.reply(BigRes::Echo(s.clone())).await
                     } else {
                         Ok(())
                     }
@@ -800,7 +801,7 @@ where
             t.serve_with(
                 async |mut ctx: MessageContext<'_, IpcTransport, BigSpec<C>>| {
                     if let MessageKind::Request(BigReq::Payload(s)) = ctx.kind() {
-                        ctx.reply(BigRes::Echo(s.clone()), None).await
+                        ctx.reply(BigRes::Echo(s.clone())).await
                     } else {
                         Ok(())
                     }
@@ -845,7 +846,7 @@ where
             t.serve_with(
                 async |mut ctx: MessageContext<'_, IpcTransport, BigSpec<C>>| {
                     if let MessageKind::Request(BigReq::Payload(s)) = ctx.kind() {
-                        ctx.reply(BigRes::Echo(s.clone()), None).await
+                        ctx.reply(BigRes::Echo(s.clone())).await
                     } else {
                         Ok(())
                     }
@@ -897,7 +898,7 @@ where
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let client: Trans<IpcTransport, C> = IpcTransport::connect(path).await.unwrap().to_messaged();
-    client.send(Msg::event(Ev::Event(0))).await.unwrap();
+    client.send(Msg::event(0, Ev::Event(0))).await.unwrap();
     let ctx = client.recv().await.unwrap();
 
     // Server echoes event; it must not inject unexpected metadata
@@ -925,14 +926,14 @@ where
             let server = IpcServer::bind(path).await.unwrap();
             let t: Trans<IpcTransport, C> = server.accept().await.unwrap().to_messaged();
             t.serve_with(async |mut ctx: MessageContext<'_, IpcTransport, Spec<C>>| {
-                if let MessageKind::Request(Req::Ping(v)) = ctx.kind() {
-                    let mut meta = MetadataMap::new();
+                if let MessageKind::Request(Req::Ping(v_ref)) = ctx.kind() {
+                    let v = *v_ref;
                     // Echo back what the middleware injected
                     let tag_val = ctx.get_meta("mw_tag").map(|s| s.to_string());
                     if let Some(val) = tag_val {
-                        meta.insert_str("echo_mw_tag", val);
+                        ctx.set_meta("echo_mw_tag", val).unwrap();
                     }
-                    ctx.reply(Res::Pong(*v), Some(meta)).await
+                    ctx.reply(Res::Pong(v)).await
                 } else {
                     Ok(())
                 }

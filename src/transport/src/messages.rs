@@ -215,8 +215,8 @@ where
     ///
     /// # Arguments
     /// * `payload` - The event data (e.g., a broadcast notification).
-    pub fn event(payload: Ev) -> Self {
-        Self::new(0, MessageKind::Event(payload))
+    pub fn event(id: u32, payload: Ev) -> Self {
+        Self::new(id, MessageKind::Event(payload))
     }
 
     /// Returns the correlation ID of this message.
@@ -438,19 +438,19 @@ mod messages_tests {
 
     #[test]
     fn test_event_constructor_sets_kind() {
-        let msg = TestMsg::event(ev("service.started"));
+        let msg = TestMsg::event(0, ev("service.started"));
         assert!(matches!(msg.kind, MessageKind::Event(_)));
     }
 
     #[test]
     fn test_event_id_is_zero() {
-        let msg = TestMsg::event(ev("any"));
+        let msg = TestMsg::event(0, ev("any"));
         assert_eq!(msg.id, 0, "events must use id = 0");
     }
 
     #[test]
     fn test_event_stores_payload() {
-        let msg = TestMsg::event(ev("health.check"));
+        let msg = TestMsg::event(0, ev("health.check"));
         if let MessageKind::Event(e) = msg.kind {
             let TestEv::Kind(kind) = e;
             assert_eq!(kind, "health.check");
@@ -485,7 +485,7 @@ mod messages_tests {
 
     #[test]
     fn test_is_request_false_for_event() {
-        let msg = TestMsg::event(ev("e"));
+        let msg = TestMsg::event(0, ev("e"));
         assert!(!msg.is_request());
     }
 
@@ -503,13 +503,13 @@ mod messages_tests {
 
     #[test]
     fn test_is_response_false_for_event() {
-        let msg = TestMsg::event(ev("e"));
+        let msg = TestMsg::event(0, ev("e"));
         assert!(!msg.is_response());
     }
 
     #[test]
     fn test_is_event_true_for_event() {
-        let msg = TestMsg::event(ev("e"));
+        let msg = TestMsg::event(0, ev("e"));
         assert!(msg.is_event());
     }
 
@@ -539,7 +539,7 @@ mod messages_tests {
 
     #[test]
     fn test_id_accessor_event_is_zero() {
-        let msg = TestMsg::event(ev("e"));
+        let msg = TestMsg::event(0, ev("e"));
         assert_eq!(msg.id(), 0);
     }
 
@@ -663,7 +663,7 @@ mod messages_tests {
 
     #[test]
     fn test_metadata_present_on_event() {
-        let mut msg = TestMsg::event(ev("ping"));
+        let mut msg = TestMsg::event(0, ev("ping"));
         msg.set_meta("node", "worker-1").unwrap();
         assert_eq!(msg.get_meta("node"), Some("worker-1"));
     }
@@ -722,7 +722,7 @@ mod messages_tests {
     #[tokio::test]
     async fn test_context_kind_event() {
         let transport = make_transport();
-        let ctx = make_ctx(TestMsg::event(ev("boot")), &transport);
+        let ctx = make_ctx(TestMsg::event(0, ev("boot")), &transport);
         assert!(matches!(ctx.kind(), MessageKind::Event(_)));
     }
 
@@ -749,8 +749,8 @@ mod messages_tests {
         let transport = make_transport();
         let mut ctx = make_ctx(TestMsg::request(1, req("x")), &transport);
 
-        let r1 = ctx.reply(res(true), None).await;
-        let r2 = ctx.reply(res(true), None).await;
+        let r1 = ctx.reply(res(true)).await;
+        let r2 = ctx.reply(res(true)).await;
 
         assert!(r1.is_ok());
         assert!(r2.is_ok());
@@ -762,7 +762,7 @@ mod messages_tests {
         let mut ctx: MessageContext<'_, FailingRaw, TestSpec> =
             MessageContext::new(TestMsg::request(1, req("x")), &transport);
 
-        let result = ctx.reply(res(true), None).await;
+        let result = ctx.reply(res(true)).await;
         assert!(result.is_err(), "transport failure must propagate as Err");
     }
 
@@ -777,7 +777,7 @@ mod messages_tests {
     #[tokio::test]
     async fn test_into_parts_message_preserves_kind() {
         let transport = make_transport();
-        let ctx = make_ctx(TestMsg::event(ev("ev")), &transport);
+        let ctx = make_ctx(TestMsg::event(0, ev("ev")), &transport);
         let (msg, _tr) = ctx.into_parts();
         assert!(msg.is_event());
     }
@@ -820,7 +820,7 @@ mod messages_tests {
 
     #[test]
     fn test_event_serde_roundtrip() {
-        let original = TestMsg::event(ev("node.ready"));
+        let original = TestMsg::event(0, ev("node.ready"));
         let json = serde_json::to_string(&original).unwrap();
         let decoded: TestMsg = serde_json::from_str(&json).unwrap();
 
@@ -903,7 +903,7 @@ mod messages_tests {
     fn test_event_id_not_correlated() {
         // Confirm events always carry id = 0 regardless of what's happening around them
         let events: Vec<TestMsg> = (0..5)
-            .map(|i| TestMsg::event(ev(&format!("e{i}"))))
+            .map(|i| TestMsg::event(0, ev(&format!("e{i}"))))
             .collect();
         for e in &events {
             assert_eq!(e.id(), 0);
@@ -925,7 +925,7 @@ mod messages_tests {
     fn test_message_debug_does_not_panic() {
         let _ = format!("{:?}", TestMsg::request(1, req("dbg")));
         let _ = format!("{:?}", TestMsg::response(1, res(true)));
-        let _ = format!("{:?}", TestMsg::event(ev("dbg")));
+        let _ = format!("{:?}", TestMsg::event(0, ev("dbg")));
     }
 
     #[test]

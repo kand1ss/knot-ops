@@ -135,7 +135,7 @@ where
                 async |mut ctx: MessageContext<'_, IpcTransport, BigSpec<C>>| {
                     let res: Result<(), TransportError> =
                         if let MessageKind::Request(BigReq::Payload(s)) = ctx.kind() {
-                            ctx.reply(BigRes::Echo(s.clone()), None).await
+                            ctx.reply(BigRes::Echo(s.clone())).await
                         } else {
                             Ok(())
                         };
@@ -192,7 +192,7 @@ where
                     tokio::spawn(async move {
                         t.serve_with(async |mut ctx: MessageContext<'_, IpcTransport, Spec<C>>| {
                             if let MessageKind::Request(Req::Ping(i)) = ctx.kind() {
-                                ctx.reply(Res::Pong(*i), None).await.ok();
+                                ctx.reply(Res::Pong(*i)).await.ok();
                             }
                             Ok(())
                         })
