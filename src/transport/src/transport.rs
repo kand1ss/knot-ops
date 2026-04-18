@@ -106,7 +106,7 @@ where
 
         Self {
             raw_transport,
-            next_id: AtomicU32::new(1),
+            next_id: AtomicU32::new(0),
             shared,
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
@@ -280,11 +280,6 @@ where
     ) -> Result<MessageContext<'_, R, S>, TransportError> {
         self.ensure_is_alive()?;
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let id = if id == 0 {
-            self.next_id.fetch_add(1, Ordering::Relaxed)
-        } else {
-            id
-        };
         Span::current().record("msg_id", id);
 
         let (tx, rx) = oneshot::channel();
