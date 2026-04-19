@@ -4,6 +4,7 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+autobenches = false
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
