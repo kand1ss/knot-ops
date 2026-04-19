@@ -62,8 +62,18 @@ impl BenchEnv {
         base.join(format!("knot_{}_{}.sock", std::process::id(), id))
     }
 
-    pub fn cleanup_socket(&self, _path: &PathBuf) {
-        let _ = std::fs::remove_file(_path);
+    pub fn cleanup_socket(&self, path: &PathBuf) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+impl Drop for BenchEnv {
+    fn drop(&mut self) {
+        let base = std::env::current_dir()
+            .unwrap()
+            .join("target")
+            .join("bench_socks");
+        let _ = std::fs::remove_dir(base);
     }
 }
 
