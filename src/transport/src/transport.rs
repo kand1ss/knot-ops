@@ -77,6 +77,7 @@ where
     inbox_rx: InboxRx<S>,
     /// Zero-cost marker to link the transport to a specific serialization format.
     _phantom: PhantomData<S::C>,
+    _loop_handle: tokio::task::JoinHandle<()>,
     pipeline: RwLock<Pipeline<R, S>>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -98,7 +99,7 @@ where
         });
 
         // Spawn the worker that processes incoming frames
-        tokio::spawn(Self::read_loop(
+        let loop_handle = tokio::spawn(Self::read_loop(
             Arc::clone(&raw_transport),
             Arc::clone(&shared),
             shutdown_tx,
@@ -110,6 +111,7 @@ where
             shared,
             inbox_rx: Mutex::new(inbox_rx),
             _phantom: PhantomData,
+            _loop_handle: loop_handle,
             pipeline: RwLock::new(Pipeline::default()),
             shutdown_rx,
         }
@@ -509,5 +511,14 @@ where
         } else {
             Err(TransportError::ConnectionClosed)
         }
+    }
+}
+impl<R, S> Drop for MessageTransport<R, S>
+where
+    R: RawTransport,
+    S: TransportSpec,
+{
+    fn drop(&mut self) {
+        self._loop_handle.abort();
     }
 }
