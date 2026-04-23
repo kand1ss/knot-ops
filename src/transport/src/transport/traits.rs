@@ -97,6 +97,12 @@ pub trait RawTransport: Send + Sync + Sized + 'static {
     }
 }
 
+#[async_trait]
+pub trait RawTransportFactory {
+    type Transport: RawTransport;
+    async fn build(&self) -> Result<Self::Transport, TransportError>;
+}
+
 /// Interface for a network-based server that can accept new connections.
 ///
 /// A `Server` implementation manages the lifecycle of a listener (like a
