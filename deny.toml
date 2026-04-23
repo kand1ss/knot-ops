@@ -7,7 +7,8 @@ allow = [
     "Unicode-3.0",
     "BSD-3-Clause",
     "ISC",
-    "Zlib"
+    "Zlib",
+    "0BSD"
 ]
 
 [bans]
@@ -16,3 +17,6 @@ multiple-versions = "warn"
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 unmaintained = "all"
+ignore = [
+    "RUSTSEC-2025-0141",
+]
