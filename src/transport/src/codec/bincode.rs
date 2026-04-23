@@ -71,14 +71,26 @@ impl MessageCodec for BinaryCodec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::{
-        MessageKind,
-        daemon::{DaemonMessage, DaemonRequest, DaemonResponse},
-    };
+    use crate::messages::{Message, MessageKind};
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    enum DaemonRequest {
+        Ping,
+    }
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    enum DaemonResponse {
+        Pong,
+    }
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    enum DaemonEvent {
+        Event,
+    }
+    type DaemonMessage = Message<DaemonRequest, DaemonResponse, DaemonEvent>;
 
     #[test]
     fn test_binary_codec_serialize_deserialize() {
-        let msg: DaemonMessage = DaemonMessage::request(42, DaemonRequest::Down);
+        let msg: DaemonMessage = DaemonMessage::request(42, DaemonRequest::Ping);
 
         let raw = BinaryCodec::encode(&msg).unwrap();
         let decoded: DaemonMessage = BinaryCodec::decode(raw).unwrap();
@@ -89,8 +101,7 @@ mod tests {
 
     #[test]
     fn test_binary_deserialize_response() {
-        let msg: DaemonMessage =
-            DaemonMessage::response(42, DaemonResponse::Status { services: vec![] });
+        let msg: DaemonMessage = DaemonMessage::response(42, DaemonResponse::Pong);
 
         let raw = BinaryCodec::encode(&msg).unwrap();
         let decoded: DaemonMessage = BinaryCodec::decode(raw).unwrap();
@@ -98,7 +109,7 @@ mod tests {
         assert_eq!(decoded.id, 42);
         assert!(matches!(
             decoded.kind,
-            MessageKind::Response(DaemonResponse::Status { .. })
+            MessageKind::Response(DaemonResponse::Pong)
         ));
     }
 

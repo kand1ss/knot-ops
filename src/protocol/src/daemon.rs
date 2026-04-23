@@ -5,7 +5,6 @@
 //! It includes request/response structures for managing process lifecycles,
 //! querying service health, and retrieving system status.
 
-use crate::messages::Message;
 use knot_core::data::ServiceData;
 use knot_core::states::ServiceStatus;
 use knot_core::utils::TimestampUtils;
@@ -46,8 +45,10 @@ impl From<&ServiceData> for ServiceStatusResponse {
 }
 
 /// Commands sent from the CLI to the Knot Daemon.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonRequest {
+    /// Request to start up the daemon and all services.
+    Up,
     /// Request to gracefully shut down the daemon and all managed services.
     Down,
     /// Request to retrieve the status of all currently registered services.
@@ -59,16 +60,12 @@ pub enum DaemonRequest {
 pub enum DaemonResponse {
     /// Indicates that the requested operation was received.
     Ok,
+    /// Indicates that the requested operation is done.
+    Done,
     /// Indicates a failure occurred during the operation.
-    Error {
-        /// Human-readable explanation of what went wrong.
-        message: String,
-    },
+    Error(String),
     /// Contains a list of service snapshots in response to a `Status` request.
-    Status {
-        /// A vector of individual service statuses.
-        services: Vec<ServiceStatusResponse>,
-    },
+    Status(Vec<ServiceStatusResponse>),
 }
 
 /// Represents asynchronous notifications sent from the Daemon to connected clients.
@@ -83,8 +80,20 @@ pub enum DaemonEvent {
     ServiceEvent(ServiceStatusResponse),
 }
 
-/// Concrete type alias for the Knot message protocol.
+use knot_transport::{codec::BinaryCodec, transport::TransportSpec};
+use std::fmt::Debug;
+
+/// The default protocol specification for the Knot Daemon.
 ///
-/// This combines the generic `Message` envelope with Knot-specific
-/// requests and responses.
-pub type DaemonMessage = Message<DaemonRequest, DaemonResponse, DaemonEvent>;
+/// This structure implements [`TransportSpec`] to define the standard
+/// interaction patterns between the CLI and the background process.
+/// It binds together the command set, response types, and the binary
+/// serialization format used in production.
+#[derive(Debug, Default)]
+pub struct DaemonTransportSpec;
+impl TransportSpec for DaemonTransportSpec {
+    type Req = DaemonRequest;
+    type Res = DaemonResponse;
+    type Ev = DaemonEvent;
+    type C = BinaryCodec;
+}

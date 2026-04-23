@@ -58,13 +58,6 @@ pub mod middleware;
 /// the `Server` trait for building listening services (e.g., Unix Domain Sockets).
 pub mod transport;
 
-/// Type aliases and convenience definitions for the Knot protocol.
-///
-/// This module provides specialized type aliases for `MessageTransport`
-/// pre-configured with the standard Knot Daemon protocol types
-/// (`DaemonRequest`, `DaemonResponse`, and `DaemonEvent`).
-pub mod types;
-
 /// Internal utilities for testing and benchmarking the transport layer.
 ///
 /// # Warning

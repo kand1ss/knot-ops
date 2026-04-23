@@ -34,7 +34,6 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 mod context;
-pub mod daemon;
 mod metadata;
 pub use context::*;
 pub use metadata::*;

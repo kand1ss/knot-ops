@@ -1,0 +1,12 @@
+[package]
+name = "knot-protocol"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+knot-core = { path = "../core" }
+knot-transport = { path = "../transport" }

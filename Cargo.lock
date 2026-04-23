@@ -456,6 +456,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "knot-client"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "knot-core",
+ "knot-protocol",
+ "knot-transport",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "knot-core"
 version = "0.1.0"
 dependencies = [
@@ -464,12 +476,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "knot-sdk"
+name = "knot-protocol"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "tokio",
- "tracing",
+ "knot-core",
+ "knot-transport",
+ "serde",
 ]
 
 [[package]]
