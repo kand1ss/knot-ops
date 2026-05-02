@@ -47,6 +47,8 @@ impl From<&ServiceData> for ServiceStatusResponse {
 /// Commands sent from the CLI to the Knot Daemon.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonRequest {
+    /// Request to ping the daemon to ensure he is working.
+    Ping,
     /// Request to start up the daemon and all services.
     Up,
     /// Request to gracefully shut down the daemon and all managed services.
@@ -58,6 +60,8 @@ pub enum DaemonRequest {
 /// Information sent from the Knot Daemon back to the CLI.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DaemonResponse {
+    /// Indicates that the 'ping' request was received.
+    Pong,
     /// Indicates that the requested operation was received.
     Ok,
     /// Indicates that the requested operation is done.
