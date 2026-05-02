@@ -5,10 +5,7 @@ mod daemon;
 mod services;
 mod transport;
 
-pub use {
-    client::ClientError, config::ConfigError, daemon::DaemonError, services::ServiceError,
-    transport::TransportError,
-};
+pub use {client::*, config::*, daemon::*, services::*, transport::*};
 
 #[derive(Debug, Error)]
 pub enum KnotError {
