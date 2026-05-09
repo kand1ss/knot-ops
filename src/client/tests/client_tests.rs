@@ -302,7 +302,7 @@ async fn test_healthcheck_stale_socket() {
 
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
-async fn test_event_stream() {
+async fn test_inbox_stream() {
     let workspace = setup_temp_workspace("event_stream");
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let socket_path = knot_dir.join(KNOT_SOCKET_FILE);

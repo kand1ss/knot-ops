@@ -1,23 +1,25 @@
 use knot_core::consts::KNOT_FOLDER_NAME;
 use std::path::{Path, PathBuf};
-use tracing::instrument;
+use tracing::{instrument, info, debug, warn};
 
 /// Recursively searches for the `.knot` configuration directory starting from the given path
 /// and moving up the directory tree.
 ///
 /// Returns the path to the `.knot` directory if found, or `None` otherwise.
-#[instrument(skip_all, fields(start_path = %start.display()))]
+#[instrument(skip_all)]
 pub fn recursively_find_knot(start: &Path) -> Option<PathBuf> {
     let mut current_path = start.to_path_buf();
+    debug!("Started recursive search of .knot directory");
 
     loop {
         let potential_knot = current_path.join(KNOT_FOLDER_NAME);
-
         if potential_knot.is_dir() {
+            info!("Directory was found at '{}'", potential_knot.display());
             return Some(potential_knot);
         }
 
         if !current_path.pop() {
+            warn!("Directory .knot was not found");
             break;
         }
     }

@@ -1,6 +1,6 @@
 use crate::{
     launcher::{DaemonLauncher, DefaultLauncher},
-    stream::EventStream,
+    stream::InboxStream,
     utils::recursively_find_knot,
 };
 use knot_core::{
@@ -342,11 +342,11 @@ impl<R: RawTransport> KnotClient<R> {
     async fn execute_with_stream(
         &self,
         req: DaemonRequest,
-    ) -> Result<EventStream<R, DaemonTransportSpec>, ClientError> {
+    ) -> Result<InboxStream<R, DaemonTransportSpec>, ClientError> {
         let transport = self.ensure_transport()?;
 
         match self.execute_request(req).await? {
-            DaemonResponse::Ok | DaemonResponse::Done => Ok(EventStream::new(transport)),
+            DaemonResponse::Ok | DaemonResponse::Done => Ok(InboxStream::new(transport)),
             DaemonResponse::Error(msg) => Err(ProtocolError::CommandFailed(msg).into()),
             _ => Err(ProtocolError::UnexpectedResponse {
                 expected: "DaemonResponse::Ok".to_string(),
@@ -393,13 +393,13 @@ impl<R: RawTransport> KnotClient<R> {
 
     /// Starts all services managed by the daemon.
     #[instrument(skip(self), name = "up")]
-    pub async fn up(&self) -> Result<EventStream<R, DaemonTransportSpec>, ClientError> {
+    pub async fn up(&self) -> Result<InboxStream<R, DaemonTransportSpec>, ClientError> {
         self.execute_with_stream(DaemonRequest::Up).await
     }
 
     /// Stops all services managed by the daemon.
     #[instrument(skip(self), name = "down")]
-    pub async fn down(&self) -> Result<EventStream<R, DaemonTransportSpec>, ClientError> {
+    pub async fn down(&self) -> Result<InboxStream<R, DaemonTransportSpec>, ClientError> {
         self.execute_with_stream(DaemonRequest::Down).await
     }
 

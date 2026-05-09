@@ -12,4 +12,4 @@ mod stream;
 pub(crate) mod utils;
 
 pub use client::KnotClient;
-pub use stream::EventStream;
+pub use stream::InboxStream;

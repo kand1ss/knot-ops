@@ -10,11 +10,11 @@ use tracing::instrument;
 ///
 /// This struct wraps a `MessageTransport` and provides a high-level interface
 /// for asynchronously receiving events.
-pub struct EventStream<R: RawTransport, S: TransportSpec> {
+pub struct InboxStream<R: RawTransport, S: TransportSpec> {
     transport: Arc<MessageTransport<R, S>>,
 }
 
-impl<R: RawTransport, S: TransportSpec> EventStream<R, S> {
+impl<R: RawTransport, S: TransportSpec> InboxStream<R, S> {
     /// Creates a new `EventStream` from the given transport.
     pub fn new(transport: Arc<MessageTransport<R, S>>) -> Self {
         Self { transport }
