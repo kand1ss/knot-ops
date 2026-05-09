@@ -35,7 +35,7 @@ pub enum DaemonLifecycleError {
     NotRunning(PathBuf),
 
     #[error(
-        "daemon launch failed at '{target_dir}'\nBinary: {binary_path}\nError: {error}\nDetails: {message}"
+        "daemon launch failed at '{target_dir}' ({message})"
     )]
     LaunchFailed {
         message: String,
