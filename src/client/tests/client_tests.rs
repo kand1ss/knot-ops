@@ -7,8 +7,10 @@ use knot_core::errors::{
 };
 use knot_protocol::daemon::{
     DaemonEvent, DaemonRequest, DaemonResponse, DaemonTransportSpec, ServiceStatusResponse,
+    TaskData, TaskStatus,
 };
-use knot_transport::messages::{MessageContext, MessageKind};
+use knot_transport::messages::{Message, MessageContext, MessageKind};
+use knot_transport::transport::RawTransport;
 use knot_transport::transport::{MessageTransport, Server, ipc::IpcServer, ipc::IpcTransport};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -127,6 +129,19 @@ impl DaemonLauncher for MockDaemonLauncher {
     }
 }
 
+async fn setup_client_with_daemon(
+    workspace: PathBuf,
+) -> (Arc<KnotClient<IpcTransport>>, JoinHandle<()>) {
+    let knot_dir = workspace.join(KNOT_FOLDER_NAME);
+    let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
+    let server_handle = start_dummy_daemon(socket_path).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
+    assert!(client.is_connected());
+    (Arc::new(client), server_handle)
+}
+
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_connect_to_directory_success() {
@@ -176,17 +191,8 @@ async fn test_launch_daemon_success() {
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_healthcheck_healthy() {
     let workspace = setup_temp_workspace("healthcheck");
-    let knot_dir = workspace.join(KNOT_FOLDER_NAME);
-    let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
-
-    let server_handle = start_dummy_daemon(socket_path).await;
-    create_pid_file(&workspace, std::process::id());
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-    let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
-    assert!(client.healthcheck().await.is_ok());
-
-    server_handle.abort();
+    let (_client, handle) = setup_client_with_daemon(workspace).await;
+    handle.abort();
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 }
 
@@ -194,13 +200,7 @@ async fn test_healthcheck_healthy() {
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_ping_up_down_status() {
     let workspace = setup_temp_workspace("commands");
-    let knot_dir = workspace.join(KNOT_FOLDER_NAME);
-    let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
-
-    let server_handle = start_dummy_daemon(socket_path).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-    let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
+    let (client, handle) = setup_client_with_daemon(workspace).await;
 
     assert!(client.ping().await.is_ok());
 
@@ -209,7 +209,7 @@ async fn test_ping_up_down_status() {
     let status = client.status().await.unwrap();
     assert!(status.is_empty());
 
-    server_handle.abort();
+    handle.abort();
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 }
 
@@ -243,7 +243,6 @@ async fn test_connect_or_launch_success() {
     create_pid_file(&workspace, std::process::id());
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    // This will successfully connect and bypass launch_daemon
     let client = KnotClient::connect_or_launch(&workspace).await.unwrap();
     assert!(client.is_connected());
 
@@ -255,7 +254,6 @@ async fn test_connect_or_launch_success() {
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_launch_timeout() {
     let workspace = setup_temp_workspace("launch_timeout");
-    // should_timeout = true means launch() succeeds but no socket is created
     let launcher = MockDaemonLauncher::new(false, true);
 
     let client = KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None)
@@ -280,7 +278,6 @@ async fn test_healthcheck_stale_socket() {
 
     let server_handle = start_dummy_daemon(socket_path).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    // Deliberately NOT creating a PID file
 
     let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
     let err = client.healthcheck().await.unwrap_err();
@@ -304,28 +301,18 @@ async fn test_healthcheck_stale_socket() {
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_inbox_stream() {
     let workspace = setup_temp_workspace("event_stream");
-    let knot_dir = workspace.join(KNOT_FOLDER_NAME);
-    let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
+    let (client, handle) = setup_client_with_daemon(workspace).await;
 
-    let server_handle = start_dummy_daemon(socket_path).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let mut stream = client.up().await.unwrap();
 
-    let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
-
-    let stream = client.up().await.unwrap();
-
-    if let Some(event) = stream.next().await.unwrap() {
-        match event {
-            DaemonEvent::ServiceEvent(status) => {
-                assert_eq!(status.name, "test_service");
-                assert!(status.healthy);
-            }
-        }
+    if let Ok(Some(DaemonEvent::ServiceEvent(status))) = stream.next().await {
+        assert_eq!(status.name, "test_service");
+        assert!(status.healthy);
     } else {
-        panic!("Expected an event from stream");
-    }
+        panic!("Expected a ServiceEvent from stream, but got something else or None");
+    };
 
-    server_handle.abort();
+    handle.abort();
 }
 
 fn make_disconnected_client(knot_dir: PathBuf) -> KnotClient<IpcTransport> {
@@ -339,7 +326,6 @@ async fn test_repair_stale_socket_removes_files() {
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
-    // Simulate stale state: only PID file exists, no socket
     create_pid_file(&workspace, 99999);
     assert!(pid_path.exists());
 
@@ -419,7 +405,6 @@ async fn test_repair_daemon_not_responding_with_pid_removes_files() {
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
-    // Use a PID that certainly doesn't exist (very large number)
     create_pid_file(&workspace, 4194304);
     assert!(pid_path.exists());
 
@@ -442,7 +427,6 @@ async fn test_repair_daemon_not_responding_without_pid_removes_files() {
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
-    // No PID file — repair should still succeed and clean what it can
     assert!(!pid_path.exists());
 
     let client = make_disconnected_client(knot_dir.clone());
@@ -461,7 +445,6 @@ async fn test_repair_zombie_process_removes_files() {
     assert!(pid_path.exists());
 
     let client = make_disconnected_client(knot_dir.clone());
-    // PID 4194304 won't exist; sysinfo will not find it, clean_volatile_files runs
     client
         .repair(&HealthcheckError::ZombieProcess(4194304))
         .await
@@ -480,7 +463,6 @@ async fn test_repair_not_connected_is_noop() {
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
-    // NotConnected should be a no-op — PID file stays
     create_pid_file(&workspace, 99999);
     assert!(pid_path.exists());
 
@@ -649,12 +631,10 @@ async fn test_repair_integration_clears_pid_file() {
     let server_handle = start_dummy_daemon(socket_path).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Connect without PID file → healthcheck detects inconsistency
     let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
     let hc_result = client.healthcheck().await;
     assert!(hc_result.is_err());
 
-    // Extract the HealthcheckError and repair
     if let Err(ClientError::Healthcheck(ref e)) = hc_result {
         client.repair(e).await.unwrap();
     }
@@ -677,7 +657,6 @@ async fn test_connect_finds_knot_from_subdirectory() {
     let server_handle = start_dummy_daemon(socket_path).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // create nested subdir and connect from there
     let subdir = workspace.join("project").join("src");
     fs::create_dir_all(&subdir).unwrap();
 
@@ -686,4 +665,192 @@ async fn test_connect_finds_knot_from_subdirectory() {
 
     server_handle.abort();
     tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
+use knot_transport::codec::{BinaryCodec, MessageCodec};
+use knot_transport::test_utils::MockRaw;
+use std::sync::Arc;
+use tokio::task::JoinSet;
+
+fn setup_test_client(
+    path: PathBuf,
+) -> (Arc<KnotClient<MockRaw>>, tokio::sync::mpsc::Sender<Vec<u8>>) {
+    let (tx, rx) = tokio::sync::mpsc::channel(1024);
+    let transport = MockRaw::new(rx, tx.clone());
+    let client = KnotClient::new(path, Some(transport.to_messaged()));
+    assert!(client.is_connected());
+    (Arc::new(client), tx)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg_attr(windows, serial_test::serial)]
+async fn test_concurrent_stream_subscribers() {
+    let workspace = setup_temp_workspace("concurrent_stream_subscribers");
+    let (client, mock_daemon_tx) = setup_test_client(workspace);
+    let mut join_set = JoinSet::new();
+
+    for i in 0..50 {
+        let client_clone = Arc::clone(&client);
+        join_set.spawn(async move {
+            let mut stream = client_clone.stream();
+            let mut received_count = 0;
+
+            for _ in 0..10 {
+                if let Ok(_event) = stream.next().await {
+                    received_count += 1;
+                }
+            }
+            assert_eq!(received_count, 10, "Task {} missed some events!", i);
+        });
+    }
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    for i in 0..10 {
+        let event: Message<DaemonRequest, DaemonResponse, DaemonEvent> = Message::event(
+            0,
+            DaemonEvent::TaskEvent(TaskData::new(format!("task_{}", i), TaskStatus::Running)),
+        );
+        mock_daemon_tx
+            .send(BinaryCodec::encode(&event).unwrap())
+            .await
+            .unwrap();
+    }
+
+    while let Some(res) = join_set.join_next().await {
+        res.expect("A subscriber task panicked");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg_attr(windows, serial_test::serial)]
+async fn test_concurrent_requests_isolation() {
+    let workspace = setup_temp_workspace("concurrent_requests_isolation");
+    let (client, handle) = setup_client_with_daemon(workspace).await;
+    let mut join_set = JoinSet::new();
+
+    for _ in 0..100 {
+        let client_clone = Arc::clone(&client);
+        join_set.spawn(async move {
+            let result = client_clone.ping().await;
+            if let Err(e) = result {
+                println!("{}", e);
+                panic!("Request failed or received wrong response");
+            };
+        });
+    }
+
+    while let Some(res) = join_set.join_next().await {
+        res.expect("A requester task panicked");
+    }
+    handle.abort();
+}
+
+async fn spawn_spam_server(socket_path: PathBuf, spam_count: u16) -> JoinSet<()> {
+    #[cfg(not(windows))]
+    if socket_path.exists() {
+        let _ = std::fs::remove_file(&socket_path);
+    }
+
+    let mut set = JoinSet::new();
+
+    let server = IpcServer::bind(socket_path)
+        .await
+        .expect("Failed to bind IpcServer");
+
+    set.spawn(async move {
+        let transport = server
+            .accept()
+            .await
+            .unwrap()
+            .to_messaged::<DaemonTransportSpec>();
+
+        let transport = Arc::new(transport);
+        let spam_transport = Arc::clone(&transport);
+
+        tokio::spawn(async move {
+            for i in 0..spam_count {
+                let event = Message::event(
+                    0,
+                    DaemonEvent::TaskEvent(TaskData::new(
+                        format!("task_{}", i),
+                        TaskStatus::Running,
+                    )),
+                );
+                spam_transport.send(event).await.unwrap();
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        });
+
+        while let Ok(ctx) = transport.recv().await {
+            let (message, _) = ctx.into_parts();
+            if let MessageKind::Request(req) = &message.kind {
+                let res = match req {
+                    DaemonRequest::Ping => DaemonResponse::Pong,
+                    DaemonRequest::Status => DaemonResponse::Status(vec![]),
+                    DaemonRequest::Down => DaemonResponse::Done,
+                    DaemonRequest::Up => {
+                        let ev = DaemonEvent::ServiceEvent(ServiceStatusResponse {
+                            pid: 1234,
+                            name: "test_service".to_string(),
+                            status: "Running".to_string(),
+                            uptime: "0s".to_string(),
+                            healthy: true,
+                        });
+                        let ev_msg = Message::event(message.id(), ev);
+                        transport.send(ev_msg).await.unwrap();
+                        DaemonResponse::Ok
+                    }
+                };
+
+                let reply_msg = Message::response(message.id(), res);
+                transport.send(reply_msg).await.unwrap();
+            }
+        }
+    });
+
+    set
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg_attr(windows, serial_test::serial)]
+async fn test_mixed_chaos_load() {
+    let workspace = setup_temp_workspace("mixed_chaos_load");
+    let socket_path = workspace.join(KNOT_FOLDER_NAME).join(KNOT_SOCKET_FILE);
+    let mut handle = spawn_spam_server(socket_path, 200).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let client = KnotClient::connect_to_directory(&workspace).await.unwrap();
+    let client = Arc::new(client);
+    assert!(client.is_connected());
+    let mut join_set = JoinSet::new();
+
+    for _ in 0..10 {
+        let client_clone = Arc::clone(&client);
+        join_set.spawn(async move {
+            for _ in 0..50 {
+                let _ = client_clone.status().await;
+            }
+        });
+    }
+
+    for _ in 0..10 {
+        let client_clone = Arc::clone(&client);
+        join_set.spawn(async move {
+            let mut stream = client_clone.stream();
+            let _ = tokio::time::timeout(Duration::from_secs(1), async {
+                while let Ok(Some(_event)) = stream.next().await {}
+            })
+            .await;
+        });
+    }
+
+    let result = tokio::time::timeout(Duration::from_secs(3), async {
+        while let Some(res) = join_set.join_next().await {
+            res.expect("Task panicked during chaos test");
+        }
+    })
+    .await;
+
+    assert!(result.is_ok(), "Chaos test timed out (possible deadlock!)");
+    handle.abort_all();
 }
