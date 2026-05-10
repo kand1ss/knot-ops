@@ -28,6 +28,25 @@ pub struct ServiceStatusResponse {
     pub healthy: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum TaskStatus {
+    Running,
+    Completed,
+    Failed,
+    Skipped,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TaskData {
+    pub id: String,
+    pub status: TaskStatus,
+}
+impl TaskData {
+    pub fn new(id: String, status: TaskStatus) -> Self {
+        Self { id, status }
+    }
+}
+
 impl From<&ServiceData> for ServiceStatusResponse {
     /// Converts internal `ServiceData` into a serializable `ServiceStatusResponse`.
     ///
@@ -78,6 +97,7 @@ pub enum DaemonResponse {
 /// real-time logs, or lifecycle updates across the system.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonEvent {
+    TaskEvent(TaskData),
     /// A generic event related to a specific service managed by the orchestrator.
     ///
     /// This can include status transitions (e.g., from 'Starting' to 'Running')
