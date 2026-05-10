@@ -1,41 +1,66 @@
 use knot_core::errors::{ClientError, TransportError};
 use knot_transport::{
-    messages::MessageKind,
-    transport::{MessageTransport, RawTransport, TransportSpec},
+    messages::{Message, MessageKind},
+    transport::TransportSpec,
 };
-use std::sync::Arc;
+use tokio::sync::broadcast;
 use tracing::instrument;
 
-/// A stream of events received from the daemon.
+type MessageReceiver<S> = broadcast::Receiver<
+    Message<<S as TransportSpec>::Req, <S as TransportSpec>::Res, <S as TransportSpec>::Ev>,
+>;
+
+/// An asynchronous stream of events received from the daemon.
 ///
-/// This struct wraps a `MessageTransport` and provides a high-level interface
-/// for asynchronously receiving events.
-pub struct InboxStream<R: RawTransport, S: TransportSpec> {
-    transport: Arc<MessageTransport<R, S>>,
+/// `InboxStream` acts as a specialized receiver that filters incoming messages
+/// from the transport and yields only event payloads ([`TransportSpec::Ev`]).
+/// It is typically created by calling [`KnotClient::stream`] or as a result
+/// of long-running operations like `up` or `down`.
+///
+/// Under the hood, this struct wraps a [`MessageReceiver`], which is often
+/// a subscription to a broadcast channel, allowing multiple consumers to
+/// observe daemon activity simultaneously.
+pub struct InboxStream<S: TransportSpec> {
+    receiver: MessageReceiver<S>,
 }
 
-impl<R: RawTransport, S: TransportSpec> InboxStream<R, S> {
-    /// Creates a new `EventStream` from the given transport.
-    pub fn new(transport: Arc<MessageTransport<R, S>>) -> Self {
-        Self { transport }
+impl<S: TransportSpec> InboxStream<S> {
+    /// Creates a new `InboxStream` from the provided [`MessageReceiver`].
+    ///
+    /// # Arguments
+    ///
+    /// * `receiver` - The underlying receiver instance used to fetch messages.
+    pub fn new(receiver: MessageReceiver<S>) -> Self {
+        Self { receiver }
     }
 
-    /// Returns the next event from the stream.
+    /// Polls for the next event in the stream.
     ///
-    /// Returns `Ok(Some(event))` if an event is received, `Ok(None)` if the connection
-    /// is closed, or an error if receiving fails.
+    /// This method asynchronously waits for a message to arrive. If the
+    /// message is an event, it returns the cloned event payload.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(event))` - A new event was successfully received.
+    /// * `Ok(None)` - The stream reached its end (the connection was closed)
+    ///   or a non-event message was encountered.
+    /// * `Err(ClientError)` - An error occurred during transport, such as
+    ///   the connection being refused or lost.
+    ///
+    /// # Cancellation Safety
+    ///
+    /// This method is cancellation-safe. If the future is dropped before an
+    /// event is received, no messages from the underlying receiver will be lost.
     #[instrument(skip(self), name = "stream_next")]
-    pub async fn next(&self) -> Result<Option<S::Ev>, ClientError> {
-        match self.transport.recv().await {
-            Ok(msg) => {
-                let (message, _) = msg.into_parts();
-                match message.kind {
-                    MessageKind::Event(ev) => Ok(Some(ev)),
-                    _ => Ok(None),
-                }
-            }
-            Err(TransportError::ConnectionClosed) => Ok(None),
-            Err(e) => Err(ClientError::Transport(e)),
+    pub async fn next(&mut self) -> Result<Option<S::Ev>, ClientError> {
+        match &self.receiver.recv().await {
+            Ok(msg) => match &msg.kind {
+                MessageKind::Event(ev) => Ok(Some(ev.clone())),
+                // If we receive something that isn't an event, we treat it as
+                // the end of the event sequence for this specific stream view.
+                _ => Ok(None),
+            },
+            Err(_) => Err(TransportError::ConnectionRefused.into()),
         }
     }
 }

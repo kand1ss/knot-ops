@@ -11,33 +11,65 @@ use knot_core::{
     },
 };
 use knot_protocol::daemon::{
-    DaemonRequest, DaemonResponse, DaemonTransportSpec, ServiceStatusResponse,
+    DaemonEvent, DaemonRequest, DaemonResponse, DaemonTransportSpec, ServiceStatusResponse,
 };
-use knot_transport::transport::{MessageTransport, RawTransport, ipc::IpcTransport};
+use knot_transport::{
+    messages::Message,
+    transport::{MessageTransport, RawTransport, ipc::IpcTransport},
+};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument, warn};
 
-/// A client for interacting with the `knot` daemon.
+/// The primary client for interacting with the `knot` background daemon.
 ///
-/// `KnotClient` provides methods to manage the daemon lifecycle, perform health checks,
-/// and execute commands like `up`, `down`, and `status`. It uses an underlying
-/// `RawTransport` (typically `IpcTransport`) to communicate with the daemon.
+/// `KnotClient` provides a high-level API to manage the daemon's lifecycle (launch, repair),
+/// monitor its health, and execute workspace commands such as `up`, `down`, and `status`.
+///
+/// Under the hood, it multiplexes a single [`RawTransport`] (typically an IPC socket)
+/// to handle both synchronous RPC requests (Command/Response) and asynchronous
+/// event streaming via a background router task.
+///
+/// # Drop Behavior
+///
+/// When the `KnotClient` goes out of scope and is dropped, it will automatically
+/// abort its internal background reader loop, preventing memory leaks and orphaned tasks.
 pub struct KnotClient<R: RawTransport> {
     transport: Option<Arc<MessageTransport<R, DaemonTransportSpec>>>,
     directory: PathBuf,
+    sender: broadcast::Sender<Message<DaemonRequest, DaemonResponse, DaemonEvent>>,
+    loop_handle: Option<tokio::task::JoinHandle<()>>,
     default_timeout: Duration,
     default_retries: u8,
-    daemon_launcher: Box<dyn DaemonLauncher>,
+    daemon_launcher: Box<dyn DaemonLauncher + Send + Sync>,
+}
+impl<R: RawTransport> Drop for KnotClient<R> {
+    fn drop(&mut self) {
+        if let Some(h) = &self.loop_handle {
+            h.abort();
+        }
+    }
 }
 
 impl KnotClient<IpcTransport> {
-    /// Connects to the daemon in the specified directory.
+    /// Resolves the workspace and establishes a connection to the daemon.
     ///
-    /// This method searches for the `.knot` folder, locates the IPC socket,
-    /// and establishes a connection.
+    /// This method recursively searches upwards from the specified `directory` to locate
+    /// the root `.knot` workspace folder. Once found, it attempts to connect to the
+    /// IPC socket located within that folder.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `KnotClient` instance. Note that the connection may not be
+    /// active or healthy yet. Use [`Self::healthcheck`] to verify the daemon's state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ClientError`] (specifically [`WorkspaceError::NotInitialized`]) if
+    /// no `.knot` directory is found in the target path or its parents.
     #[instrument(skip_all, fields(directory = %directory.display()))]
     pub async fn connect_to_directory(directory: &Path) -> Result<Self, ClientError> {
         let dir = directory.to_path_buf();
@@ -78,8 +110,17 @@ impl KnotClient<IpcTransport> {
         self.is_connected() && self.healthcheck().await.is_ok()
     }
 
-    /// Connects to the daemon or launches it if it's not running or unhealthy.
-    #[instrument(skip_all, fields(directory = %directory.display()))]
+    /// Ensures a healthy connection to the daemon, launching it if necessary.
+    ///
+    /// This is a high-level, idempotent convenience method. It first attempts to connect
+    /// to an existing daemon in the given directory. If the daemon is not running,
+    /// or if it fails the health check, it will automatically spawn a new instance
+    /// and establish a fresh connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ClientError`] if the daemon fails to launch or if the connection
+    /// cannot be established after spawning.    #[instrument(skip_all, fields(directory = %directory.display()))]
     pub async fn connect_or_launch(directory: &Path) -> Result<Self, ClientError> {
         let client = Self::connect_to_directory(directory).await?;
         if client.is_health().await {
@@ -90,8 +131,17 @@ impl KnotClient<IpcTransport> {
         }
     }
 
-    /// Launches the daemon process and waits for it to become healthy.
-    #[instrument(skip(self), name = "launch_daemon")]
+    /// Spawns the daemon process and waits for it to become ready.
+    ///
+    /// This method uses the configured [`DaemonLauncher`] to start the background process.
+    /// After spawning, it aggressively polls the socket directory until the daemon
+    /// creates the IPC socket and passes a full health check.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ClientError`] (specifically a [`DaemonLifecycleError::LaunchFailed`])
+    /// if the daemon process fails to start, or if the socket does not appear within
+    /// the retry limit.    #[instrument(skip(self), name = "launch_daemon")]
     pub async fn launch_daemon(self) -> Result<Self, ClientError> {
         info!("Spawning daemon process...");
         let _pid = self.daemon_launcher.launch(&self.directory).await?;
@@ -106,12 +156,13 @@ impl KnotClient<IpcTransport> {
                 "Attempting to connect to launched daemon (retries left: {})...",
                 retries
             );
-            let client = Self::connect_to_directory(&self.directory).await?;
-            if client.is_health().await {
+
+            if let Ok(client) = Self::connect_to_directory(&self.directory).await
+                && client.is_health().await
+            {
                 info!("Daemon launched and healthy.");
                 return Ok(client);
             }
-
             retries -= 1;
             if retries == 0 {
                 error!("Daemon launch timeout: socket never appeared.");
@@ -131,10 +182,17 @@ impl KnotClient<IpcTransport> {
         }
     }
 
-    /// Performs a health check on the daemon.
+    /// Performs a comprehensive health check on the daemon instance.
     ///
-    /// This checks if the socket exists, if the PID file is valid, and if the
-    /// daemon responds to a `ping` request.
+    /// This method verifies the integrity of the connection in three stages:
+    /// 1. Checks if the IPC socket file exists and matches the expected state.
+    /// 2. Reads the PID file and ensures the corresponding process is actively running (not a zombie).
+    /// 3. Sends a `ping` request to confirm the daemon is responsive.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ClientError`] containing a [`HealthcheckError`] detailing
+    /// exactly which stage of the check failed.
     #[instrument(skip(self), name = "healthcheck")]
     pub async fn healthcheck(&self) -> Result<(), ClientError> {
         if self.transport.is_none() {
@@ -214,10 +272,19 @@ impl KnotClient<IpcTransport> {
         content.trim().parse::<usize>().ok()
     }
 
-    /// Attempts to repair the daemon environment based on the identified issue.
+    /// Attempts to repair the daemon environment based on a specific health check failure.
     ///
-    /// This may involve cleaning up stale socket/PID files or force-killing
-    /// unresponsive daemon processes.
+    /// Depending on the `issue` provided, this method will take corrective actions
+    /// such as deleting stale `.sock` and `.pid` files, or forcibly terminating
+    /// unresponsive or zombie daemon processes.
+    ///
+    /// # Arguments
+    ///
+    /// * `issue` - The specific [`HealthcheckError`] that needs to be resolved.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` once the cleanup or termination tasks have been dispatched.    
     #[instrument(skip(self), name = "repair")]
     pub async fn repair(&self, issue: &HealthcheckError) -> Result<(), ClientError> {
         warn!("Attempting to repair daemon environment: {}", issue);
@@ -281,13 +348,40 @@ impl<R: RawTransport> KnotClient<R> {
         transport: Option<MessageTransport<R, DaemonTransportSpec>>,
     ) -> Self {
         let transport = transport.map(Arc::new);
+        let (sender, _) = broadcast::channel(1024);
+        let loop_handle = if let Some(t) = &transport {
+            Some(tokio::spawn(Self::read_loop(sender.clone(), Arc::clone(t))))
+        } else {
+            None
+        };
 
         Self {
             directory,
             transport,
+            sender,
+            loop_handle,
             default_timeout: Duration::from_secs(10),
             default_retries: 0,
             daemon_launcher: Box::new(DefaultLauncher::new()),
+        }
+    }
+
+    async fn read_loop(
+        sender: broadcast::Sender<Message<DaemonRequest, DaemonResponse, DaemonEvent>>,
+        transport: Arc<MessageTransport<R, DaemonTransportSpec>>,
+    ) {
+        loop {
+            match transport.recv().await {
+                Ok(ctx) => {
+                    let (message, _) = ctx.into_parts();
+                    let _ = sender.send(message);
+                }
+                Err(e) => {
+                    if e.is_fatal() {
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -313,14 +407,17 @@ impl<R: RawTransport> KnotClient<R> {
     }
 
     /// Sets a custom daemon launcher.
-    pub fn with_launcher(mut self, launcher: impl DaemonLauncher + 'static) -> Self {
+    pub fn with_launcher(mut self, launcher: impl DaemonLauncher + Send + Sync + 'static) -> Self {
         self.daemon_launcher = Box::new(launcher);
         self
     }
 
     /// Checks if the client is currently connected to the daemon.
     pub fn is_connected(&self) -> bool {
-        self.transport.is_some()
+        if let Some(transport) = &self.transport {
+            return transport.is_alive();
+        }
+        false
     }
 
     fn ensure_connected(&self) -> Result<(), ClientError> {
@@ -342,11 +439,11 @@ impl<R: RawTransport> KnotClient<R> {
     async fn execute_with_stream(
         &self,
         req: DaemonRequest,
-    ) -> Result<InboxStream<R, DaemonTransportSpec>, ClientError> {
-        let transport = self.ensure_transport()?;
+    ) -> Result<InboxStream<DaemonTransportSpec>, ClientError> {
+        let receiver = self.sender.subscribe();
 
         match self.execute_request(req).await? {
-            DaemonResponse::Ok | DaemonResponse::Done => Ok(InboxStream::new(transport)),
+            DaemonResponse::Ok | DaemonResponse::Done => Ok(InboxStream::new(receiver)),
             DaemonResponse::Error(msg) => Err(ProtocolError::CommandFailed(msg).into()),
             _ => Err(ProtocolError::UnexpectedResponse {
                 expected: "DaemonResponse::Ok".to_string(),
@@ -379,7 +476,40 @@ impl<R: RawTransport> KnotClient<R> {
         }
     }
 
-    /// Pings the daemon to check connectivity.
+    /// Returns a stream of events emitted by the daemon.
+    ///
+    /// This method creates a new subscription to the internal broadcast channel.
+    /// Since it uses a broadcast mechanism, multiple subscribers can receive the
+    /// same stream of events simultaneously.
+    ///
+    /// The returned [`InboxStream`] will receive all [`DaemonEvent`]s sent by the
+    /// daemon after this method is called. Events sent prior to calling this
+    /// method are not replayed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use tokio_stream::StreamExt;
+    ///
+    /// async fn example(client: KnotClient<IpcTransport>) -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut events = client.stream();
+    ///
+    ///     while let Some(Ok(event)) = events.next().await {
+    ///         println!("Received event: {:?}", event);
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn stream(&self) -> InboxStream<DaemonTransportSpec> {
+        InboxStream::new(self.sender.subscribe())
+    }
+
+    /// Sends a ping request to the daemon to verify active communication.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ClientError`] if the transport fails, times out, or if the
+    /// daemon responds with anything other than a `Pong`.    
     #[instrument(skip(self), name = "ping")]
     pub async fn ping(&self) -> Result<(), ClientError> {
         match self.execute_request(DaemonRequest::Ping).await? {
@@ -392,19 +522,52 @@ impl<R: RawTransport> KnotClient<R> {
     }
 
     /// Starts all services managed by the daemon.
-    #[instrument(skip(self), name = "up")]
-    pub async fn up(&self) -> Result<InboxStream<R, DaemonTransportSpec>, ClientError> {
+    ///
+    /// This method sends an `Up` request to the daemon and returns a stream
+    /// of events, allowing you to track the progress of each service starting
+    /// (e.g., pulling images, compilation, or health checks).
+    ///
+    /// # Returns
+    ///
+    /// Returns an [`InboxStream`] which yields [`DaemonEvent`]s related to
+    /// the startup process.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ClientError`] if the daemon is unreachable or if the
+    /// initial command execution fails.    #[instrument(skip(self), name = "up")]
+    pub async fn up(&self) -> Result<InboxStream<DaemonTransportSpec>, ClientError> {
         self.execute_with_stream(DaemonRequest::Up).await
     }
 
     /// Stops all services managed by the daemon.
-    #[instrument(skip(self), name = "down")]
-    pub async fn down(&self) -> Result<InboxStream<R, DaemonTransportSpec>, ClientError> {
+    ///
+    /// This method sends a `Down` request to gracefully terminate all
+    /// active services. Like [`Self::up`], it provides a stream to monitor
+    /// the shutdown sequence.
+    ///
+    /// # Returns
+    ///
+    /// Returns an [`InboxStream`] which yields [`DaemonEvent`]s related to
+    /// the termination process.    #[instrument(skip(self), name = "down")]
+    pub async fn down(&self) -> Result<InboxStream<DaemonTransportSpec>, ClientError> {
         self.execute_with_stream(DaemonRequest::Down).await
     }
 
-    /// Returns the status of all services managed by the daemon.
-    #[instrument(skip(self), name = "status")]
+    /// Fetches the current status of all managed services.
+    ///
+    /// Unlike `up` or `down`, this is a request-response operation that
+    /// returns the immediate state of the workspace without opening a long-running stream.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of [`ServiceStatusResponse`] containing details for each service,
+    /// such as PID, uptime, and health status.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProtocolError::UnexpectedResponse`] if the daemon
+    /// provides a response other than status data.    #[instrument(skip(self), name = "status")]
     pub async fn status(&self) -> Result<Vec<ServiceStatusResponse>, ClientError> {
         match self.execute_request(DaemonRequest::Status).await? {
             DaemonResponse::Status(services) => Ok(services),
