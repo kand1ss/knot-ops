@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// This structure is sent from the daemon to the CLI to provide
 /// human-readable information about a managed process.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServiceStatusResponse {
     /// Process ID (PID) assigned by the operating system.
     pub pid: u32,
@@ -58,7 +58,7 @@ pub enum DaemonRequest {
 }
 
 /// Information sent from the Knot Daemon back to the CLI.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonResponse {
     /// Indicates that the 'ping' request was received.
     Pong,
@@ -76,7 +76,7 @@ pub enum DaemonResponse {
 ///
 /// Unlike responses, events are unprompted and used to broadcast state changes,
 /// real-time logs, or lifecycle updates across the system.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DaemonEvent {
     /// A generic event related to a specific service managed by the orchestrator.
     ///
@@ -93,7 +93,7 @@ use std::fmt::Debug;
 /// interaction patterns between the CLI and the background process.
 /// It binds together the command set, response types, and the binary
 /// serialization format used in production.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct DaemonTransportSpec;
 impl TransportSpec for DaemonTransportSpec {
     type Req = DaemonRequest;
