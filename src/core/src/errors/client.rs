@@ -34,9 +34,7 @@ pub enum DaemonLifecycleError {
     #[error("daemon is not running (socket not found at {0})")]
     NotRunning(PathBuf),
 
-    #[error(
-        "daemon launch failed at '{target_dir}' ({message})"
-    )]
+    #[error("daemon launch failed at '{target_dir}' ({message})")]
     LaunchFailed {
         message: String,
         binary_path: String,

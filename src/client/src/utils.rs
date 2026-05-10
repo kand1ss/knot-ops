@@ -1,6 +1,6 @@
 use knot_core::consts::KNOT_FOLDER_NAME;
 use std::path::{Path, PathBuf};
-use tracing::{instrument, info, debug, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Recursively searches for the `.knot` configuration directory starting from the given path
 /// and moving up the directory tree.
