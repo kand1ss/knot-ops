@@ -2,15 +2,48 @@ use crate::{
     codec::MessageCodec,
     messages::{Message, MessageContext, MessageKind},
     transport::{
-        MessageTransport, Server, TransportSpec,
+        MessageTransport, RawTransport, Server, TransportSpec,
         ipc::{IpcServer, IpcTransport},
     },
 };
+use async_trait::async_trait;
+use knot_core::errors::TransportError;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use tokio::task::JoinHandle;
+use std::sync::Arc;
+use tokio::{
+    sync::{Mutex, mpsc},
+    task::JoinHandle,
+};
+
+#[derive(Debug, Clone)]
+pub struct MockRaw {
+    pub incoming_rx: Arc<Mutex<mpsc::Receiver<Vec<u8>>>>,
+    pub outgoing_tx: mpsc::Sender<Vec<u8>>,
+}
+impl MockRaw {
+    pub fn new(rx: mpsc::Receiver<Vec<u8>>, tx: mpsc::Sender<Vec<u8>>) -> Self {
+        Self {
+            incoming_rx: Arc::new(Mutex::new(rx)),
+            outgoing_tx: tx,
+        }
+    }
+}
+
+#[async_trait]
+impl RawTransport for MockRaw {
+    async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
+        self.outgoing_tx.send(frame.to_vec()).await.ok();
+        Ok(())
+    }
+
+    async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
+        let mut rx = self.incoming_rx.lock().await;
+        rx.recv().await.ok_or(TransportError::UnexpectedMessage)
+    }
+}
 
 pub fn sock(suffix: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
