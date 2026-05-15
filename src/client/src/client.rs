@@ -156,7 +156,6 @@ impl KnotClient<IpcTransport> {
                 "Attempting to connect to launched daemon (retries left: {})...",
                 retries
             );
-
             if let Ok(client) = Self::connect_to_directory(&self.directory).await
                 && client.is_health().await
             {

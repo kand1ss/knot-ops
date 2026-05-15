@@ -17,15 +17,18 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-fn setup_temp_workspace(suffix: &str) -> PathBuf {
-    let mut path = std::env::temp_dir();
-    let thread_id = std::thread::current().id();
-    path.push(format!("knot-client-tests-{}-{:?}", suffix, thread_id));
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+fn setup_temp_workspace() -> (tempfile::TempDir, PathBuf) {
+    let temp_workspace = tempfile::Builder::new()
+        .prefix("knot-test-")
+        .tempdir()
+        .expect("Failed to create temporary directory");
+
+    let path = temp_workspace.path().to_path_buf();
+
     let knot_dir = path.join(KNOT_FOLDER_NAME);
-    fs::create_dir(&knot_dir).unwrap();
-    path
+    fs::create_dir(&knot_dir).expect("Failed to create .knot directory");
+
+    (temp_workspace, path)
 }
 
 fn create_pid_file(workspace: &Path, pid: u32) {
@@ -114,6 +117,7 @@ impl DaemonLauncher for MockDaemonLauncher {
             Ok(1234)
         } else {
             let socket_path = directory.join(KNOT_SOCKET_FILE);
+            fs::create_dir(&socket_path).unwrap();
             start_dummy_daemon(socket_path).await;
 
             let pid_path = directory.join(KNOT_PID_FILE);
@@ -145,9 +149,8 @@ async fn setup_client_with_daemon(
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_connect_to_directory_success() {
-    let workspace = setup_temp_workspace("connect_success");
-    let knot_dir = workspace.join(KNOT_FOLDER_NAME);
-    let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
+    let (_temp, workspace) = setup_temp_workspace();
+    let socket_path = workspace.join(KNOT_SOCKET_FILE);
 
     let server_handle = start_dummy_daemon(socket_path).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -177,7 +180,7 @@ async fn test_connect_fails_no_workspace() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_launch_daemon_success() {
-    let workspace = setup_temp_workspace("launch_success");
+    let (_dir, workspace) = setup_temp_workspace();
     let launcher = MockDaemonLauncher::new(false, false);
 
     let client = KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None)
@@ -190,7 +193,7 @@ async fn test_launch_daemon_success() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_healthcheck_healthy() {
-    let workspace = setup_temp_workspace("healthcheck");
+    let (_dir, workspace) = setup_temp_workspace();
     let (_client, handle) = setup_client_with_daemon(workspace).await;
     handle.abort();
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -199,7 +202,7 @@ async fn test_healthcheck_healthy() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_ping_up_down_status() {
-    let workspace = setup_temp_workspace("commands");
+    let (_dir, workspace) = setup_temp_workspace();
     let (client, handle) = setup_client_with_daemon(workspace).await;
 
     assert!(client.ping().await.is_ok());
@@ -216,7 +219,7 @@ async fn test_ping_up_down_status() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_launch_daemon_fails() {
-    let workspace = setup_temp_workspace("launch_fails");
+    let (_dir, workspace) = setup_temp_workspace();
     let launcher = MockDaemonLauncher::new(true, false);
 
     let client = KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None)
@@ -235,7 +238,7 @@ async fn test_launch_daemon_fails() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_connect_or_launch_success() {
-    let workspace = setup_temp_workspace("connect_or_launch");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
 
@@ -253,7 +256,7 @@ async fn test_connect_or_launch_success() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_launch_timeout() {
-    let workspace = setup_temp_workspace("launch_timeout");
+    let (_dir, workspace) = setup_temp_workspace();
     let launcher = MockDaemonLauncher::new(false, true);
 
     let client = KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None)
@@ -272,7 +275,7 @@ async fn test_launch_timeout() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_healthcheck_stale_socket() {
-    let workspace = setup_temp_workspace("stale_socket");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
 
@@ -300,7 +303,7 @@ async fn test_healthcheck_stale_socket() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_inbox_stream() {
-    let workspace = setup_temp_workspace("event_stream");
+    let (_dir, workspace) = setup_temp_workspace();
     let (client, handle) = setup_client_with_daemon(workspace).await;
 
     let mut stream = client.up().await.unwrap();
@@ -322,7 +325,7 @@ fn make_disconnected_client(knot_dir: PathBuf) -> KnotClient<IpcTransport> {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_stale_socket_removes_files() {
-    let workspace = setup_temp_workspace("repair_stale");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -357,7 +360,7 @@ async fn test_repair_stale_socket_removes_files() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_process_not_exists_removes_files() {
-    let workspace = setup_temp_workspace("repair_proc_not_exists");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -379,7 +382,7 @@ async fn test_repair_process_not_exists_removes_files() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_inconsistent_state_removes_files() {
-    let workspace = setup_temp_workspace("repair_inconsistent");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -401,7 +404,7 @@ async fn test_repair_inconsistent_state_removes_files() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_daemon_not_responding_with_pid_removes_files() {
-    let workspace = setup_temp_workspace("repair_not_responding");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -423,7 +426,7 @@ async fn test_repair_daemon_not_responding_with_pid_removes_files() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_daemon_not_responding_without_pid_removes_files() {
-    let workspace = setup_temp_workspace("repair_no_pid");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -437,7 +440,7 @@ async fn test_repair_daemon_not_responding_without_pid_removes_files() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_zombie_process_removes_files() {
-    let workspace = setup_temp_workspace("repair_zombie");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -459,7 +462,7 @@ async fn test_repair_zombie_process_removes_files() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_not_connected_is_noop() {
-    let workspace = setup_temp_workspace("repair_not_connected");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -477,7 +480,7 @@ async fn test_repair_not_connected_is_noop() {
 
 #[test]
 fn test_with_timeout_stores_value() {
-    let workspace = setup_temp_workspace("builder_timeout");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None)
         .with_timeout(Duration::from_secs(42));
     assert!(!client.is_connected());
@@ -485,7 +488,7 @@ fn test_with_timeout_stores_value() {
 
 #[test]
 fn test_with_retries_stores_value() {
-    let workspace = setup_temp_workspace("builder_retries");
+    let (_dir, workspace) = setup_temp_workspace();
     let client =
         KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None).with_retries(5);
     assert!(!client.is_connected());
@@ -493,7 +496,7 @@ fn test_with_retries_stores_value() {
 
 #[test]
 fn test_is_connected_false_when_no_transport() {
-    let workspace = setup_temp_workspace("no_transport");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = KnotClient::<IpcTransport>::new(workspace.join(KNOT_FOLDER_NAME), None);
     assert!(!client.is_connected());
 }
@@ -501,7 +504,7 @@ fn test_is_connected_false_when_no_transport() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_ping_fails_when_disconnected() {
-    let workspace = setup_temp_workspace("ping_disconnected");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = make_disconnected_client(workspace.join(KNOT_FOLDER_NAME));
     let err = client.ping().await.unwrap_err();
     assert!(matches!(
@@ -513,7 +516,7 @@ async fn test_ping_fails_when_disconnected() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_up_fails_when_disconnected() {
-    let workspace = setup_temp_workspace("up_disconnected");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = make_disconnected_client(workspace.join(KNOT_FOLDER_NAME));
     let err = client.up().await.err().expect("expected error");
     assert!(matches!(
@@ -525,7 +528,7 @@ async fn test_up_fails_when_disconnected() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_down_fails_when_disconnected() {
-    let workspace = setup_temp_workspace("down_disconnected");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = make_disconnected_client(workspace.join(KNOT_FOLDER_NAME));
     let err = client.down().await.err().expect("expected error");
     assert!(matches!(
@@ -537,7 +540,7 @@ async fn test_down_fails_when_disconnected() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_status_fails_when_disconnected() {
-    let workspace = setup_temp_workspace("status_disconnected");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = make_disconnected_client(workspace.join(KNOT_FOLDER_NAME));
     let err = client.status().await.unwrap_err();
     assert!(matches!(
@@ -549,7 +552,7 @@ async fn test_status_fails_when_disconnected() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_healthcheck_fails_when_disconnected() {
-    let workspace = setup_temp_workspace("healthcheck_disconnected");
+    let (_dir, workspace) = setup_temp_workspace();
     let client = make_disconnected_client(workspace.join(KNOT_FOLDER_NAME));
     let err = client.healthcheck().await.unwrap_err();
     assert!(matches!(
@@ -601,7 +604,7 @@ async fn start_status_daemon(socket_path: PathBuf) -> JoinHandle<()> {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_status_returns_populated_list() {
-    let workspace = setup_temp_workspace("status_services");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let socket_path = knot_dir.join(KNOT_SOCKET_FILE);
 
@@ -623,7 +626,7 @@ async fn test_status_returns_populated_list() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_repair_integration_clears_pid_file() {
-    let workspace = setup_temp_workspace("repair_integration");
+    let (_dir, workspace) = setup_temp_workspace();
     let knot_dir = workspace.join(KNOT_FOLDER_NAME);
     let pid_path = knot_dir.join(KNOT_PID_FILE);
 
@@ -651,7 +654,7 @@ async fn test_repair_integration_clears_pid_file() {
 #[tokio::test]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_connect_finds_knot_from_subdirectory() {
-    let workspace = setup_temp_workspace("subdir_discovery");
+    let (_dir, workspace) = setup_temp_workspace();
     let socket_path = workspace.join(KNOT_FOLDER_NAME).join(KNOT_SOCKET_FILE);
 
     let server_handle = start_dummy_daemon(socket_path).await;
@@ -685,7 +688,7 @@ fn setup_test_client(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_concurrent_stream_subscribers() {
-    let workspace = setup_temp_workspace("concurrent_stream_subscribers");
+    let (_dir, workspace) = setup_temp_workspace();
     let (client, mock_daemon_tx) = setup_test_client(workspace);
     let mut join_set = JoinSet::new();
 
@@ -725,7 +728,7 @@ async fn test_concurrent_stream_subscribers() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_concurrent_requests_isolation() {
-    let workspace = setup_temp_workspace("concurrent_requests_isolation");
+    let (_dir, workspace) = setup_temp_workspace();
     let (client, handle) = setup_client_with_daemon(workspace).await;
     let mut join_set = JoinSet::new();
 
@@ -815,7 +818,7 @@ async fn spawn_spam_server(socket_path: PathBuf, spam_count: u16) -> JoinSet<()>
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_mixed_chaos_load() {
-    let workspace = setup_temp_workspace("mixed_chaos_load");
+    let (_dir, workspace) = setup_temp_workspace();
     let socket_path = workspace.join(KNOT_FOLDER_NAME).join(KNOT_SOCKET_FILE);
     let mut handle = spawn_spam_server(socket_path, 200).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
