@@ -150,7 +150,7 @@ async fn setup_client_with_daemon(
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_connect_to_directory_success() {
     let (_temp, workspace) = setup_temp_workspace();
-    let socket_path = workspace.join(KNOT_SOCKET_FILE);
+    let socket_path = workspace.join(KNOT_FOLDER_NAME).join(KNOT_SOCKET_FILE);
 
     let server_handle = start_dummy_daemon(socket_path).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
