@@ -117,7 +117,6 @@ impl DaemonLauncher for MockDaemonLauncher {
             Ok(1234)
         } else {
             let socket_path = directory.join(KNOT_SOCKET_FILE);
-            fs::create_dir(&socket_path).unwrap();
             start_dummy_daemon(socket_path).await;
 
             let pid_path = directory.join(KNOT_PID_FILE);
