@@ -1,0 +1,12 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Worker 1 (fail) [TIME]
+   ✖  Job (fail) [TIME]
+   │
+   │ issue:    SIGINT
+✖  Worker 2 (fail) [TIME]
+   ✖  Job (fail) [TIME]
+   │
+   │ issue:    SIGINT

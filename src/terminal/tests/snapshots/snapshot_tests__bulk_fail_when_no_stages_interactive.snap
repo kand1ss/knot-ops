@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Bulk Fail Task (fail) [TIME]
+│
+│ issue:    error
+│
+│ context:  context
+│
+│ solution: solution

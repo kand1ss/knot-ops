@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Ghost Calls After Fail
+[Ghost Calls After Fail]    [WAIT] Stage A
+[Ghost Calls After Fail]  > [START] Stage A
+[Ghost Calls After Fail]    [FAIL] Stage A (fail) [TIME]
+[Ghost Calls After Fail]    │
+[Ghost Calls After Fail]    │ issue:    fail
+[FAIL] Ghost Calls After Fail (fail) [TIME]

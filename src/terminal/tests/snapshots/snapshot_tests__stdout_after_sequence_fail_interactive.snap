@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Deployment Pipeline Failing (fail) [TIME]
+   ✔  Build (Built successfully) [TIME]
+   ✖  Test (fail) [TIME]
+   │
+   │ issue:    Tests failed: 5 errors
+   ↷  Deploy (skipped due to previous error)
+>>> [STDOUT] Plain text after sequence FAIL

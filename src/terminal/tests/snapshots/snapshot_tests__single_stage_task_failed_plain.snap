@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Failed Task
+[Failed Task]    [WAIT] Step One
+[Failed Task]  > [START] Step One
+[Failed Task]    [FAIL] Step One (fail) [TIME]
+[Failed Task]    │
+[Failed Task]    │ issue:    something went wrong
+[FAIL] Failed Task (fail) [TIME]

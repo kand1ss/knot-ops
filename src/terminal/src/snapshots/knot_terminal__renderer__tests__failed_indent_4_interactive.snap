@@ -1,0 +1,7 @@
+---
+source: src/terminal/src/renderer.rs
+expression: ctx.sanitized_output()
+---
+    ✖  Deep Stage (fail) [TIME]
+    │
+    │ issue:    Error

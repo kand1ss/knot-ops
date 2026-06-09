@@ -1,0 +1,19 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Middle Error Sequence
+[Middle Error Sequence]    [WAIT] Stage A
+[Middle Error Sequence]    [WAIT] Stage B
+[Middle Error Sequence]    [WAIT] Stage C
+[Middle Error Sequence]    [WAIT] Stage D
+[Middle Error Sequence]  > [START] Stage A
+[Middle Error Sequence]    [SUCCESS] Stage A (A done) [TIME]
+[Middle Error Sequence]  > [START] Stage B
+[Middle Error Sequence]    [SUCCESS] Stage B (B done) [TIME]
+[Middle Error Sequence]  > [START] Stage C
+[Middle Error Sequence]    [FAIL] Stage C (fail) [TIME]
+[Middle Error Sequence]    │
+[Middle Error Sequence]    │ issue:    C failed
+[FAIL] Middle Error Sequence (fail) [TIME]
+[Middle Error Sequence]    [SKIP] Stage D (skipped due to previous error)

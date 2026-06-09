@@ -1,0 +1,14 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Last Stage Error
+[Last Stage Error]    [WAIT] Stage A
+[Last Stage Error]    [WAIT] Stage B
+[Last Stage Error]  > [START] Stage A
+[Last Stage Error]    [SUCCESS] Stage A (A done) [TIME]
+[Last Stage Error]  > [START] Stage B
+[Last Stage Error]    [FAIL] Stage B (fail) [TIME]
+[Last Stage Error]    │
+[Last Stage Error]    │ issue:    B failed
+[FAIL] Last Stage Error (fail) [TIME]

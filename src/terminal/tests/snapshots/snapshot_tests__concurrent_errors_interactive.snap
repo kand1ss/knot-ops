@@ -1,0 +1,16 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Network Sync (fail) [TIME]
+   ✖  Connect (fail) [TIME]
+   │
+   │ issue:    Connection refused
+   │
+   │ context:  192.168.1.1
+✖  Disk Write (fail) [TIME]
+   ✖  Save (fail) [TIME]
+   │
+   │ issue:    Access Denied
+   │
+   │ solution: Run as sudo

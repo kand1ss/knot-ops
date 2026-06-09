@@ -1,0 +1,6 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  App 1 (success) [TIME]
+✔  App 2 (success) [TIME]

@@ -1,0 +1,13 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Deployment Pipeline
+[Deployment Pipeline]    [WAIT] Build
+[Deployment Pipeline]    [WAIT] Test
+[Deployment Pipeline]  > [START] Build
+[Deployment Pipeline]    [SUCCESS] Build (Built successfully) [TIME]
+[Deployment Pipeline]  > [START] Test
+[Deployment Pipeline]    [SUCCESS] Test (Tests passed) [TIME]
+[SUCCESS] Deployment Pipeline (success) [TIME]
+>>> [STDOUT] Plain text after sequence OK

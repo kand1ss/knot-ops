@@ -1,0 +1,6 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Simple Task
+[SUCCESS] Simple Task (success) [TIME]

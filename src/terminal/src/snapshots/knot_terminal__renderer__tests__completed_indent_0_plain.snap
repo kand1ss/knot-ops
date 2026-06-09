@@ -1,0 +1,6 @@
+---
+source: src/terminal/src/renderer.rs
+expression: ctx.sanitized_output()
+---
+[CI] [START] Root Task
+[CI] [SUCCESS] Root Task (Done) [TIME]

@@ -1,0 +1,17 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Fast Task
+[Fast Task]    [WAIT] Zoom
+[Fast Task]    [WAIT] Swoosh
+[Fast Task]  > [START] Zoom
+[Fast Task]  > [START] Swoosh
+[TASK] Slow Task
+[Slow Task]    [WAIT] Crawl
+[Fast Task]    [SUCCESS] Zoom (Done) [TIME]
+[Slow Task]  > [START] Crawl (Started manually)
+[Fast Task]    [SKIP] Swoosh (Skipped)
+[SUCCESS] Fast Task (success) [TIME]
+[Slow Task]    [SUCCESS] Crawl (Finished eventually) [TIME]
+[SUCCESS] Slow Task (success) [TIME]

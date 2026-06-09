@@ -1,0 +1,10 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Grouped Sequence Fail (fail) [TIME]
+   ────────  Prep  ────────────────────────────────────────────────────────────────────────────────────
+   ✔  Clean (Cleaned) [TIME]
+   ✖  Fetch (fail) [TIME]
+   │
+   │ issue:    Network error

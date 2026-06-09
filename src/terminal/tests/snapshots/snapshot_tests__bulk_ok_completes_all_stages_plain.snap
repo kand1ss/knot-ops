@@ -1,0 +1,10 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Bulk OK Task
+[Bulk OK Task]    [WAIT] Stage A
+[Bulk OK Task]    [WAIT] Stage B
+[Bulk OK Task]    [SUCCESS] Stage A (all done) [TIME]
+[Bulk OK Task]    [SUCCESS] Stage B (all done) [TIME]
+[SUCCESS] Bulk OK Task (success) [TIME]

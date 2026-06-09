@@ -1,0 +1,6 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Simple Task (Finished cleanly) [TIME]
+>>> [STDOUT] Plain text after simple task OK

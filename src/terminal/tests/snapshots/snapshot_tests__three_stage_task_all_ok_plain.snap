@@ -1,0 +1,15 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Multi Stage
+[Multi Stage]    [WAIT] Download
+[Multi Stage]    [WAIT] Build
+[Multi Stage]    [WAIT] Deploy
+[Multi Stage]  > [START] Download
+[Multi Stage]    [SUCCESS] Download (downloaded) [TIME]
+[Multi Stage]  > [START] Build
+[Multi Stage]    [SUCCESS] Build (built) [TIME]
+[Multi Stage]  > [START] Deploy
+[Multi Stage]    [SUCCESS] Deploy (deployed) [TIME]
+[SUCCESS] Multi Stage (success) [TIME]

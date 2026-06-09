@@ -1,0 +1,12 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Seq Task
+[Seq Task]    [WAIT] Stage 1
+[Seq Task]    [SUCCESS] Stage 1 (Stage 1 done) [TIME]
+[SUCCESS] Seq Task (success) [TIME]
+[TASK] After Space Task
+[After Space Task]    [WAIT] Final Step
+[After Space Task]    [SUCCESS] Final Step (ok) [TIME]
+[SUCCESS] After Space Task (success) [TIME]

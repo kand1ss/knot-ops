@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Simple Failing Task (fail) [TIME]
+│
+│ issue:    Critical error occurred
+>>> [STDOUT] Plain text after simple task FAIL

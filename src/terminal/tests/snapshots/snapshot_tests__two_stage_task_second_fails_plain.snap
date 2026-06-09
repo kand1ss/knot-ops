@@ -1,0 +1,14 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Two Stage Fail
+[Two Stage Fail]    [WAIT] Prepare
+[Two Stage Fail]    [WAIT] Execute
+[Two Stage Fail]  > [START] Prepare
+[Two Stage Fail]    [SUCCESS] Prepare (prepared) [TIME]
+[Two Stage Fail]  > [START] Execute
+[Two Stage Fail]    [FAIL] Execute (fail) [TIME]
+[Two Stage Fail]    │
+[Two Stage Fail]    │ issue:    execution error
+[FAIL] Two Stage Fail (fail) [TIME]

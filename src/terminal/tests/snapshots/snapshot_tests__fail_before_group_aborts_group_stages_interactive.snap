@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Fail Before Group (fail) [TIME]
+   ✖  Init workspace (fail) [TIME]
+   │
+   │ issue:    Disk full
+   ────────  Deploy  ──────────────────────────────────────────────────────────────────────────────────
+   ·  Upload files
+   ·  Restart service

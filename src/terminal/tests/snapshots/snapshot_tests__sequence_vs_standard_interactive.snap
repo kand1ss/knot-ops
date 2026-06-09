@@ -1,0 +1,10 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Database Init (success) [TIME]
+✖  Deploy Sequence (fail) [TIME]
+   ✔  Upload (Uploaded successfully) [TIME]
+   ✖  Restart (fail) [TIME]
+   │
+   │ issue:    Service crashed

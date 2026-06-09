@@ -1,0 +1,10 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Failing Multi Stage (fail) [TIME]
+   ✔  Download (done) [TIME]
+   ✖  Build (fail) [TIME]
+   │
+   │ issue:    compilation error
+   ·  Deploy

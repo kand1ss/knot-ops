@@ -1,0 +1,10 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Bulk Skip Task
+[Bulk Skip Task]    [WAIT] Stage A
+[Bulk Skip Task]    [WAIT] Stage B
+[Bulk Skip Task]    [SKIP] Stage A (cached)
+[Bulk Skip Task]    [SKIP] Stage B (cached)
+[SUCCESS] Bulk Skip Task (success) [TIME]

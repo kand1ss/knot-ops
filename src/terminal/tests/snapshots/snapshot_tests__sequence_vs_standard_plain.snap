@@ -1,0 +1,21 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Database Init
+[Database Init]    [WAIT] Migrate
+[Database Init]    [WAIT] Seed
+[TASK] Deploy Sequence
+[Deploy Sequence]    [WAIT] Upload
+[Deploy Sequence]    [WAIT] Restart
+[Deploy Sequence]  > [START] Upload
+[Database Init]  > [START] Migrate
+[Deploy Sequence]    [SUCCESS] Upload (Uploaded successfully) [TIME]
+[Deploy Sequence]  > [START] Restart
+[Database Init]    [SKIP] Seed (Already seeded)
+[Database Init]    [SUCCESS] Migrate (Done) [TIME]
+[SUCCESS] Database Init (success) [TIME]
+[Deploy Sequence]    [FAIL] Restart (fail) [TIME]
+[Deploy Sequence]    │
+[Deploy Sequence]    │ issue:    Service crashed
+[FAIL] Deploy Sequence (fail) [TIME]

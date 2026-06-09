@@ -1,0 +1,7 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Basic Task
+[Basic Task]    [WAIT] Step One
+[Basic Task]    [WAIT] Step Two

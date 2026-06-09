@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Only Group
+[Only Group]    ────────  Only Header  ─────────────────────────────────────────────────────────────────────────────
+[Only Group]    [WAIT] Stage 1
+[Only Group]    [WAIT] Stage 2

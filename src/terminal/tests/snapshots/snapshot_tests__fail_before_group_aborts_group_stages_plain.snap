@@ -1,0 +1,13 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Fail Before Group
+[Fail Before Group]    [WAIT] Init workspace
+[Fail Before Group]    ────────  Deploy  ──────────────────────────────────────────────────────────────────────────────────
+[Fail Before Group]    [WAIT] Upload files
+[Fail Before Group]    [WAIT] Restart service
+[Fail Before Group]    [FAIL] Init workspace (fail) [TIME]
+[Fail Before Group]    │
+[Fail Before Group]    │ issue:    Disk full
+[FAIL] Fail Before Group (fail) [TIME]

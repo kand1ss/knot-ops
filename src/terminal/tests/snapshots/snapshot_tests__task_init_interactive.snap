@@ -1,0 +1,7 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+▶ Basic Task
+   ·  Step One
+   ·  Step Two

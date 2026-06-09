@@ -1,0 +1,15 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Incremental Build
+[Incremental Build]    [WAIT] Fetch dependencies
+[Incremental Build]    [WAIT] Compile
+[Incremental Build]    [WAIT] Bundle
+[Incremental Build]  > [START] Fetch dependencies
+[Incremental Build]    [SUCCESS] Fetch dependencies (fetched) [TIME]
+[Incremental Build]  > [START] Compile
+[Incremental Build]    [SKIP] Compile (already compiled)
+[Incremental Build]  > [START] Bundle
+[Incremental Build]    [SUCCESS] Bundle (bundled) [TIME]
+[SUCCESS] Incremental Build (success) [TIME]

@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Task 1
+[SUCCESS] Task 1 (Done 1) [TIME]
+[TASK] Task 2
+[FAIL] Task 2 (fail) [TIME]
+ │
+ │ issue:    Failed 2
+>>> [STDOUT] Plain text after multiple tasks

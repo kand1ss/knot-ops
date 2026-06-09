@@ -1,0 +1,5 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Skipped Task (success) [TIME]

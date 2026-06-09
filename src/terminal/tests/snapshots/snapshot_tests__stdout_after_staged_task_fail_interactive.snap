@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Staged Task Failing (fail) [TIME]
+   ✔  Download (ok) [TIME]
+   ✖  Extract (fail) [TIME]
+   │
+   │ issue:    Archive corrupted
+   ·  Build
+>>> [STDOUT] Plain text after staged task FAIL

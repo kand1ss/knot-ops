@@ -1,0 +1,18 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Worker 1
+[Worker 1]    [WAIT] Job
+[Worker 1]  > [START] Job
+[TASK] Worker 2
+[Worker 2]    [WAIT] Job
+[Worker 2]  > [START] Job
+[Worker 1]    [FAIL] Job (fail) [TIME]
+[Worker 1]    │
+[Worker 1]    │ issue:    SIGINT
+[FAIL] Worker 1 (fail) [TIME]
+[Worker 2]    [FAIL] Job (fail) [TIME]
+[Worker 2]    │
+[Worker 2]    │ issue:    SIGINT
+[FAIL] Worker 2 (fail) [TIME]

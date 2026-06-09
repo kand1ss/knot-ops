@@ -1,0 +1,22 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Network Sync
+[Network Sync]    [WAIT] Connect
+[TASK] Disk Write
+[Disk Write]    [WAIT] Save
+[Network Sync]  > [START] Connect
+[Disk Write]  > [START] Save
+[Network Sync]    [FAIL] Connect (fail) [TIME]
+[Network Sync]    │
+[Network Sync]    │ issue:    Connection refused
+[Network Sync]    │
+[Network Sync]    │ context:  192.168.1.1
+[FAIL] Network Sync (fail) [TIME]
+[Disk Write]    [FAIL] Save (fail) [TIME]
+[Disk Write]    │
+[Disk Write]    │ issue:    Access Denied
+[Disk Write]    │
+[Disk Write]    │ solution: Run as sudo
+[FAIL] Disk Write (fail) [TIME]

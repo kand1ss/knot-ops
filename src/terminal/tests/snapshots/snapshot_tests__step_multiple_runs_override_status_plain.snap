@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[WAIT] Download
+[START] Download (10%)
+[START] Download (50%)
+[START] Download (99%)
+[SUCCESS] Download (100% done) [TIME]

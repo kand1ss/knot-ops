@@ -1,0 +1,13 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Ghost Protocol
+[TASK] Heavy Lifting
+[Heavy Lifting]    [WAIT] Loading
+[SUCCESS] Ghost Protocol (Nothing to do) [TIME]
+[Heavy Lifting]  > [START] Loading
+[Heavy Lifting]    [FAIL] Loading (fail) [TIME]
+[Heavy Lifting]    │
+[Heavy Lifting]    │ issue:    Crash
+[FAIL] Heavy Lifting (fail) [TIME]

@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Failed Task (fail) [TIME]
+   ✖  Step One (fail) [TIME]
+   │
+   │ issue:    Failed
+   ·  Step Two

@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Group OK
+[Group OK]    ────────  Building  ────────────────────────────────────────────────────────────────────────────────
+[Group OK]    [WAIT] Compile source
+[Group OK]    [WAIT] Link binary
+[Group OK]    [SUCCESS] Compile source (ok) [TIME]
+[Group OK]    [SUCCESS] Link binary (ok) [TIME]
+[SUCCESS] Group OK (success) [TIME]

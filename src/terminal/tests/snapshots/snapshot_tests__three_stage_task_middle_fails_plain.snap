@@ -1,0 +1,15 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Failing Multi Stage
+[Failing Multi Stage]    [WAIT] Download
+[Failing Multi Stage]    [WAIT] Build
+[Failing Multi Stage]    [WAIT] Deploy
+[Failing Multi Stage]  > [START] Download
+[Failing Multi Stage]    [SUCCESS] Download (done) [TIME]
+[Failing Multi Stage]  > [START] Build
+[Failing Multi Stage]    [FAIL] Build (fail) [TIME]
+[Failing Multi Stage]    │
+[Failing Multi Stage]    │ issue:    compilation error
+[FAIL] Failing Multi Stage (fail) [TIME]

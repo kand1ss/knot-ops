@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Group At End
+[Group At End]    [WAIT] Initial Stage
+[Group At End]    [WAIT] Final Stage 1
+[Group At End]    [WAIT] Final Stage 2
+[Group At End]    ────────  Final Group  ─────────────────────────────────────────────────────────────────────────────

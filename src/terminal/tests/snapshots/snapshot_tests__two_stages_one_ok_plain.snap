@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] One Stage is Ok
+[One Stage is Ok]    [WAIT] Step One
+[One Stage is Ok]    [WAIT] Step Two
+[One Stage is Ok]    [SUCCESS] Step Two (Ok) [TIME]
