@@ -1,4 +1,4 @@
-name: Release
+name: CD
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
           - name: Windows x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset_name: knot-windows-x86_64.exe
+            asset_name: knot-windows-x86_64
 
     steps:
       - uses: actions/checkout@v6
@@ -62,19 +62,22 @@ jobs:
         shell: bash
         run: |
           BIN_PATH="target/${{ matrix.target }}/release/knot"
-          [[ "${{ matrix.os }}" == "windows-latest" ]] && BIN_PATH="${BIN_PATH}.exe"
           
-          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BIN_EXE="${BIN_PATH}.exe"
+            7z a "${{ matrix.asset_name }}.zip" "./$BIN_EXE"
+            echo "ASSET_PATH=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
+          else
             strip "$BIN_PATH"
+            tar -czf "${{ matrix.asset_name }}.tar.gz" -C "$(dirname "$BIN_PATH")" "$(basename "$BIN_PATH")"
+            echo "ASSET_PATH=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
           fi
-          
-          cp "$BIN_PATH" "${{ matrix.asset_name }}"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}
+          path: ${{ env.ASSET_PATH }}
           if-no-files-found: error
 
   publish:
@@ -113,6 +116,8 @@ jobs:
           files: dist/**
           generate_release_notes: true
 
+      - name: Install cargo-release
+        uses: taiki-e/install-action@cargo-release
       - name: Publish to crates.io
         if: "!contains(github.ref_name, '-')"
-        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        run: cargo release publish --workspace --token ${{ secrets.CARGO_TOKEN }} --execute --no-confirm
