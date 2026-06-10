@@ -1,4 +1,4 @@
-name: Check
+name: CI
 
 on:
   push:
@@ -8,28 +8,36 @@ on:
       - '**.md'
       - 'docs/**'
       - '.gitignore'
-
   pull_request:
     branches:
       - main
-    paths:
-      - '**/src/**'
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '.github/workflows/**'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Format
+        run: cargo fmt --all -- --check
+
   check:
     name: ${{ matrix.os }}
+    needs: lint
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
-    
     strategy:
       fail-fast: false
       matrix:
@@ -41,19 +49,13 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: clippy
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Check Format
-        run: cargo fmt --all -- --check
-
-      - name: Run Clippy check
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features --workspace -- -D warnings
+      
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
       - name: Run Tests
         run: cargo test --all-features --workspace
