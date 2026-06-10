@@ -5,5 +5,5 @@ expression: sanitized_output(&term)
 [TASK] Single Group Failed Task
 [Single Group Failed Task]    ────────  Setup  ───────────────────────────────────────────────────────────────────────────────────
 [FAIL] Single Group Failed Task (fail) [TIME]
- │
- │ issue:    error
+│
+│ issue:    error

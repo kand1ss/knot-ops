@@ -4,6 +4,6 @@ expression: sanitized_output(&term)
 ---
 [TASK] Simple Failing Task
 [FAIL] Simple Failing Task (fail) [TIME]
- │
- │ issue:    Critical error occurred
+│
+│ issue:    Critical error occurred
 >>> [STDOUT] Plain text after simple task FAIL

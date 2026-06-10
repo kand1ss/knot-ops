@@ -2,7 +2,5 @@
 source: src/terminal/tests/snapshot_tests.rs
 expression: sanitized_output(&term)
 ---
-[WAIT] Instant Fail
-[FAIL] Instant Fail (fail) [TIME]
-│
-│ issue:    Config not found
+[TASK] Simple Task
+[SUCCESS] Simple Task (success) [TIME]

@@ -5,9 +5,9 @@ expression: sanitized_output(&term)
 [WAIT] Database Migration
 [START] Database Migration
 [FAIL] Database Migration (fail) [TIME]
- │
- │ issue:    Duplicate key
- │
- │ context:  Table 'users'
- │
- │ solution: Drop table and retry
+│
+│ issue:    Duplicate key
+│
+│ context:  Table 'users'
+│
+│ solution: Drop table and retry

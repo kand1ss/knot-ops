@@ -4,9 +4,9 @@ expression: sanitized_output(&term)
 ---
 [TASK] Bulk Fail Task
 [FAIL] Bulk Fail Task (fail) [TIME]
- │
- │ issue:    error
- │
- │ context:  context
- │
- │ solution: solution
+│
+│ issue:    error
+│
+│ context:  context
+│
+│ solution: solution

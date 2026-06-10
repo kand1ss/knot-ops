@@ -5,6 +5,6 @@ expression: sanitized_output(&term)
 [WAIT] Failing Step
 [START] Failing Step
 [FAIL] Failing Step (fail) [TIME]
- │
- │ issue:    Fatal
+│
+│ issue:    Fatal
 >>> [STDOUT] Should be below the error report

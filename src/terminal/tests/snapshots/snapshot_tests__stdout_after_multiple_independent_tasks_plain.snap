@@ -6,6 +6,6 @@ expression: sanitized_output(&term)
 [SUCCESS] Task 1 (Done 1) [TIME]
 [TASK] Task 2
 [FAIL] Task 2 (fail) [TIME]
- │
- │ issue:    Failed 2
+│
+│ issue:    Failed 2
 >>> [STDOUT] Plain text after multiple tasks
