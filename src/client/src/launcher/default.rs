@@ -41,7 +41,7 @@ impl DaemonLauncher for DefaultLauncher {
 
         launcher.launch(directory).await.map_err(|e| DaemonLifecycleError::LaunchFailed {
             message: "The knot utility was not found. Make sure you have knot installed, or manually specify the path to the knot executable.".to_string(), 
-            binary_path: "Not found".to_string(), 
+            binary_path: launcher.binary_path().to_string_lossy().into_owned(),
             target_dir: directory.to_string_lossy().into_owned(),
             error: e.to_string()
         }.into())

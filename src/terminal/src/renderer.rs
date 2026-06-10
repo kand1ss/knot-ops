@@ -335,7 +335,7 @@ impl<'a> TaskRenderer<'a> {
             } => {
                 let clean_error = console::strip_ansi_codes(&error).to_string();
                 for line in clean_error.lines() {
-                    writer.write_line(&format!("{ci_prefix} {line}"));
+                    write_plain_line(ci_prefix, writer.as_ref(), line);
                 }
             }
         }

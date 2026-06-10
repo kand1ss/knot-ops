@@ -138,7 +138,7 @@ fn simple_task_ok_success(#[case] mode: TestMode) {
 
     task.ok("success");
     assert_snapshot!(
-        snapshot_name("simple_task_ok_sucess", mode),
+        snapshot_name("simple_task_ok_success", mode),
         sanitized_output(&term)
     )
 }
@@ -247,7 +247,7 @@ fn engine_space_inserts_blank_line(#[case] mode: TestMode) {
     t2.ok_by_id("s2", "done");
 
     assert_snapshot!(
-        snapshot_name("engine_space_insers_blank_line", mode),
+        snapshot_name("engine_space_inserts_blank_line", mode),
         sanitized_output(&term)
     )
 }

@@ -53,14 +53,15 @@ impl<S: TransportSpec> InboxStream<S> {
     /// event is received, no messages from the underlying receiver will be lost.
     #[instrument(skip(self), name = "stream_next")]
     pub async fn next(&mut self) -> Result<Option<S::Ev>, ClientError> {
-        match &self.receiver.recv().await {
+        match self.receiver.recv().await {
             Ok(msg) => match &msg.kind {
                 MessageKind::Event(ev) => Ok(Some(ev.clone())),
-                // If we receive something that isn't an event, we treat it as
-                // the end of the event sequence for this specific stream view.
                 _ => Ok(None),
             },
-            Err(_) => Err(TransportError::ConnectionRefused.into()),
+            Err(broadcast::error::RecvError::Closed) => return Ok(None),
+            Err(broadcast::error::RecvError::Lagged(_)) => {
+                return Err(TransportError::ConnectionRefused.into());
+            }
         }
     }
 }

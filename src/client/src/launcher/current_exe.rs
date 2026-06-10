@@ -15,12 +15,19 @@ pub struct CurrentExeLauncher {
 
 impl CurrentExeLauncher {
     /// Creates a new `CurrentExeLauncher` using the current executable path.
-    pub fn new() -> Self {
-        let current_exe = std::env::current_exe().unwrap();
-        Self {
+    pub fn new() -> Result<Self, ClientError> {
+        let current_exe =
+            std::env::current_exe().map_err(|e| DaemonLifecycleError::LaunchFailed {
+                message: "Failed to get current executable path".to_string(),
+                binary_path: "?".to_string(),
+                target_dir: String::new(),
+                error: e.to_string(),
+            })?;
+
+        Ok(Self {
             current_exe,
             args: Vec::new(),
-        }
+        })
     }
 
     /// Adds a command-line argument to be passed to the daemon.
@@ -61,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_current_exe_launcher_binary_path() {
-        let launcher = CurrentExeLauncher::new();
+        let launcher = CurrentExeLauncher::new().unwrap();
         assert_eq!(
             launcher.binary_path(),
             std::env::current_exe().unwrap().as_path()
@@ -70,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_current_exe_launcher_args() {
-        let mut launcher = CurrentExeLauncher::new();
+        let mut launcher = CurrentExeLauncher::new().unwrap();
         launcher.arg("--mode").arg("test");
         assert_eq!(launcher.args, vec!["--mode", "test"]);
     }

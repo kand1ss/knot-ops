@@ -193,7 +193,9 @@ async fn test_launch_daemon_success() {
 #[cfg_attr(windows, serial_test::serial)]
 async fn test_healthcheck_healthy() {
     let (_dir, workspace) = setup_temp_workspace();
-    let (_client, handle) = setup_client_with_daemon(workspace).await;
+    create_pid_file(&workspace, std::process::id());
+    let (client, handle) = setup_client_with_daemon(workspace).await;
+    client.healthcheck().await.unwrap();
     handle.abort();
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 }
