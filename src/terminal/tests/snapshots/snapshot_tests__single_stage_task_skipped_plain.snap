@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Skipped Task
+[Skipped Task]    [WAIT] Step One
+[Skipped Task]  > [START] Step One
+[Skipped Task]    [SKIP] Step One (not needed)
+[SUCCESS] Skipped Task (success) [TIME]

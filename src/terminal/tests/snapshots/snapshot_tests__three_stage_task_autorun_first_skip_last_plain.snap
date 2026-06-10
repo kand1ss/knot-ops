@@ -1,0 +1,14 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Mixed Stages
+[Mixed Stages]    [WAIT] Fetch
+[Mixed Stages]    [WAIT] Process
+[Mixed Stages]    [WAIT] Upload
+[Mixed Stages]  > [START] Fetch
+[Mixed Stages]    [SUCCESS] Fetch (fetched) [TIME]
+[Mixed Stages]  > [START] Process
+[Mixed Stages]    [SUCCESS] Process (processed) [TIME]
+[Mixed Stages]    [SKIP] Upload (already up to date)
+[SUCCESS] Mixed Stages (success) [TIME]

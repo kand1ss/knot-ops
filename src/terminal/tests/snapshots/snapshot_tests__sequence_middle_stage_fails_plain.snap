@@ -1,0 +1,16 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] CI Pipeline
+[CI Pipeline]    [WAIT] Compile
+[CI Pipeline]    [WAIT] Test
+[CI Pipeline]    [WAIT] Publish
+[CI Pipeline]  > [START] Compile
+[CI Pipeline]    [SUCCESS] Compile (compiled) [TIME]
+[CI Pipeline]  > [START] Test
+[CI Pipeline]    [FAIL] Test (fail) [TIME]
+[CI Pipeline]    │
+[CI Pipeline]    │ issue:    test suite failed
+[FAIL] CI Pipeline (fail) [TIME]
+[CI Pipeline]    [SKIP] Publish (skipped due to previous error)

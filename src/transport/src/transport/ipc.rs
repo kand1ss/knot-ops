@@ -19,7 +19,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, instrument, trace, warn};
 
-use crate::transport::{MAX_MESSAGE_SIZE, RawTransport};
+use crate::transport::{MAX_MESSAGE_SIZE, RawTransport, RawTransportFactory};
 use knot_core::errors::TransportError;
 
 /// Resolves a filesystem path into a cross-platform local socket name.
@@ -162,6 +162,25 @@ impl RawTransport for IpcTransport {
         let res = Self::read_frame_internal(&mut reader).await;
         trace!("Unlocking reader lock...");
         res
+    }
+}
+
+#[derive(Debug)]
+pub struct IpcTransportFactory {
+    socket_path: PathBuf,
+}
+
+impl IpcTransportFactory {
+    pub fn new(socket_path: PathBuf) -> Self {
+        Self { socket_path }
+    }
+}
+
+#[async_trait]
+impl RawTransportFactory for IpcTransportFactory {
+    type Transport = IpcTransport;
+    async fn build(&self) -> Result<Self::Transport, TransportError> {
+        IpcTransport::connect(self.socket_path.clone()).await
     }
 }
 
@@ -316,6 +335,26 @@ mod tests {
         server.read_exact(&mut buf).await.unwrap();
 
         assert_eq!(&buf, data);
+    }
+
+    #[tokio::test]
+    async fn test_factory() {
+        use crate::codec::BinaryCodec;
+        use crate::test_utils::{echo_server, sock};
+        use std::time::Duration;
+
+        let path = sock("test");
+        let _server = echo_server::<BinaryCodec>(path.clone()).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let factory = IpcTransportFactory::new(path);
+        for i in 0..5 {
+            {
+                let res = factory.build().await.unwrap();
+                drop(res)
+            }
+            println!("res {}", i);
+        }
     }
 
     #[test]

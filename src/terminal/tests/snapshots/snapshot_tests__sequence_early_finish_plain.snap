@@ -1,0 +1,14 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Conditional Deploy
+[Conditional Deploy]    [WAIT] Check cache
+[Conditional Deploy]    [WAIT] Build
+[Conditional Deploy]    [WAIT] Push
+[Conditional Deploy]  > [START] Check cache
+[Conditional Deploy]    [SUCCESS] Check cache (cache hit) [TIME]
+[Conditional Deploy]  > [START] Build
+[Conditional Deploy]    [SKIP] Build (skipped)
+[Conditional Deploy]    [SKIP] Push (skipped)
+[SUCCESS] Conditional Deploy (success) [TIME]

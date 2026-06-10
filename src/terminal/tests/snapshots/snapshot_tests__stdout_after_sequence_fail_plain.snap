@@ -1,0 +1,17 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Deployment Pipeline Failing
+[Deployment Pipeline Failing]    [WAIT] Build
+[Deployment Pipeline Failing]    [WAIT] Test
+[Deployment Pipeline Failing]    [WAIT] Deploy
+[Deployment Pipeline Failing]  > [START] Build
+[Deployment Pipeline Failing]    [SUCCESS] Build (Built successfully) [TIME]
+[Deployment Pipeline Failing]  > [START] Test
+[Deployment Pipeline Failing]    [FAIL] Test (fail) [TIME]
+[Deployment Pipeline Failing]    │
+[Deployment Pipeline Failing]    │ issue:    Tests failed: 5 errors
+[FAIL] Deployment Pipeline Failing (fail) [TIME]
+[Deployment Pipeline Failing]    [SKIP] Deploy (skipped due to previous error)
+>>> [STDOUT] Plain text after sequence FAIL

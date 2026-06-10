@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Consecutive Groups
+[Consecutive Groups]    ────────  Group A  ─────────────────────────────────────────────────────────────────────────────────
+[Consecutive Groups]    [WAIT] Stage A1
+[Consecutive Groups]    ────────  Group B  ─────────────────────────────────────────────────────────────────────────────────
+[Consecutive Groups]    [WAIT] Stage B1

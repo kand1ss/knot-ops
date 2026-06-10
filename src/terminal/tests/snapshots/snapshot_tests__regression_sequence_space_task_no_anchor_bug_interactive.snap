@@ -1,0 +1,7 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Seq Task (success) [TIME]
+
+✔  After Space Task (success) [TIME]

@@ -1,0 +1,17 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Grouped Sequence
+[Grouped Sequence]    ────────  Prep  ────────────────────────────────────────────────────────────────────────────────────
+[Grouped Sequence]    [WAIT] Clean
+[Grouped Sequence]    [WAIT] Fetch
+[Grouped Sequence]    ────────  Build  ───────────────────────────────────────────────────────────────────────────────────
+[Grouped Sequence]    [WAIT] Compile
+[Grouped Sequence]  > [START] Clean
+[Grouped Sequence]    [SUCCESS] Clean (Cleaned) [TIME]
+[Grouped Sequence]  > [START] Fetch
+[Grouped Sequence]    [SUCCESS] Fetch (Fetched) [TIME]
+[Grouped Sequence]  > [START] Compile
+[Grouped Sequence]    [SUCCESS] Compile (Compiled) [TIME]
+[SUCCESS] Grouped Sequence (success) [TIME]

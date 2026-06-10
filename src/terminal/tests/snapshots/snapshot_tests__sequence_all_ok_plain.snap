@@ -1,0 +1,15 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Deployment
+[Deployment]    [WAIT] Pull images
+[Deployment]    [WAIT] Start containers
+[Deployment]    [WAIT] Healthcheck
+[Deployment]  > [START] Pull images
+[Deployment]    [SUCCESS] Pull images (pulled) [TIME]
+[Deployment]  > [START] Start containers
+[Deployment]    [SUCCESS] Start containers (started) [TIME]
+[Deployment]  > [START] Healthcheck
+[Deployment]    [SUCCESS] Healthcheck (healthy) [TIME]
+[SUCCESS] Deployment (success) [TIME]

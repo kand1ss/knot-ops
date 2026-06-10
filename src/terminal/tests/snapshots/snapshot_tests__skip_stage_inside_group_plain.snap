@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Skip Inside Group
+[Skip Inside Group]    ────────  Setup  ───────────────────────────────────────────────────────────────────────────────────
+[Skip Inside Group]    [WAIT] Download cache
+[Skip Inside Group]    [WAIT] Extract cache
+[Skip Inside Group]    [SKIP] Download cache (Cache found locally)
+[Skip Inside Group]    [SUCCESS] Extract cache (ok) [TIME]
+[SUCCESS] Skip Inside Group (success) [TIME]

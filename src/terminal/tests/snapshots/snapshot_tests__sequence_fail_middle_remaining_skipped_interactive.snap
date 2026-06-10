@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Middle Error Sequence (fail) [TIME]
+   ✔  Stage A (A done) [TIME]
+   ✔  Stage B (B done) [TIME]
+   ✖  Stage C (fail) [TIME]
+   │
+   │ issue:    C failed
+   ↷  Stage D (skipped due to previous error)

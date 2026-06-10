@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Interleaved
+[Interleaved]    ────────  Group 1  ─────────────────────────────────────────────────────────────────────────────────
+[Interleaved]    [WAIT] Stage G1
+[Interleaved]    ────────────────────────────────────────────────────────────────────────────────────────────────────
+[Interleaved]    [WAIT] Root Stage
+[Interleaved]    ────────  Group 2  ─────────────────────────────────────────────────────────────────────────────────
+[Interleaved]    [WAIT] Stage G2

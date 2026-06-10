@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] One Stage Job
+[One Stage Job]    [WAIT] Only Stage
+[One Stage Job]  > [START] Only Stage
+[One Stage Job]    [SUCCESS] Only Stage (done) [TIME]
+[SUCCESS] One Stage Job (success) [TIME]

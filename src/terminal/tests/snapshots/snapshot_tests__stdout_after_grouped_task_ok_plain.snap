@@ -1,0 +1,15 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Grouped Task
+[Grouped Task]    ────────  Initialization  ──────────────────────────────────────────────────────────────────────────
+[Grouped Task]    [WAIT] Init DB
+[Grouped Task]    ────────  Migrations  ──────────────────────────────────────────────────────────────────────────────
+[Grouped Task]    [WAIT] Apply V1
+[Grouped Task]    [WAIT] Apply V2
+[Grouped Task]    [SUCCESS] Init DB (ok) [TIME]
+[Grouped Task]    [SUCCESS] Apply V1 (ok) [TIME]
+[Grouped Task]    [SUCCESS] Apply V2 (ok) [TIME]
+[SUCCESS] Grouped Task (success) [TIME]
+>>> [STDOUT] Plain text after grouped task OK

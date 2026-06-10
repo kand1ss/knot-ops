@@ -1,0 +1,15 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Error Sequence
+[Error Sequence]    [WAIT] Stage A
+[Error Sequence]    [WAIT] Stage B
+[Error Sequence]    [WAIT] Stage C
+[Error Sequence]  > [START] Stage A
+[Error Sequence]    [FAIL] Stage A (fail) [TIME]
+[Error Sequence]    │
+[Error Sequence]    │ issue:    critical error
+[FAIL] Error Sequence (fail) [TIME]
+[Error Sequence]    [SKIP] Stage B (skipped due to previous error)
+[Error Sequence]    [SKIP] Stage C (skipped due to previous error)

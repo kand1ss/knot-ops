@@ -1,0 +1,6 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Deployment Pipeline (success) [TIME]
+>>> [STDOUT] Plain text after sequence OK

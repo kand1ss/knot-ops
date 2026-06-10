@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Indented Task
+[Indented Task]    [WAIT] Step One
+[Indented Task]  > [START] Step One
+[TASK] Space?

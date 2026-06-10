@@ -1,7 +1,11 @@
 
 [workspace]
 members = [
-    "src/core", "src/transport"
+  "src/core",
+  "src/client",
+  "src/transport",
+  "src/protocol",
+  "src/terminal",
 ]
 resolver = "2"
 

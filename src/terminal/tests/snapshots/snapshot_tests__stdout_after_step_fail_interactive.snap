@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Failing Step (fail) [TIME]
+│
+│ issue:    Fatal
+>>> [STDOUT] Should be below the error report

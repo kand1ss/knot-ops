@@ -1,0 +1,12 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Task Before Space
+[Task Before Space]    [WAIT] Step
+[Task Before Space]    [SUCCESS] Step (done) [TIME]
+[SUCCESS] Task Before Space (success) [TIME]
+[TASK] Task After Space
+[Task After Space]    [WAIT] Step
+[Task After Space]    [SUCCESS] Step (done) [TIME]
+[SUCCESS] Task After Space (success) [TIME]

@@ -1,0 +1,16 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Backend Build
+[Backend Build]    [WAIT] Compile
+[TASK] Frontend Build
+[Frontend Build]    [WAIT] Bundle
+[Backend Build]  > [START] Compile (running rustc)
+[Frontend Build]  > [START] Bundle (running webpack)
+[Backend Build]    [SUCCESS] Compile (compiled) [TIME]
+[SUCCESS] Backend Build (success) [TIME]
+[Frontend Build]    [FAIL] Bundle (fail) [TIME]
+[Frontend Build]    │
+[Frontend Build]    │ issue:    bundle size exceeded
+[FAIL] Frontend Build (fail) [TIME]

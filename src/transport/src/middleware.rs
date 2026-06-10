@@ -94,33 +94,14 @@ mod pipeline_tests {
     use crate::codec::JsonCodec;
     use crate::messages::Message;
     use crate::middleware::{Inbound, Outbound, Pipeline};
-    use crate::transport::{RawTransport, TransportSpec};
+    use crate::test_utils::MockRaw;
+    use crate::transport::TransportSpec;
     use async_trait::async_trait;
     use knot_core::errors::TransportError;
 
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
     use tokio::sync::Mutex;
-    use tokio::sync::mpsc;
-
-    #[derive(Debug, Clone)]
-    pub struct MockRaw {
-        pub incoming_rx: Arc<Mutex<mpsc::Receiver<Vec<u8>>>>,
-        pub outgoing_tx: mpsc::Sender<Vec<u8>>,
-    }
-
-    #[async_trait]
-    impl RawTransport for MockRaw {
-        async fn send_frame_internal<'a>(&self, frame: &'a [u8]) -> Result<(), TransportError> {
-            self.outgoing_tx.send(frame.to_vec()).await.ok();
-            Ok(())
-        }
-
-        async fn recv_frame_internal(&self) -> Result<Vec<u8>, TransportError> {
-            let mut rx = self.incoming_rx.lock().await;
-            rx.recv().await.ok_or(TransportError::UnexpectedMessage)
-        }
-    }
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     pub enum TestReq {

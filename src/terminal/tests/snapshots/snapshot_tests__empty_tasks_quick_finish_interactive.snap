@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Ghost Protocol (Nothing to do) [TIME]
+✖  Heavy Lifting (fail) [TIME]
+   ✖  Loading (fail) [TIME]
+   │
+   │ issue:    Crash

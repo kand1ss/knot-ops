@@ -1,0 +1,18 @@
+[package]
+name = "knot-terminal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+indicatif = { version = "0.18.4", features = ["in_memory"] }
+console = "0.16.3"
+anyhow = "1.0.102"
+textwrap = { version = "0.16.2", features = ["terminal_size"] }
+
+[dev-dependencies]
+insta = "1.47.2"
+regex = "1"
+rstest = "0.26.1"

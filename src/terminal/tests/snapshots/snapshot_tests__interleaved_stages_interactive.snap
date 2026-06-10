@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Backend Build (success) [TIME]
+✖  Frontend Build (fail) [TIME]
+   ✖  Bundle (fail) [TIME]
+   │
+   │ issue:    bundle size exceeded

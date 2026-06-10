@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[WAIT] Simple Step
+[START] Simple Step
+[SUCCESS] Simple Step (Done) [TIME]
+>>> [STDOUT] Should be below the step

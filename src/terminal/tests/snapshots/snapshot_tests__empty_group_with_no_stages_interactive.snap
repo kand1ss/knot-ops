@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+▶ Empty Group Task
+   ────────  Empty Header  ────────────────────────────────────────────────────────────────────────────
+   ────────  Next Group  ──────────────────────────────────────────────────────────────────────────────
+   ·  Stage 1

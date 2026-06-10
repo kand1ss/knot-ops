@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Staged Task
+[Staged Task]    [WAIT] Download
+[Staged Task]    [WAIT] Extract
+[Staged Task]    [SUCCESS] Download (ok) [TIME]
+[Staged Task]    [SUCCESS] Extract (ok) [TIME]
+[SUCCESS] Staged Task (success) [TIME]
+>>> [STDOUT] Plain text after staged task OK

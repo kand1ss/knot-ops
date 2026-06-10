@@ -1,0 +1,5 @@
+---
+source: src/terminal/src/renderer.rs
+expression: ctx.sanitized_output()
+---
+·  Task A

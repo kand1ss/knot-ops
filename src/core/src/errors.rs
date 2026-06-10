@@ -1,12 +1,11 @@
 use thiserror::Error;
+mod client;
 mod config;
 mod daemon;
 mod services;
 mod transport;
 
-pub use {
-    config::ConfigError, daemon::DaemonError, services::ServiceError, transport::TransportError,
-};
+pub use {client::*, config::*, daemon::*, services::*, transport::*};
 
 #[derive(Debug, Error)]
 pub enum KnotError {
@@ -18,4 +17,6 @@ pub enum KnotError {
     Daemon(#[from] DaemonError),
     #[error(transparent)]
     Service(#[from] ServiceError),
+    #[error(transparent)]
+    Client(#[from] ClientError),
 }

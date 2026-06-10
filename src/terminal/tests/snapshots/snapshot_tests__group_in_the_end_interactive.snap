@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+▶ Group At End
+   ·  Initial Stage
+   ·  Final Stage 1
+   ·  Final Stage 2
+   ────────  Final Group  ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  Last Stage Error (fail) [TIME]
+   ✔  Stage A (A done) [TIME]
+   ✖  Stage B (fail) [TIME]
+   │
+   │ issue:    B failed

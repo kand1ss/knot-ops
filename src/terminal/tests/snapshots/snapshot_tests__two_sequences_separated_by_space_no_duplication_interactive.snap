@@ -1,0 +1,7 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  First Job (success) [TIME]
+
+✔  Second Job (success) [TIME]

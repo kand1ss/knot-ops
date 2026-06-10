@@ -1,0 +1,14 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] App 1
+[App 1]    ────────  Dependencies  ────────────────────────────────────────────────────────────────────────────
+[App 1]    [WAIT] Pulling
+[TASK] App 2
+[App 2]    ────────  Build Steps  ─────────────────────────────────────────────────────────────────────────────
+[App 2]    [WAIT] Compiling
+[App 1]    [SUCCESS] Pulling (Pulled) [TIME]
+[SUCCESS] App 1 (success) [TIME]
+[App 2]    [SUCCESS] Compiling (Compiled) [TIME]
+[SUCCESS] App 2 (success) [TIME]

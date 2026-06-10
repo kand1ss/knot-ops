@@ -1,0 +1,8 @@
+---
+source: src/terminal/src/renderer.rs
+expression: ctx.sanitized_output()
+---
+[CI]     [TASK] Build Core
+[CI]     [WAIT] Build Core (pending)
+[CI]   > [START] Build Core (compiling src/main.rs)
+[CI]     [SKIP] Build Core (cached)

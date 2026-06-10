@@ -1,0 +1,14 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Group Fail
+[Group Fail]    ────────  Testing  ─────────────────────────────────────────────────────────────────────────────────
+[Group Fail]    [WAIT] Unit tests
+[Group Fail]    [WAIT] Integration tests
+[Group Fail]    [WAIT] E2E tests
+[Group Fail]    [SUCCESS] Unit tests (ok) [TIME]
+[Group Fail]    [FAIL] Integration tests (fail) [TIME]
+[Group Fail]    │
+[Group Fail]    │ issue:    Integration failed
+[FAIL] Group Fail (fail) [TIME]

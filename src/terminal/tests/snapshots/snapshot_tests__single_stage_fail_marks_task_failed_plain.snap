@@ -1,0 +1,11 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Failing Task
+[Failing Task]    [WAIT] Compile
+[Failing Task]  > [START] Compile
+[Failing Task]    [FAIL] Compile (fail) [TIME]
+[Failing Task]    │
+[Failing Task]    │ issue:    compile error
+[FAIL] Failing Task (fail) [TIME]

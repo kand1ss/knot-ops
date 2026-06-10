@@ -1,0 +1,16 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Grouped Task Failing
+[Grouped Task Failing]    ────────  Network  ─────────────────────────────────────────────────────────────────────────────────
+[Grouped Task Failing]    [WAIT] Ping server
+[Grouped Task Failing]    ────────  Auth  ────────────────────────────────────────────────────────────────────────────────────
+[Grouped Task Failing]    [WAIT] Login user
+[Grouped Task Failing]    [WAIT] Fetch token
+[Grouped Task Failing]    [SUCCESS] Ping server (ok) [TIME]
+[Grouped Task Failing]    [FAIL] Login user (fail) [TIME]
+[Grouped Task Failing]    │
+[Grouped Task Failing]    │ issue:    Invalid credentials
+[FAIL] Grouped Task Failing (fail) [TIME]
+>>> [STDOUT] Plain text after grouped task FAIL

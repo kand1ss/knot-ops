@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+▶ Group In Middle
+   ·  Initial Stage
+   ────────  Middle Group  ────────────────────────────────────────────────────────────────────────────
+   ·  Grouped Stage
+   ·  Another Grouped Stage

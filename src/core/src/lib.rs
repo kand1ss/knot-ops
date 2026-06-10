@@ -58,3 +58,9 @@ pub mod states;
 /// Includes timestamp formatting, filesystem helpers, and other
 /// low-level utilities used throughout the project.
 pub mod utils;
+
+/// Project paths and filesystem identifiers.
+///
+/// Defines standard names for configuration files, data directories,
+/// and other environment-specific constants used for IO operations.
+pub mod consts;

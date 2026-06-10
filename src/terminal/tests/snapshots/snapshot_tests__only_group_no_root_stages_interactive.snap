@@ -1,0 +1,8 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+▶ Only Group
+   ────────  Only Header  ─────────────────────────────────────────────────────────────────────────────
+   ·  Stage 1
+   ·  Stage 2

@@ -1,0 +1,9 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] Group In Middle
+[Group In Middle]    [WAIT] Initial Stage
+[Group In Middle]    ────────  Middle Group  ────────────────────────────────────────────────────────────────────────────
+[Group In Middle]    [WAIT] Grouped Stage
+[Group In Middle]    [WAIT] Another Grouped Stage

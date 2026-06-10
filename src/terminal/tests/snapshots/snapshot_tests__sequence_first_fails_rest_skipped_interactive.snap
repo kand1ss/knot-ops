@@ -1,0 +1,10 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✖  CI Pipeline (fail) [TIME]
+   ✖  Compile (fail) [TIME]
+   │
+   │ issue:    syntax error
+   ↷  Test (skipped due to previous error)
+   ↷  Publish (skipped due to previous error)

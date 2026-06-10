@@ -1,0 +1,17 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+[TASK] First Job
+[First Job]    [WAIT] Clone
+[First Job]    [WAIT] Build
+[First Job]  > [START] Clone
+[First Job]    [SUCCESS] Clone (cloned) [TIME]
+[First Job]  > [START] Build
+[First Job]    [SUCCESS] Build (built) [TIME]
+[SUCCESS] First Job (success) [TIME]
+[TASK] Second Job
+[Second Job]    [WAIT] Deploy
+[Second Job]  > [START] Deploy
+[Second Job]    [SUCCESS] Deploy (deployed) [TIME]
+[SUCCESS] Second Job (success) [TIME]

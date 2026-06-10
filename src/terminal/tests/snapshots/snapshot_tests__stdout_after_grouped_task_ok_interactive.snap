@@ -1,0 +1,6 @@
+---
+source: src/terminal/tests/snapshot_tests.rs
+expression: sanitized_output(&term)
+---
+✔  Grouped Task (success) [TIME]
+>>> [STDOUT] Plain text after grouped task OK
