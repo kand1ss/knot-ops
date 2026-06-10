@@ -2,8 +2,8 @@
 
 > A fast local service orchestrator for developers — built in Rust.
 
-![Check](https://github.com/kand1ss/knot-ops/actions/workflows/check.yml/badge.svg)
-![Release](https://github.com/kand1ss/knot-ops/actions/workflows/release.yml/badge.svg)
+![CI](https://github.com/kand1ss/knot-ops/actions/workflows/ci.yml/badge.svg)
+![CD](https://github.com/kand1ss/knot-ops/actions/workflows/cd.yml/badge.svg)
 [![codecov](https://codecov.io/github/kand1ss/knot-ops/graph/badge.svg?token=KHVGOUH2O4)](https://codecov.io/github/kand1ss/knot-ops)
 [![Crates.io](https://img.shields.io/crates/v/knot-ops.svg)](https://crates.io/crates/knot-ops)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
