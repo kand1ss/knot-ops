@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package knot.v1;
+import "google/protobuf/empty.proto";
+
+service KnotDaemon {
+    rpc Up(UpRequest) returns (stream UpEvent);
+    rpc Down(DownRequest) returns (stream DownEvent);
+    rpc Status(StatusRequest) returns (StatusResponse);
+    rpc Subscribe(SubscribeRequest) returns (stream DaemonEvent);
+    rpc Logs(LogsRequest) returns (stream LogLine);
+    rpc Info(google.protobuf.Empty) returns (DaemonInfo);
+    rpc Ping(google.protobuf.Empty) returns (PingResponse);
+}
+
+enum ServiceStatus {
+    SERVICE_STATUS_UNSPECIFIED = 0;
+    SERVICE_STATUS_RUNNING = 1;
+    SERVICE_STATUS_STOPPED = 2;
+    SERVICE_STATUS_FAILED = 3;
+    SERVICE_STATUS_STARTING = 4;
+    SERVICE_STATUS_STOPPING = 5;
+}
+
+message ServiceInfo {
+    string name = 1;
+    ServiceStatus status = 2;
+    optional uint32 pid = 3;
+    uint64 uptime_secs = 4;
+    uint32 restart_count = 5;
+}
+
+message UpRequest {
+    repeated string services = 1;
+}
+
+message UpEvent {
+    oneof event {
+        Plan plan = 1;
+        TaskStarting task_starting = 2;
+        TaskStarted task_started = 3;
+        TaskFailed task_failed = 4;
+        TaskSkipped task_skipped = 5;
+        UpDone up_done = 6;
+    }
+}
+
+message Plan {
+    repeated TaskPlan tasks = 1;
+}
+
+message TaskPlan {
+    string task_id = 1;
+    string name = 2;
+}
+
+message TaskStarting { string task_id = 1; string status = 2; }
+message TaskStarted { string task_id = 1; string status = 2; }
+message TaskFailed { string task_id = 1; string error = 2; string context = 3; string solution = 4; }
+message TaskSkipped { string task_id = 1; string status = 2; }
+
+message UpDone {
+    uint32 started = 1;
+    uint32 skipped = 2;
+    uint32 failed = 3;
+}
+
+message DownRequest {
+    repeated string services = 1;
+}
+
+message DownEvent {
+    oneof event {
+        ServiceStopping service_stopping = 1;
+        ServiceStopped service_stopped = 2;
+        ServiceStopFailed service_stop_failed = 3;
+        DownDone down_done = 4;
+    }
+}
+
+message ServiceStopping { string name = 1; }
+message ServiceStopped { string name = 1; }
+message ServiceStopFailed { string name = 1; string error = 2; string context = 3; string solution = 4; }
+message DownDone { uint32 stopped = 1; uint32 failed = 2; }
+
+message StatusRequest {
+    optional string name = 1;
+}
+
+message StatusResponse {
+    repeated ServiceInfo services = 1;
+}
+
+enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    EVENT_TYPE_SERVICE_STARTED = 1;
+    EVENT_TYPE_SERVICE_STOPPED = 2;
+    EVENT_TYPE_SERVICE_FAILED = 3;
+}
+
+message SubscribeRequest {
+    repeated string services = 1;
+    repeated EventType event_types = 2;
+}
+
+message DaemonEvent {
+    uint64 timestamp_ms = 1;
+
+    oneof event {
+        ServiceStartedEvent service_started = 2;
+        ServiceFailedEvent service_failed = 3;
+        ServiceStoppedEvent service_stopped = 4;
+        ServiceRestartedEvent service_restarted = 5;
+        DaemonShuttingDown daemon_shutting_down = 6;
+    }
+}
+
+message ServiceStartedEvent { string name = 1; uint32 pid = 2; }
+message ServiceStoppedEvent { string name = 1; }
+message ServiceFailedEvent { string name = 1; string reason = 2; uint32 exit_code = 3; }
+message ServiceRestartedEvent { string name = 1; uint32 pid = 2; uint32 restart_count = 3; }
+message DaemonShuttingDown { }
+
+message LogsRequest {
+    string name = 1;
+    bool follow = 2;
+    uint32 tail = 3;
+}
+
+message LogLine {
+    string service = 1;
+    string log = 2;
+    uint64 timestamp_ms = 3;
+}
+
+message DaemonInfo {
+    string version = 1;
+    uint32 pid = 2;
+    uint64 uptime_secs = 3;
+    string socket_path = 4;
+    string project_path = 5;
+}
+
+message PingResponse {
+    string version = 1;
+}
