@@ -2,7 +2,6 @@ use std::{env, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not exists");
-    println!("{}", manifest_dir);
     let workspace_dir = PathBuf::from(manifest_dir)
         .parent()
         .unwrap()
@@ -11,6 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_path_buf();
     let proto_root = std::path::Path::new(&workspace_dir)
         .join("proto")
+        .join("knot")
         .join("v1");
 
     let file_descriptor_set = protox::compile(["daemon.proto"], [&proto_root])?;
@@ -21,6 +21,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_fds(file_descriptor_set)?;
 
     println!("cargo:rerun-if-changed={}", proto_root.display());
-
     Ok(())
 }
