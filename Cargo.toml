@@ -6,7 +6,7 @@ members = [
   "src/transport",
   "src/protocol",
   "src/terminal",
-  "src/proto",
+  "src/proto", "src/grpc",
 ]
 resolver = "2"
 

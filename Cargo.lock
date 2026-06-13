@@ -812,6 +812,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "knot-grpc"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "hyper",
+ "hyper-util",
+ "interprocess",
+ "knot-core",
+ "knot-proto",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "knot-proto"
 version = "0.1.0"
 dependencies = [
