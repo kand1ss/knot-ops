@@ -122,7 +122,8 @@ mod tests {
 
         // Ensure that Unix preserves the path character mapping exactly as required by fs_name
         let name = result.unwrap();
-        assert!(name.to_str().unwrap().contains("knot.sock"));
+        let s = format!("{:?}", name);
+        assert!(s.contains("knot.sock"));
     }
 
     #[cfg(unix)]
