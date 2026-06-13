@@ -686,7 +686,7 @@ mod tests {
                     .unwrap()
                     .unwrap();
                 drop(s);
-                tokio::time::sleep(Duration::from_millis(100)).await; 
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
     }
