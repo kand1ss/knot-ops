@@ -685,7 +685,8 @@ mod tests {
                     .expect("timeout")
                     .unwrap()
                     .unwrap();
-                // drop incoming — the next cycle will start fresh
+                drop(s);
+                tokio::time::sleep(Duration::from_millis(100)).await; 
             }
         }
     }
