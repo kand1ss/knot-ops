@@ -89,13 +89,25 @@ mod integration_tests {
         EchoClient::new(channel)
     }
 
+    async fn create_client_with_retry(path: &PathBuf) -> EchoClient<tonic::transport::Channel> {
+        let mut client = None;
+        for attempt in 0..10 {
+            tokio::time::sleep(Duration::from_millis(10 * (1 << attempt.min(4)))).await;
+            if let Ok(c) =
+                tokio::time::timeout(Duration::from_millis(100), create_grpc_client(path)).await
+            {
+                client = Some(c);
+                break;
+            }
+        }
+        client.expect("Failed to connect to server after retries")
+    }
+
     #[tokio::test]
     async fn test_grpc_unary_call() {
         let (path, _dir) = make_socket_path("unary");
         let _server = spawn_grpc_server(path.clone()).await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        let mut client = create_grpc_client(&path).await;
+        let mut client = create_client_with_retry(&path).await;
 
         let request = Request::new(EchoRequest {
             message: "Hello, IPC!".to_string(),
@@ -113,9 +125,7 @@ mod integration_tests {
     async fn test_grpc_bidi_streaming() {
         let (path, _dir) = make_socket_path("bidi");
         let _server = spawn_grpc_server(path.clone()).await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        let mut client = create_grpc_client(&path).await;
+        let mut client = create_client_with_retry(&path).await;
 
         let (tx, rx) = mpsc::channel(4);
         let request_stream = ReceiverStream::new(rx);
@@ -144,12 +154,10 @@ mod integration_tests {
     async fn test_grpc_large_payload() {
         let (path, _dir) = make_socket_path("large_payload");
         let _server = spawn_grpc_server(path.clone()).await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let mut client = create_grpc_client(&path).await;
+        let mut client = create_client_with_retry(&path).await;
 
         let huge_message = "A".repeat(1024 * 1024);
-
         let request = Request::new(EchoRequest {
             message: huge_message.clone(),
         });
@@ -159,16 +167,17 @@ mod integration_tests {
             .expect("timeout")
             .expect("rpc failed");
 
-        assert_eq!(response.into_inner().message.len(), huge_message.len());
+        let response_msg = response.into_inner().message;
+        assert_eq!(response_msg.len(), huge_message.len());
+        assert_eq!(response_msg, huge_message);
     }
 
     #[tokio::test]
     async fn test_grpc_multiplexing_concurrent_requests() {
         let (path, _dir) = make_socket_path("multiplexing");
         let _server = spawn_grpc_server(path.clone()).await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let client = create_grpc_client(&path).await;
+        let client = create_client_with_retry(&path).await;
         let mut handles = vec![];
 
         const N: usize = 100;

@@ -52,12 +52,12 @@ impl IpcIncoming {
         opts: IncomingOptions,
     ) -> Result<Self, TransportError> {
         let socket_path = socket_path.as_ref().to_path_buf();
-        #[cfg(unix)]
         {
+            use tracing::debug;
             use tracing::warn;
 
             debug!("Socket file already exists, attempting to remove...");
-            if let Err(e) = tokio::fs::remove_file(&socket_path).await {
+            if let Err(e) = std::fs::remove_file(&socket_path) {
                 warn!(error = %e, "Failed to remove existing socket file, bind might fail");
             } else {
                 debug!("Existing socket file removed successfully");
