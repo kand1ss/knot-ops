@@ -1,31 +1,63 @@
 # Roadmap
 
-> Each version delivers a working tool. No version leaves the project in a broken state.
+> Each version delivers a working tool. No version leaves the project in a
+> broken state.
+
+## Product Direction
+
+Knot is a local **service orchestrator**. Process supervisors orchestrate
+individual processes, and container orchestrators orchestrate containers.
+Knot orchestrates services: their lifecycle, dependencies, runtime state, and
+connectivity.
+
+A service is an abstract unit managed by a runtime driver. The first driver is
+`ProcessRuntime`; `DockerRuntime` follows as another implementation of the
+same lifecycle contract. Runtimes are implementation details of a service, not
+the core product boundary.
+
+Knot also provides a local service-connectivity plane. A service name such as
+`http://backend.knot:8000` is resolved and routed to the active IPv4 endpoint
+registered for `backend`, regardless of whether that endpoint is supplied by a
+local process or a container. This capability is developed as local DNS name
+resolution plus a routing proxy.
+
+External SDKs, hooks, and third-party integrations are not near-term product
+goals. They may be considered only after the service model, runtime contract,
+and connectivity plane are stable.
 
 ---
 
-## v0.1 — Foundation
-**Goal: Base features — start and stop services**
+## v0.1 — Service Orchestration Foundation
 
-### Daemon (Engine)
-- Event Bus (coordination component)
-- TOML Parsing via Config Collector
-- DAG Engine — builds service dependency graph
-- Supervisor — manages services
-- Runtime State Store (in-memory)
+**Goal: manage local process-backed services with a global daemon and a
+consistent workspace model.**
+
+### Daemon
+
+- Global daemon and local IPC endpoint
+- Workspace registration with immutable `workspace_id`
+- `Handshake` for daemon reachability, workspace registration, and cheap
+  configuration-drift detection before workspace-scoped commands
+- `Sync` for detailed configuration comparison and daemon-state reconciliation
+- TOML configuration parsing and canonical configuration hashes
+- Service DAG engine for dependency ordering
+- `ProcessRuntime` for local process lifecycle management
+- In-memory runtime state store
 - Service statuses: `Stopped`, `Starting`, `Running`, `Failed`
 
-### Transport
-- IPC (Unix Socket / Named Pipes)
-
 ### CLI
-- `knot init` — initialize project
-- `knot up` — start engine and services
-- `knot down` — stop engine and services
+
+- `knot init` — initialize and register a workspace
+- `knot up` — synchronize when needed, then start services
+- `knot down` — stop services
+- `knot status` — list workspace services and their statuses
+- `knot ps <workspace>` - list running services in workspace
 
 ### Config — `[services.<service>]`
+
 ```toml
 [services.backend]
+runtime    = "process"
 cmd        = "cargo run"
 dir        = "./backend"
 env        = { KEY = "value" }
@@ -35,74 +67,89 @@ depends_on = ["postgres"]
 
 ---
 
-## v0.2 — Observability
-**Goal: Improving service observability**
+## v0.2 — Service Connectivity
+
+**Goal: make services reachable through stable local names instead of
+runtime-specific addresses.**
 
 ### Daemon
-- Health Checker: `Command`, `Tcp`, `Http`, `ProcessAlive` strategies
-- Extended service statuses: `Waiting`, `Starting`, `Running`, `Degraded`, `Restarting`, `Stopping`, `Stopped`, `Failed`
-- Log Aggregator
 
-### CLI
-- `knot status`
-- `knot logs <service>` / `knot logs --all`
-- `knot logs --count <n>`
-- `knot logs --follow` / `-f`
+- Runtime endpoint registry mapping a service to its active IPv4 target
+- Workspace-scoped service-name registry and collision policy
+- Local DNS resolution for the `.knot` domain
+- HTTP routing proxy that maps `backend.knot` requests to the registered
+  endpoint for `backend`
+- Route updates when a service is started, stopped, or synchronized
 
-### Config — `[services.<service>]`
-```toml
-[services.backend]
-healthcheck = 
+### User Experience
 
-[services.backend.healthcheck]
-url     = "http://localhost:8080/health"
-port    = 8080
-cmd     = "pg_isready"
-timeout = "5s"
-```
+- Reach a service through a stable address, for example
+  `http://backend.knot:8000`
+- Report unresolved services and unavailable runtime targets clearly
+
+The first version targets local HTTP traffic. HTTPS termination, non-HTTP
+protocols, and cross-host routing are explicitly out of scope.
 
 ---
 
-## v0.3 — Reliability
-**Goal: Improving tool reliability, implementing persistent state store**
+## v0.3 — Multiple Runtimes
+
+**Goal: run process-backed and container-backed services through the same
+service lifecycle and connectivity model.**
 
 ### Daemon
-- Runtime State Store (SQLite database)
-- Crash Recovery — restore state after daemon restart
-- Restart Policy: `Never`, `Always`, `OnFailure`, `Backoff`
 
-### CLI
-- `knot restart`
-Auto-recovery after daemon crash
-
-### Config — `[services.<service>]`
-```toml
-[services.backend]
-restart = "on-failure"
-
-[services.backend.restart]
-policy      = "on-failure"
-max_retries = 5
-delay       = "2s"
-max_delay   = "30s"
-multiplier  = 2.0
-```
-
----
-
-## v0.4 — Groups & Engine Extensions
-**Goal: Launching individual services and service groups. New daemon CLI features**
-
-### CLI
-- `knot up --service` / `-s <service>`
-- `knot up --group` / `-g <group>`
-- `knot down --service` / `-s <service>`
-- `knot down --group` / `-g <group>`
-- `knot daemon start`
-- `knot daemon stop`
-- `knot daemon status`
+- Stable runtime-driver contract for start, stop, inspect, and endpoint
+  discovery
+- `DockerRuntime` for Docker container lifecycle management
+- Runtime-specific endpoint discovery feeding the common endpoint registry
+- Uniform dependency handling and state transitions across runtimes
 
 ### Config
+
+```toml
+[services.postgres]
+runtime = "docker"
+image   = "postgres:16"
+port    = 5432
+```
+
+---
+
+## v0.4 — Reliability and Recovery
+
+**Goal: preserve service state and recover safely from daemon failures.**
+
+### Daemon
+
+- Persistent runtime state store (SQLite)
+- Crash recovery and runtime reattachment
+- Health checks: `Command`, `Tcp`, `Http`, and `ProcessAlive`
+- Restart policies: `Never`, `Always`, `OnFailure`, and `Backoff`
+- Extended service statuses: `Waiting`, `Degraded`, `Restarting`, and
+  `Stopping`
+
+### CLI
+
+- `knot restart`
+
+---
+
+## v0.5 — Service Operations
+
+**Goal: operate subsets of a service graph without losing dependency and
+connectivity guarantees.**
+
+### CLI
+
+- `knot up --service <name>` / `-s <name>`
+- `knot up --group <name>` / `-g <name>`
+- `knot down --service <name>` / `-s <name>`
+- `knot down --group <name>` / `-g <name>`
+- `knot daemon start`, `stop`, and `status`
+
+### Config
+
 ```toml
 [groups]
 infra = ["postgres", "redis"]
@@ -111,256 +158,61 @@ app   = ["backend", "frontend"]
 
 ---
 
-## v0.5 — Config Extensions
-**Goal: Config management through CLI with validation. Daemon config. Global services configuration**
+## v0.6 — Observability
 
-### v0.5a — Daemon & Global Configuration
+**Goal: make the service graph, runtime state, and connectivity decisions
+observable.**
 
-#### Config
-```toml
-[daemon]
-log_level         = "info"
-log_format        = "pretty"
-state_db          = ".knot/state.db"
-log_buffer_lines  = 1000
-log_max_size      = "50MB"
-transport_timeout = "5s"
+### Daemon
 
-[services]
-env        = { KEY = "value" }
-env_file   = ".env"
-restart    = "never"
-healthcheck = { ... }
-```
+- Log aggregation across runtimes
+- Service lifecycle and routing events
+- Diagnostics for configuration drift, endpoint registration, and failed
+  resolution
 
-### v0.5b — Config CLI
+### CLI
 
-#### CLI
-```bash
-knot add --service / -s  
-knot add --group  / -g  []
-knot remove --service / -s 
-knot remove --group   / -g 
-knot set --service / -s   
-knot set --group   / -g    
-knot set --daemon  / -d  
-```
+- `knot logs <service>` / `knot logs --all`
+- `knot logs --count <n>`
+- `knot logs --follow` / `-f`
+- Service endpoint and route details in `knot status`
 
 ---
 
-## v0.6 — TUI Dashboard
-**Goal: Implementation of LIVE dashboard**
+## v0.7 — TUI Dashboard
+
+**Goal: provide a live view of services, their runtimes, and connectivity.**
 
 ### TUI
-- Table of services: Name, Status, PID, Uptime, Restarts
+
+- Service table: name, runtime, status, endpoint, uptime, and restarts
 - Live logs panel
+- Dependency and routing status
 - Navigation between services
-- Hotkeys
+
+---
+
+## v0.8 — Configuration and Developer Experience
+
+**Goal: make service definitions safe to change and easy to diagnose.**
 
 ### CLI
-- `knot tui`
 
----
-
-## v0.7 — Extensibility
-**Goal: Extensibility through lifecycle hooks and Python SDK**
-
-### v0.7a — Lifecycle Hooks
-
-#### Daemon
-- Hook Dispatcher
-
-#### Hook Runner
-- Hook Executor
-- Hook Collector
-- Platform support:
-  - Windows: `.bat`, `.ps1`, `.cmd`
-  - Linux: `.sh`, `.zsh`, `.bash`
-
----
-
-### v0.7b — Python SDK
-
-#### Python Lib
-- `service()`
-- `group()`
-- `@hook`
-- `HookContext`, `HookEvent`
-
-#### Daemon
-- Python Bridge (PyO3)
-- Python Hook Collector
-- Python Config Collector
-- Python Hooks Registry
-- Python Config Registry
-
-#### Hook Runner
-- `Python: .py`
-
-#### Config
-- Support for `.py` config via `Knotfile.py`
-
----
-
-## v0.8 — Docker Integration
-**Goal: Implementing Docker integration**
+- `knot check` — validate workspace initialization, configuration, runtimes,
+  and connectivity prerequisites
+- Configuration editing commands with validation
 
 ### Daemon
-- `DockerRunner` — manages container lifecycle
 
-### Config
-```toml
-[services.postgres]
-type  = "docker"
-image = "postgres:16"
-port  = 5432
-```
+- Optional file watching that marks configuration as drifted
+- Clear remediation guidance through `Handshake` and `Sync`
 
 ---
 
-## v0.9 — Polish & DX
-**Goal: Polishing and adding developer experience features**
+## Future Considerations
 
-### CLI
-- `knot check` — checks initialization, validates config
-
-### Daemon
-- File Watcher — watches project filesystem, restarts service on file change
-
-### Config
-```toml
-[services.backend]
-watch = "src/**/*.py"
-
-# or multiple patterns
-watch = ["src/**/*.py", "config/*.yaml"]
-
-# or with options
-[services.backend.watch]
-patterns = ["src/**/*.py"]
-debounce = "300ms"
-ignore   = ["**/__pycache__", "**/*.pyc"]
-
-# $ENV variable support
-[services.backend]
-cmd = "cargo run --bin $APP_NAME"
-```
-
-## v0.10 - Components & Pipeline features
-**Goal: Adding prepared components and the ability to create your own**
-
-### Config
-**Component using:**
-```toml
-[services.postgres]
-use = "knot/postgres" # name of component
-
-[services.backend]
-cmd        = "cargo run"
-depends_on = ["postgres"] # exported variables will be injected in service
-```
-
-**Component declaration:**
-```toml
-[components.postgres]
-description = "PostgreSQL database"
-version     = "16"
-type  = "docker"
-image = "postgres:16"
-port  = 5432
-restart = "always"
-
-  [components.postgres.env]
-  POSTGRES_PASSWORD = "{{ required | env: POSTGRES_PASSWORD }}"
-  POSTGRES_DB       = "{{ project.name }}"
-  POSTGRES_USER     = "postgres"
-
-  [components.postgres.healthcheck]
-  cmd     = "pg_isready -U {{ env.POSTGRES_USER }}"
-  timeout = "5s"
-  retries = 10
-
-  # variables which component will export
-  [components.postgres.exports]
-  DATABASE_URL = "postgres://{{ env.POSTGRES_USER }}:{{ env.POSTGRES_PASSWORD }}@localhost:{{ port }}/{{ env.POSTGRES_DB }}"
-```
-
-### Python SDK
-**Component using:**
-```python
-from knot import service, group
-from knot.components import use
-
-# using prepared component
-postgres = use("knot/postgres",
-    password = "secret",
-    db       = "myapp",
-)
-
-# using own component
-redis = use("my_component",
-    port = 6380,
-)
-
-# backend automatically gets DATABASE_URL from postgres
-backend = service("cargo run",
-    dir        = "./backend",
-    port       = 8080,
-    depends_on = [postgres, redis],
-    # DATABASE_URL will be injected automatically
-)
-
-group("infra", [postgres, redis])
-group("app",   [backend])
-```
-
-**Component declaration:**
-```python
-from knot import component, field, export, healthcheck
-
-@component(
-    name    = "knot/postgres",
-    version = "16",
-    description = "PostgreSQL database",
-)
-class PostgresComponent:
-    # fields with defaults
-    image:    str = field(default="postgres:16")
-    port:     int = field(default=5432)
-    user:     str = field(default="postgres")
-    password: str = field(required=True)
-    db:       str = field(default=lambda ctx: ctx.project.name)
-
-    def configure(self):
-        return {
-            "type":  "docker",
-            "image": self.image,
-            "port":  self.port,
-            "env": {
-                "POSTGRES_USER":     self.user,
-                "POSTGRES_PASSWORD": self.password,
-                "POSTGRES_DB":       self.db,
-            },
-            "healthcheck": healthcheck.command(
-                cmd     = f"pg_isready -U {self.user}",
-                timeout = "5s",
-                retries = 10,
-            ),
-            "restart": "always",
-        }
-
-    @export
-    def DATABASE_URL(self) -> str:
-        return (
-            f"postgres://{self.user}:{self.password}"
-            f"@localhost:{self.port}/{self.db}"
-        )
-
-    @export
-    def POSTGRES_HOST(self) -> str:
-        return "localhost"
-
-    @export
-    def POSTGRES_PORT(self) -> int:
-        return self.port
-```
+- Additional runtimes are evaluated by their ability to implement the runtime
+  contract and register service endpoints.
+- Hooks, SDKs, and reusable components remain possible extensions, but must
+  not define the service model or bypass the daemon's lifecycle and
+  connectivity guarantees.
