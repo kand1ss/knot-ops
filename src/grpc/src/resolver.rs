@@ -1,5 +1,5 @@
 use interprocess::local_socket::{GenericFilePath, GenericNamespaced, Name, ToFsName, ToNsName};
-use knot_core::errors::TransportError;
+use std::io;
 use std::path::Path;
 
 /// Converts a filesystem path into a platform-specific IPC socket name.
@@ -25,36 +25,53 @@ use std::path::Path;
 /// - On Unix, the path length exceeds 100 characters.
 /// - On Windows, the path does not contain a valid filename (e.g., a root drive).
 /// - The underlying `interprocess` library fails to convert the path string into a valid socket name.
-pub fn resolve_socket_name(path: &Path) -> Result<Name<'static>, TransportError> {
+pub fn resolve_socket_name(path: &Path) -> io::Result<Name<'static>> {
     if path.as_os_str().is_empty() {
-        return Err(TransportError::InvalidSocketPath {
-            path: path.to_path_buf(),
-        });
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Socket path is empty: {}", path.display()),
+        ));
     }
 
     #[cfg(unix)]
     if path.as_os_str().len() > 100 {
-        return Err(TransportError::InvalidSocketPath {
-            path: path.to_path_buf(),
-        });
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Unix socket path is too long (limit 100 chars): {}",
+                path.display()
+            ),
+        ));
     }
 
     if cfg!(windows) {
         path.file_name()
             .and_then(|n| n.to_str())
-            .ok_or(TransportError::InvalidSocketPath {
-                path: path.to_path_buf(),
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Socket path does not have a valid file name: {}",
+                        path.display()
+                    ),
+                )
             })?
             .to_ns_name::<GenericNamespaced>()
             .map(|name| name.into_owned())
-            .map_err(|_e| TransportError::InvalidSocketPath {
-                path: path.to_path_buf(),
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Failed to create Windows namespace socket name: {}", e),
+                )
             })
     } else {
         path.to_path_buf()
             .to_fs_name::<GenericFilePath>()
-            .map_err(|_e| TransportError::InvalidSocketPath {
-                path: path.to_path_buf(),
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Failed to create Unix socket path: {}", e),
+                )
             })
     }
 }
@@ -78,8 +95,8 @@ mod tests {
         let result = resolve_socket_name(path);
 
         assert!(
-            matches!(result, Err(TransportError::InvalidSocketPath { .. })),
-            "Should return Err when the path is empty"
+            matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::InvalidInput),
+            "Should return Err(InvalidInput) when the path is empty"
         );
     }
 
@@ -149,7 +166,7 @@ mod tests {
             let result = resolve_socket_name(path);
 
             assert!(
-                matches!(result, Err(TransportError::InvalidSocketPath { .. })),
+                matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::InvalidInput),
                 "Paths longer than 100 characters must fail on Unix due to sockaddr_un limits"
             );
         }
@@ -205,7 +222,7 @@ mod tests {
             let result = resolve_socket_name(path);
 
             assert!(
-                matches!(result, Err(TransportError::InvalidSocketPath { .. })),
+                matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::InvalidInput),
                 "A path without a filename (e.g., drive root) must return an error"
             );
         }
@@ -217,7 +234,7 @@ mod tests {
             let result = resolve_socket_name(path);
 
             assert!(
-                matches!(result, Err(TransportError::InvalidSocketPath { .. })),
+                matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::InvalidInput),
                 "Paths ending in '..' do not have a valid filename component and must fail"
             );
         }

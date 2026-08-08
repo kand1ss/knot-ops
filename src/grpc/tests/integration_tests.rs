@@ -1,4 +1,9 @@
 #[cfg(test)]
+mod echo {
+    tonic::include_proto!("echo.v1");
+}
+
+#[cfg(test)]
 mod integration_tests {
     use std::path::PathBuf;
     use std::time::Duration;
@@ -9,7 +14,7 @@ mod integration_tests {
     use tonic::{Request, Response, Status, Streaming};
 
     use knot_grpc::{IncomingOptions, IpcConnector, IpcIncoming};
-    use knot_proto::echo::{
+    use crate::echo::{
         EchoRequest, EchoResponse,
         echo_service_client::EchoServiceClient as EchoClient,
         echo_service_server::{EchoService, EchoServiceServer},

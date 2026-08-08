@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package knot.commands.v1;
+
+import "knot/command/v1/command.proto";
+
+// Stops all services in a workspace or the requested subset.
+message DownRequest {
+  // Workspace whose services are stopped.
+  string workspace_id = 1;
+  // Optional service names to stop; an empty list selects the workspace default.
+  repeated string services = 2;
+}
+
+// Server-streamed progress and terminal state for a Down command.
+message DownResponse {
+  oneof event {
+    knot.command.v1.CommandPlan plan = 1;
+
+    knot.command.v1.TaskStarting task_starting = 2;
+    knot.command.v1.TaskStarted task_started = 3;
+    knot.command.v1.TaskFailed task_failed = 4;
+    knot.command.v1.TaskSkipped task_skipped = 5;
+    knot.command.v1.TaskCancelled task_cancelled = 6;
+
+    DownDone down_done = 7;
+    DownCancelled down_cancelled = 8;
+  }
+}
+
+// Terminal summary for a completed Down command.
+message DownDone {
+  // Number of services successfully stopped.
+  uint32 stopped = 1;
+  // Number of services that failed to stop.
+  uint32 failed = 2;
+}
+
+// Terminal summary for a Down command cancelled before completion.
+message DownCancelled {
+  // Cancellation reason supplied by the requester or daemon.
+  string reason = 1;
+  // Number of services stopped before cancellation.
+  uint32 stopped = 2;
+}

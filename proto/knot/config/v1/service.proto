@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package knot.config.v1;
+
+// Declarative configuration for one service in a workspace manifest.
+message ServiceSpec {
+  // Stable service name within the workspace.
+  string name = 1;
+  // Command executed by the process runtime.
+  string command = 2;
+  // Working directory used when starting the command.
+  string directory = 3;
+  // Services that must be ready before this service is started.
+  repeated string depends = 4;
+  // Environment variables supplied to the service process.
+  map<string, string> env = 5;
+}

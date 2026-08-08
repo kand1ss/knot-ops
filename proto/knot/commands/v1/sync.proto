@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package knot.commands.v1;
+
+import "knot/command/v1/command.proto";
+import "knot/data/v1/workspace.proto";
+
+// Requests reconciliation of daemon workspace state with the manifest observed
+// by the client.
+message SyncRequest {
+  // Stable local workspace identity.
+  knot.data.v1.WorkspaceMetadata metadata = 1;
+  // Current service configuration that becomes the synchronization input.
+  knot.data.v1.WorkspaceManifest manifest = 2;
+}
+
+// Server-streamed progress and final result for a synchronization command.
+message SyncResponse {
+  oneof event {
+    knot.command.v1.CommandPlan plan = 1;
+
+    knot.command.v1.TaskStarting task_starting = 2;
+    knot.command.v1.TaskStarted task_started = 3;
+    knot.command.v1.TaskFailed task_failed = 4;
+    knot.command.v1.TaskSkipped task_skipped = 5;
+    knot.command.v1.TaskCancelled task_cancelled = 6;
+
+    SyncResult result = 7;
+  }
+}
+
+// Final summary of service-level changes applied by synchronization.
+message SyncResult {
+  // Services present in the submitted manifest but absent from daemon state.
+  repeated string services_added = 1;
+  // Services removed from daemon state because they are absent from the manifest.
+  repeated string services_removed = 2;
+  // Services whose definitions changed since the previous synchronization.
+  repeated string services_changed = 3;
+}

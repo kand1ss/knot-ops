@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package knot.command.v1;
+
+// The first event emitted by a long-running command. It describes all work
+// before execution starts so clients can render stable progress UI.
+message CommandPlan {
+  // Identifier used to associate events with the execution and to cancel it.
+  string command_id = 1;
+  // Ordered groups of planned tasks.
+  repeated TaskGroup groups = 2;
+}
+
+// A visual and logical grouping of tasks in a command plan.
+message TaskGroup {
+  // Optional label shown before the tasks in this group.
+  optional string header = 1;
+  // Tasks executed as part of this group.
+  repeated TaskPlan tasks = 2;
+}
+
+// Structured failure reported by a task in a command event stream.
+message TaskError {
+  // Short description of the failure.
+  string issue = 1;
+  // Relevant diagnostic context, such as a service or command detail.
+  string context = 2;
+  // Suggested user action to resolve the failure.
+  string solution = 3;
+}
+
+// A task that the daemon intends to execute.
+message TaskPlan {
+  // Identifier used by subsequent task events.
+  string task_id = 1;
+  // Short task name for display.
+  string name = 2;
+  // Additional display or diagnostic detail.
+  string detail = 3;
+}
+
+// Indicates that a planned task has begun execution.
+message TaskStarting {
+  string task_id = 1;
+  string detail = 2;
+}
+// Indicates that a task completed successfully.
+message TaskStarted {
+  string task_id = 1;
+  string detail = 2;
+}
+// Indicates that a task failed with a structured error.
+message TaskFailed {
+  string task_id = 1;
+  TaskError error = 2;
+}
+// Indicates that a task was not executed.
+message TaskSkipped {
+  string task_id = 1;
+  string detail = 2;
+}
+// Indicates that a task was stopped because its command was cancelled.
+message TaskCancelled {
+  string task_id = 1;
+  string detail = 2;
+}
+
+// Requests graceful cancellation of a running command.
+message CancelCommandRequest {
+  // Identifier from the command's CommandPlan event.
+  string command_id = 1;
+  // Optional user-facing explanation for the cancellation.
+  optional string reason = 2;
+}
+
+// Immediate acknowledgement of a cancellation request. Rollback and final
+// command state continue on the original command event stream.
+message CancelCommandResponse {
+  // True when an active execution matching command_id was found.
+  bool cancelled = 1;
+}

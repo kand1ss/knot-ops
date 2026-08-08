@@ -6,12 +6,11 @@ use stream::IpcServerStream;
 use crate::resolver::resolve_socket_name;
 use futures::stream::Stream;
 use interprocess::local_socket::{ListenerOptions, tokio::prelude::*};
-use knot_core::errors::TransportError;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
-use tracing::{error, info, instrument, trace};
+use tracing::{info, instrument, trace};
 
 /// A stream of incoming IPC connections, acting as a server-side listener.
 ///
@@ -47,10 +46,7 @@ impl IpcIncoming {
     /// Returns a [`TransportError`] if the listener cannot be created or if
     /// path permissions cannot be set.
     #[instrument(skip(socket_path), fields(path = %socket_path.as_ref().display()), err)]
-    pub fn bind(
-        socket_path: impl AsRef<Path>,
-        opts: IncomingOptions,
-    ) -> Result<Self, TransportError> {
+    pub fn bind(socket_path: impl AsRef<Path>, opts: IncomingOptions) -> std::io::Result<Self> {
         let socket_path = socket_path.as_ref().to_path_buf();
         {
             use tracing::debug;
@@ -67,24 +63,12 @@ impl IpcIncoming {
         let name = resolve_socket_name(&socket_path)?;
 
         trace!("Creating tokio local socket listener...");
-        let listener = ListenerOptions::new()
-            .name(name)
-            .create_tokio()
-            .map_err(|e| {
-                error!(error = %e, "Failed to create listener");
-                TransportError::ConnectionFailed {
-                    path: socket_path.clone(),
-                    source: e,
-                }
-            })?;
+        let listener = ListenerOptions::new().name(name).create_tokio()?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
-                .map_err(|_| TransportError::InvalidSocketPath {
-                    path: socket_path.clone(),
-                })?;
+            std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
         }
 
         let (tx, rx) = mpsc::channel(opts.buffer_size);
@@ -114,7 +98,7 @@ impl IpcIncoming {
 }
 
 impl Stream for IpcIncoming {
-    type Item = Result<IpcServerStream, std::io::Error>;
+    type Item = std::io::Result<IpcServerStream>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().receiver.poll_recv(cx)
@@ -232,24 +216,6 @@ mod tests {
                 result.is_err(),
                 "bind on a non-existent directory should return Err"
             );
-        }
-
-        /// The returned error should be `TransportError::ConnectionFailed`
-        /// (and not a panic or another variant).
-        #[tokio::test]
-        #[cfg(unix)]
-        async fn error_variant_is_connection_failed() {
-            let path = PathBuf::from("/nonexistent/dir/sock");
-            match IpcIncoming::bind(&path, IncomingOptions::default()) {
-                Err(TransportError::ConnectionFailed { path: p, .. }) => {
-                    assert_eq!(p, path);
-                }
-                Err(other) => {
-                    // InvalidSocketPath is also acceptable for some platforms
-                    matches!(other, TransportError::InvalidSocketPath { .. });
-                }
-                Ok(_) => panic!("expected an error"),
-            }
         }
 
         /// `bind` with an empty filename should return an error.

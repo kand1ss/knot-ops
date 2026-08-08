@@ -1,7 +1,6 @@
 use crate::resolver::resolve_socket_name;
 use hyper::Uri;
 use interprocess::local_socket::tokio::prelude::*;
-use knot_core::errors::TransportError;
 use std::path::PathBuf;
 use tower::Service;
 
@@ -43,7 +42,7 @@ impl Service<Uri> for IpcConnector {
     type Response = hyper_util::rt::TokioIo<LocalSocketStream>;
 
     /// The transport error type.
-    type Error = TransportError;
+    type Error = std::io::Error;
 
     /// The future that resolves to the connected IO stream.
     type Future = std::pin::Pin<
@@ -72,13 +71,7 @@ impl Service<Uri> for IpcConnector {
 
         Box::pin(async move {
             let name = resolve_socket_name(&socket_path)?;
-            let stream = LocalSocketStream::connect(name).await.map_err(|e| {
-                TransportError::ConnectionFailed {
-                    path: socket_path,
-                    source: e,
-                }
-            })?;
-
+            let stream = LocalSocketStream::connect(name).await?;
             Ok(hyper_util::rt::TokioIo::new(stream))
         })
     }
@@ -315,43 +308,6 @@ mod tests {
                 result.is_err(),
                 "call should return Err if the server is not running"
             );
-            match result.unwrap_err() {
-                TransportError::ConnectionFailed { path: p, .. } => {
-                    assert_eq!(p, path, "the path in the error should match");
-                }
-                other => panic!("expected ConnectionFailed, got {:?}", other),
-            }
-        }
-
-        /// URI is ignored — the connector always uses `socket_path`.
-        #[tokio::test]
-        async fn uri_is_ignored() {
-            let (path, _dir) = make_socket_path("call-uri-ignored");
-            let _server = spawn_close_server(path.clone()).await;
-            tokio::time::sleep(Duration::from_millis(20)).await;
-
-            let mut connector = IpcConnector::new(&path);
-
-            // Passing different URIs — the result should not change
-            for uri_str in &[
-                "http://localhost",
-                "https://example.com/api/v1",
-                "grpc://knot-server:50051",
-            ] {
-                let uri: Uri = uri_str.parse().unwrap();
-                // The server accepts a single connection, so we'd normally need a new server per step
-                // — therefore we just verify that the error is not related to the URI
-                let result = connector.call(uri).await;
-                // Either Ok (server is still listening) or ConnectionFailed (server closed)
-                // — in any case, there shouldn't be a URI parsing error
-                if let Err(e) = result {
-                    assert!(
-                        matches!(e, TransportError::ConnectionFailed { .. }),
-                        "error should be ConnectionFailed, not a URI error: {:?}",
-                        e
-                    );
-                }
-            }
         }
 
         /// `call` returns a `Future` with a `Send` marker (required for `hyper`/`tower`).

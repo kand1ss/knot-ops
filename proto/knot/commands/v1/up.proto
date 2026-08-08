@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package knot.commands.v1;
+
+import "knot/command/v1/command.proto";
+
+// Starts all services in a workspace or the requested subset.
+message UpRequest {
+  // Workspace whose services are started.
+  string workspace_id = 1;
+  // Optional service names to start; an empty list selects the workspace default.
+  repeated string services = 2;
+}
+
+// Server-streamed progress and terminal state for an Up command.
+message UpResponse {
+  oneof event {
+    knot.command.v1.CommandPlan plan = 1;
+
+    knot.command.v1.TaskStarting task_starting = 2;
+    knot.command.v1.TaskStarted task_started = 3;
+    knot.command.v1.TaskFailed task_failed = 4;
+    knot.command.v1.TaskSkipped task_skipped = 5;
+    knot.command.v1.TaskCancelled task_cancelled = 6;
+
+    UpDone up_done = 7;
+    UpCancelled up_cancelled = 8;
+  }
+}
+
+// Terminal summary for a completed Up command.
+message UpDone {
+  // Number of services successfully started.
+  uint32 started = 1;
+  // Number of services already in the desired state.
+  uint32 skipped = 2;
+  // Number of services that failed to start.
+  uint32 failed = 3;
+}
+
+// Terminal summary for an Up command cancelled before completion.
+message UpCancelled {
+  // Cancellation reason supplied by the requester or daemon.
+  string reason = 1;
+  // Number of services started before cancellation.
+  uint32 started = 2;
+  // Number of services stopped during rollback.
+  uint32 stopped = 3;
+}
