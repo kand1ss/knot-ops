@@ -666,8 +666,6 @@ dependencies = [
  "hyper",
  "hyper-util",
  "interprocess",
- "knot-core",
- "knot-proto",
  "prost",
  "protox",
  "tempfile",
