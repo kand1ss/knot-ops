@@ -2,26 +2,6 @@ syntax = "proto3";
 
 package knot.data.v1;
 
-// Lifecycle state of the Knot daemon.
-enum DaemonState {
-  DAEMON_STATE_UNSPECIFIED = 0;
-  DAEMON_STATE_UNINITIALIZED = 1;
-  DAEMON_STATE_READY = 2;
-}
-
-// Daemon process information exposed to clients.
-message DaemonInfo {
-  // Operating-system process identifier of the daemon.
-  uint32 pid = 1;
-  // Current daemon lifecycle state.
-  DaemonState state = 2;
-  // Version of the running daemon binary.
-  string version = 3;
-
-  // Forward-compatible daemon metadata.
-  map<string, string> extra = 15;
-}
-
 // Lifecycle state of an individual service.
 enum ServiceStatus {
   SERVICE_STATUS_UNSPECIFIED = 0;
