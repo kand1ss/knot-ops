@@ -1,10 +1,11 @@
 use crate::{handles::OfflineHandle, launcher::DaemonLauncher, policies::PolicyConfig};
 #[cfg(not(windows))]
-use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
+use knot_core::consts::KNOT_SOCKET_FILE;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument};
+use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 
 /// A transitional handle representing a workspace with stale daemon artifacts.
 ///

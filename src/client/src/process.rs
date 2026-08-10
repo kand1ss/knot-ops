@@ -48,14 +48,14 @@ impl Process {
 
 impl ProcessControl for Process {
     #[cfg(windows)]
-    pub fn kill(&self) -> Result<()> {
+    fn kill(&self) -> Result<()> {
         use windows_sys::Win32::Foundation::CloseHandle;
         use windows_sys::Win32::System::Threading::{
             OpenProcess, PROCESS_TERMINATE, TerminateProcess,
         };
         unsafe {
             let handle = OpenProcess(PROCESS_TERMINATE, 0, self.pid);
-            if handle == 0 {
+            if handle.is_null() {
                 return Err(std::io::Error::last_os_error());
             }
             let ok = TerminateProcess(handle, 1);
