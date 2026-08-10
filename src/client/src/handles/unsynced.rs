@@ -116,13 +116,10 @@ mod tests {
         let mut found = false;
 
         while let Some(event) = sync_resp.events.message().await.unwrap() {
-            match event.event {
-                Some(commands::v1::sync_response::Event::Result(sync_result)) => {
-                    assert_eq!(sync_result.services_added.len(), 1);
-                    found = true;
-                    break;
-                }
-                _ => {}
+            if let Some(commands::v1::sync_response::Event::Result(sync_result)) = event.event {
+                assert_eq!(sync_result.services_added.len(), 1);
+                found = true;
+                break;
             }
         }
 

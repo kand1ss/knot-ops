@@ -86,7 +86,7 @@ impl ClientBuilder {
                 debug!("daemon artifacts not found. Daemon is offline.");
 
                 ConnectState::Offline(OfflineHandle {
-                    runtime_dir: runtime_dir,
+                    runtime_dir,
                     daemon_launcher: self.launcher,
                     policy: Arc::clone(&policy),
                 })
@@ -110,7 +110,7 @@ impl ClientBuilder {
                                     "process at this PID is a valid knot daemon. Proceeding to kill it."
                                 );
                                 ConnectState::Hung(KillHandle {
-                                    runtime_dir: runtime_dir,
+                                    runtime_dir,
                                     process: Box::new(process),
                                     daemon_launcher: self.launcher,
                                     policy: Arc::clone(&policy),
@@ -123,7 +123,7 @@ impl ClientBuilder {
                                     "process does not exist; assuming daemon is already dead. Treating as Stale."
                                 );
                                 ConnectState::Stale(StaleHandle {
-                                    runtime_dir: runtime_dir,
+                                    runtime_dir,
                                     daemon_launcher: self.launcher,
                                     policy: Arc::clone(&policy),
                                 })
@@ -136,7 +136,7 @@ impl ClientBuilder {
                                     "process at this PID does not match the expected knot binary; refusing to kill it. Treating as Stale."
                                 );
                                 ConnectState::Stale(StaleHandle {
-                                    runtime_dir: runtime_dir,
+                                    runtime_dir,
                                     daemon_launcher: self.launcher,
                                     policy: Arc::clone(&policy),
                                 })
@@ -145,7 +145,7 @@ impl ClientBuilder {
                     } else {
                         warn!("PID file exists but is corrupted or empty. Treating as Stale.");
                         ConnectState::Stale(StaleHandle {
-                            runtime_dir: runtime_dir,
+                            runtime_dir,
                             daemon_launcher: self.launcher,
                             policy: Arc::clone(&policy),
                         })
@@ -156,7 +156,7 @@ impl ClientBuilder {
                 warn!("Not all daemon artifacts found. Treating as Stale.");
 
                 ConnectState::Stale(StaleHandle {
-                    runtime_dir: runtime_dir,
+                    runtime_dir,
                     daemon_launcher: self.launcher,
                     policy: Arc::clone(&policy),
                 })
