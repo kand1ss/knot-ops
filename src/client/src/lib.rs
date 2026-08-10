@@ -6,10 +6,17 @@
 //! the daemon over IPC (Unix Domain Sockets or Named Pipes). It supports
 //! automatic daemon launching, health checks, and lifecycle management.
 
+mod builder;
 mod client;
+pub mod errors;
+pub(crate) mod handles;
 pub mod launcher;
-mod stream;
-pub(crate) mod utils;
+pub mod policies;
+pub mod states;
 
+#[cfg(test)]
+pub mod test_utils;
+mod process;
+
+pub use builder::ClientBuilder;
 pub use client::KnotClient;
-pub use stream::InboxStream;

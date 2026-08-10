@@ -1,6 +1,6 @@
+use crate::errors::ClientError;
 use crate::launcher::{DaemonLauncher, ExternalPathLauncher};
 use async_trait::async_trait;
-use knot_core::errors::ClientError;
 use std::path::Path;
 use tracing::instrument;
 
@@ -26,12 +26,12 @@ impl SystemPathLauncher {
 #[async_trait]
 impl DaemonLauncher for SystemPathLauncher {
     #[instrument(skip_all, name = "system_path_launcher")]
-    async fn launch(&self, directory: &Path) -> Result<u32, ClientError> {
+    async fn launch(&self) -> Result<u32, ClientError> {
         let mut launcher = ExternalPathLauncher::new("knot");
         for arg in self.args.iter() {
             launcher.arg(arg);
         }
-        launcher.launch(directory).await
+        launcher.launch().await
     }
 
     fn binary_path(&self) -> &Path {

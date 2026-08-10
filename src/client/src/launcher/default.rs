@@ -1,14 +1,12 @@
-use crate::launcher::{DaemonLauncher, ExternalPathLauncher};
+use crate::errors::{ClientError, DaemonLifecycleError};
+use crate::launcher::{DaemonLauncher, StandardDaemonLauncher};
 use async_trait::async_trait;
-use directories::ProjectDirs;
-use knot_core::errors::{ClientError, DaemonLifecycleError};
 use std::path::{Path, PathBuf};
 use tracing::instrument;
 
 /// The default launcher used by `KnotClient`.
 ///
-/// It attempts to find the `knot` binary in the project's data directory
-/// or falls back to the system PATH.
+/// It launches `knotd` from Knot's standardized per-user binary directory.
 pub(crate) struct DefaultLauncher {
     default_path: PathBuf,
 }
@@ -16,14 +14,8 @@ pub(crate) struct DefaultLauncher {
 impl DefaultLauncher {
     /// Creates a new `DefaultLauncher`.
     pub fn new() -> Self {
-        let default_path = if let Some(proj_dirs) = ProjectDirs::from("", "", "knot") {
-            let mut path = proj_dirs.data_dir().to_path_buf();
-            path.push("bin");
-            path.push(if cfg!(windows) { "knot.exe" } else { "knot" });
-            path
-        } else {
-            PathBuf::from("knot")
-        };
+        let default_path = knot_core::paths::daemon_binary_path()
+            .unwrap_or_else(|| PathBuf::from(knot_core::paths::KNOT_DAEMON_BINARY_NAME));
 
         Self { default_path }
     }
@@ -32,17 +24,12 @@ impl DefaultLauncher {
 #[async_trait]
 impl DaemonLauncher for DefaultLauncher {
     #[instrument(skip_all, name = "default_launcher")]
-    async fn launch(&self, directory: &Path) -> Result<u32, ClientError> {
-        let launcher = if self.default_path.exists() {
-            ExternalPathLauncher::new(&self.default_path)
-        } else {
-            ExternalPathLauncher::new("knot")
-        };
+    async fn launch(&self) -> Result<u32, ClientError> {
+        let launcher = StandardDaemonLauncher::new()?;
 
-        launcher.launch(directory).await.map_err(|e| DaemonLifecycleError::LaunchFailed {
-            message: "The knot utility was not found. Make sure you have knot installed, or manually specify the path to the knot executable.".to_string(), 
+        launcher.launch().await.map_err(|e| DaemonLifecycleError::LaunchFailed {
+            message: "The knot daemon was not found. Install knotd into the standard Knot binary directory or manually specify the daemon executable path.".to_string(),
             binary_path: launcher.binary_path().to_string_lossy().into_owned(),
-            target_dir: directory.to_string_lossy().into_owned(),
             error: e.to_string()
         }.into())
     }
@@ -60,6 +47,9 @@ mod tests {
     fn test_default_launcher_binary_path() {
         let launcher = DefaultLauncher::new();
         let path = launcher.binary_path();
-        assert!(path.components().count() > 0);
+        assert_eq!(
+            path.file_name().unwrap(),
+            knot_core::paths::KNOT_DAEMON_BINARY_NAME
+        );
     }
 }

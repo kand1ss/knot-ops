@@ -1,13 +1,13 @@
+use crate::errors::{ClientError, DaemonLifecycleError};
 use async_trait::async_trait;
-use knot_core::errors::{ClientError, DaemonLifecycleError};
 use std::path::Path;
 use tokio::process::Command;
 use tracing::{debug, error, info, instrument};
 
 mod external_path;
 pub use external_path::*;
-mod current_exe;
-pub use current_exe::*;
+mod standard_daemon;
+pub use standard_daemon::*;
 mod system_path;
 pub use system_path::*;
 mod default;
@@ -22,7 +22,7 @@ pub trait DaemonLauncher {
     /// Launches the daemon process in the specified directory.
     ///
     /// Returns the PID of the spawned process on success.
-    async fn launch(&self, directory: &Path) -> Result<u32, ClientError>;
+    async fn launch(&self) -> Result<u32, ClientError>;
 
     /// Returns the path to the daemon binary.
     fn binary_path(&self) -> &Path;
@@ -33,17 +33,14 @@ pub trait DaemonLauncher {
     name = "daemon_process_spawn",
     fields(
         bin = %binary_file.display(),
-        dir = %target_dir.display(),
         args = ?args
     )
 )]
 pub(crate) fn spawn_process(
-    target_dir: &Path,
     binary_file: &Path,
-    args: &Vec<String>,
+    args: &[String],
 ) -> Result<u32, ClientError> {
     let mut command = Command::new(binary_file);
-    command.arg("daemon").arg("start");
 
     for arg in args.iter() {
         command.arg(arg);
@@ -52,7 +49,6 @@ pub(crate) fn spawn_process(
     debug!("Spawning daemon...");
 
     let child = command
-        .current_dir(target_dir)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -61,7 +57,6 @@ pub(crate) fn spawn_process(
             ClientError::Daemon(DaemonLifecycleError::LaunchFailed {
                 message: "Failed to spawn daemon executable".to_string(),
                 binary_path: binary_file.to_string_lossy().into_owned(),
-                target_dir: target_dir.to_string_lossy().into_owned(),
                 error: e.to_string(),
             })
         })?;
@@ -76,7 +71,6 @@ pub(crate) fn spawn_process(
             Err(DaemonLifecycleError::LaunchFailed {
                 message: "Daemon process exited immediately and yielded no PID. It might have crashed on startup.".to_string(),
                 binary_path: binary_file.to_string_lossy().into_owned(),
-                target_dir: target_dir.to_string_lossy().into_owned(),
                 error: String::from(""),
             }.into())
         }

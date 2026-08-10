@@ -26,33 +26,6 @@
 //! (like `knot-transport` or `knot-daemon`), ensuring a "single source of truth"
 //! for the orchestrator's logic.
 
-/// Configuration parsing and validation logic.
-pub mod config;
-
-/// Core data structures.
-///
-/// Defines the `ServiceData` struct, which tracks PIDs, names,
-/// and other runtime-specific information for managed processes.
-pub mod data;
-
-/// Unified error handling.
-///
-/// Defines the `KnotError`, `TransportError`, and other specialized
-/// error types using the `thiserror` pattern.
-pub mod errors;
-
-/// Internal system events.
-///
-/// Provides the event bus logic used to notify different parts of the
-/// system about service starts, stops, or failures.
-pub mod events;
-
-/// Lifecycle states.
-///
-/// Defines the `ServiceStatus` enum (Starting, Running, Stopped, etc.)
-/// and the rules for transitioning between them.
-pub mod states;
-
 /// Common helper functions.
 ///
 /// Includes timestamp formatting, filesystem helpers, and other
@@ -64,3 +37,7 @@ pub mod utils;
 /// Defines standard names for configuration files, data directories,
 /// and other environment-specific constants used for IO operations.
 pub mod consts;
+
+/// Standard OS-specific filesystem paths for Knot artifacts.
+pub mod paths;
+pub mod metadata;

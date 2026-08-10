@@ -1,10 +1,10 @@
+use crate::errors::ClientError;
 use crate::launcher::{DaemonLauncher, spawn_process};
 use async_trait::async_trait;
-use knot_core::errors::ClientError;
 use std::path::{Path, PathBuf};
 use tracing::instrument;
 
-/// A launcher that uses a specific file path to start the daemon.
+/// A launcher that uses a specific daemon executable path.
 pub struct ExternalPathLauncher {
     binary_file_path: PathBuf,
     args: Vec<String>,
@@ -29,8 +29,8 @@ impl ExternalPathLauncher {
 #[async_trait]
 impl DaemonLauncher for ExternalPathLauncher {
     #[instrument(skip_all, name = "external_path_launcher")]
-    async fn launch(&self, directory: &Path) -> Result<u32, ClientError> {
-        spawn_process(directory, &self.binary_file_path, &self.args)
+    async fn launch(&self) -> Result<u32, ClientError> {
+        spawn_process(&self.binary_file_path, &self.args)
     }
 
     fn binary_path(&self) -> &Path {
