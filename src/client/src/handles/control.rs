@@ -2,9 +2,9 @@ use crate::errors::ClientError;
 use crate::handles::CommandHandle;
 use crate::policies::PolicyConfig;
 use knot_proto::api::v1::daemon_service_client::DaemonServiceClient;
-use knot_proto::commands::v1::{DownRequest,
-                               DownResponse, StatusRequest, StatusResponse,
-                               SyncRequest, SyncResponse, UpRequest, UpResponse,
+use knot_proto::commands::v1::{
+    DownRequest, DownResponse, StatusRequest, StatusResponse, SyncRequest, SyncResponse, UpRequest,
+    UpResponse,
 };
 use knot_proto::data::v1::{WorkspaceManifest, WorkspaceMetadata};
 use std::sync::Arc;
@@ -105,7 +105,7 @@ impl ControlHandle {
             .up(self.request(
                 UpRequest {
                     services: vec![],
-                    workspace_id: self.workspace_meta.workspace_id.clone()
+                    workspace_id: self.workspace_meta.workspace_id.clone(),
                 },
                 self.policy.timeout.long_streams,
             )?)
@@ -142,7 +142,7 @@ impl ControlHandle {
             .down(self.request(
                 DownRequest {
                     services: vec![],
-                    workspace_id: self.workspace_meta.workspace_id.clone()
+                    workspace_id: self.workspace_meta.workspace_id.clone(),
                 },
                 self.policy.timeout.long_streams,
             )?)
@@ -239,13 +239,11 @@ mod tests {
 
         let result = controller.status().await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Protocol(status))
-                    if status.code() == Code::PermissionDenied
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Protocol(status))
+                if status.code() == Code::PermissionDenied
+        ),);
     }
 
     #[tokio::test]
@@ -276,30 +274,25 @@ mod tests {
                 let (tx, rx) = tokio::sync::mpsc::channel(1);
 
                 tx.try_send(Ok(SyncResponse {
-                    event: Some(
-                        knot_proto::commands::v1::sync_response::Event::Result(
-                            SyncResult {
-                                services_added: vec!["service_a".to_string()],
-                                services_removed: vec![],
-                                services_changed: vec![],
-                            },
-                        ),
-                    ),
+                    event: Some(knot_proto::commands::v1::sync_response::Event::Result(
+                        SyncResult {
+                            services_added: vec!["service_a".to_string()],
+                            services_removed: vec![],
+                            services_changed: vec![],
+                        },
+                    )),
                 }))
-                    .unwrap();
+                .unwrap();
 
-                let mut response = Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                );
-                response.metadata_mut().insert("x-command-id", "cmd_sync_123".parse().unwrap());
+                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
+                response
+                    .metadata_mut()
+                    .insert("x-command-id", "cmd_sync_123".parse().unwrap());
                 Ok(response)
             }));
         }
 
-        let mut sync_handle = controller
-            .sync(WorkspaceManifest::default())
-            .await
-            .unwrap();
+        let mut sync_handle = controller.sync(WorkspaceManifest::default()).await.unwrap();
 
         let response = sync_handle
             .next()
@@ -308,19 +301,13 @@ mod tests {
             .expect("SyncResponse stream returned an error");
 
         match response.event {
-            Some(
-                knot_proto::commands::v1::sync_response::Event::Result(
-                    result,
-                ),
-            ) => {
+            Some(knot_proto::commands::v1::sync_response::Event::Result(result)) => {
                 assert_eq!(result.services_added.len(), 1);
                 assert_eq!(result.services_added[0], "service_a");
             }
 
             event => {
-                panic!(
-                    "expected SyncResult event, got: {event:?}"
-                );
+                panic!("expected SyncResult event, got: {event:?}");
             }
         }
     }
@@ -339,13 +326,11 @@ mod tests {
 
         let result = controller.sync(WorkspaceManifest::default()).await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Protocol(status))
-                    if status.code() == Code::FailedPrecondition
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Protocol(status))
+                if status.code() == Code::FailedPrecondition
+        ),);
     }
 
     #[tokio::test]
@@ -359,16 +344,11 @@ mod tests {
                 let request = req.into_inner();
 
                 assert_eq!(request.workspace_id, "test_id");
-                assert!(
-                    request.services.is_empty(),
-                    "up() must start all services"
-                );
+                assert!(request.services.is_empty(), "up() must start all services");
 
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                let mut response = Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                );
+                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
 
                 response.metadata_mut().insert(
                     "x-command-id",
@@ -394,21 +374,19 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                Ok(Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                ))
+                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+                    rx,
+                )))
             }));
         }
 
         let result = controller.up().await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Contract(message))
-                    if message.contains("x-command-id")
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message.contains("x-command-id")
+        ),);
     }
 
     #[tokio::test]
@@ -422,16 +400,11 @@ mod tests {
                 let request = req.into_inner();
 
                 assert_eq!(request.workspace_id, "test_id");
-                assert!(
-                    request.services.is_empty(),
-                    "down() must stop all services"
-                );
+                assert!(request.services.is_empty(), "down() must stop all services");
 
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                let mut response = Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                );
+                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
 
                 response.metadata_mut().insert(
                     "x-command-id",
@@ -457,21 +430,19 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                Ok(Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                ))
+                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+                    rx,
+                )))
             }));
         }
 
         let result = controller.down().await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Contract(message))
-                    if message.contains("x-command-id")
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message.contains("x-command-id")
+        ),);
     }
 
     #[tokio::test]
@@ -511,9 +482,7 @@ mod tests {
 
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                let mut response = Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                );
+                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
 
                 response.metadata_mut().insert(
                     "x-command-id",
@@ -531,9 +500,7 @@ mod tests {
 
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                let mut response = Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                );
+                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
 
                 response.metadata_mut().insert(
                     "x-command-id",

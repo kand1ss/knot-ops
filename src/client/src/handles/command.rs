@@ -1,7 +1,6 @@
 use knot_proto::{
-    api::v1::daemon_service_client::DaemonServiceClient
-    ,
-    command::v1::CancelCommandRequest};
+    api::v1::daemon_service_client::DaemonServiceClient, command::v1::CancelCommandRequest,
+};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio_stream::Stream;
@@ -101,10 +100,7 @@ mod tests {
     use knot_proto::{
         api::v1::daemon_service_client::DaemonServiceClient,
         command::v1::CancelCommandResponse,
-        commands::v1::{
-            UpRequest,
-            UpResponse,
-        },
+        commands::v1::{UpRequest, UpResponse},
     };
     use tonic::{Code, Response};
 
@@ -122,16 +118,15 @@ mod tests {
                 let request = req.into_inner();
 
                 assert_eq!(
-                    request.workspace_id,
-                    WORKSPACE_ID,
+                    request.workspace_id, WORKSPACE_ID,
                     "up command must contain workspace_id"
                 );
 
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                Ok(Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                ))
+                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+                    rx,
+                )))
             }));
         }
 
@@ -144,11 +139,7 @@ mod tests {
             .await
             .unwrap();
 
-        CommandHandle::new(
-            command_id.to_string(),
-            response.into_inner(),
-            client,
-        )
+        CommandHandle::new(command_id.to_string(), response.into_inner(), client)
     }
 
     #[tokio::test]
@@ -162,23 +153,13 @@ mod tests {
                 let request = req.into_inner();
 
                 assert_eq!(request.command_id, "test-cmd-id-1");
-                assert_eq!(
-                    request.reason.as_deref(),
-                    Some("user abort")
-                );
+                assert_eq!(request.reason.as_deref(), Some("user abort"));
 
-                Ok(Response::new(CancelCommandResponse {
-                    cancelled: true,
-                }))
+                Ok(Response::new(CancelCommandResponse { cancelled: true }))
             }));
         }
 
-        let handle = create_up_handle(
-            &mock,
-            client,
-            "test-cmd-id-1",
-        )
-            .await;
+        let handle = create_up_handle(&mock, client, "test-cmd-id-1").await;
 
         let cancelled = handle
             .cancel("user abort")
@@ -199,23 +180,13 @@ mod tests {
                 let request = req.into_inner();
 
                 assert_eq!(request.command_id, "test-cmd-id-2");
-                assert_eq!(
-                    request.reason.as_deref(),
-                    Some("already done")
-                );
+                assert_eq!(request.reason.as_deref(), Some("already done"));
 
-                Ok(Response::new(CancelCommandResponse {
-                    cancelled: false,
-                }))
+                Ok(Response::new(CancelCommandResponse { cancelled: false }))
             }));
         }
 
-        let handle = create_up_handle(
-            &mock,
-            client,
-            "test-cmd-id-2",
-        )
-            .await;
+        let handle = create_up_handle(&mock, client, "test-cmd-id-2").await;
 
         let cancelled = handle
             .cancel("already done")
@@ -236,23 +207,13 @@ mod tests {
                 let request = req.into_inner();
 
                 assert_eq!(request.command_id, "test-cmd-id-3");
-                assert_eq!(
-                    request.reason.as_deref(),
-                    Some("daemon busy")
-                );
+                assert_eq!(request.reason.as_deref(), Some("daemon busy"));
 
-                Err(tonic::Status::unavailable(
-                    "daemon unavailable",
-                ))
+                Err(tonic::Status::unavailable("daemon unavailable"))
             }));
         }
 
-        let handle = create_up_handle(
-            &mock,
-            client,
-            "test-cmd-id-3",
-        )
-            .await;
+        let handle = create_up_handle(&mock, client, "test-cmd-id-3").await;
 
         let result = handle.cancel("daemon busy").await;
 
@@ -281,15 +242,13 @@ mod tests {
 
                 let (tx, rx) = tokio::sync::mpsc::channel(2);
 
-                tx.try_send(Ok(UpResponse::default()))
-                    .unwrap();
+                tx.try_send(Ok(UpResponse::default())).unwrap();
 
-                tx.try_send(Ok(UpResponse::default()))
-                    .unwrap();
+                tx.try_send(Ok(UpResponse::default())).unwrap();
 
-                Ok(Response::new(
-                    tokio_stream::wrappers::ReceiverStream::new(rx),
-                ))
+                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
+                    rx,
+                )))
             }));
         }
 
@@ -303,11 +262,7 @@ mod tests {
             .unwrap();
 
         let mut handle: CommandHandle<UpResponse> =
-            CommandHandle::new(
-                "stream-cmd".to_string(),
-                response.into_inner(),
-                client,
-            );
+            CommandHandle::new("stream-cmd".to_string(), response.into_inner(), client);
 
         assert!(handle.next().await.unwrap().is_ok());
         assert!(handle.next().await.unwrap().is_ok());
@@ -318,16 +273,8 @@ mod tests {
     async fn test_command_handle_preserves_command_id() {
         let (mock, client) = spawn_mock_server().await;
 
-        let handle = create_up_handle(
-            &mock,
-            client,
-            "preserved-command-id",
-        )
-            .await;
+        let handle = create_up_handle(&mock, client, "preserved-command-id").await;
 
-        assert_eq!(
-            handle.command_id,
-            "preserved-command-id"
-        );
+        assert_eq!(handle.command_id, "preserved-command-id");
     }
 }

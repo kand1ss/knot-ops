@@ -38,9 +38,11 @@ impl OfflineHandle {
         let delay = Duration::from_millis(50);
 
         loop {
-            if let Ok(handle) =
-                ConnectedHandle::new(&self.runtime_dir.join(KNOT_SOCKET_FILE), Arc::clone(&self.policy))
-                    .await
+            if let Ok(handle) = ConnectedHandle::new(
+                &self.runtime_dir.join(KNOT_SOCKET_FILE),
+                Arc::clone(&self.policy),
+            )
+            .await
             {
                 info!("daemon launched and healthy.");
                 return Ok(handle);
@@ -82,7 +84,7 @@ mod tests {
 
     #[async_trait]
     impl DaemonLauncher for MockFailingLauncher {
-        async fn launch(&self,) -> Result<u32, ClientError> {
+        async fn launch(&self) -> Result<u32, ClientError> {
             Ok(9999) // Mock PID
         }
 
@@ -95,7 +97,7 @@ mod tests {
 
     #[async_trait]
     impl DaemonLauncher for MockLaunchErrorLauncher {
-        async fn launch(&self,) -> Result<u32, ClientError> {
+        async fn launch(&self) -> Result<u32, ClientError> {
             Err(DaemonLifecycleError::LaunchFailed {
                 message: "spawn failed".to_string(),
                 binary_path: self.binary_path().to_string_lossy().into_owned(),

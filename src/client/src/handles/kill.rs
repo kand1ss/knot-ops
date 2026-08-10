@@ -95,10 +95,7 @@ mod tests {
         fn kill(&self) -> std::io::Result<()> {
             match &self.kill_result {
                 Ok(()) => Ok(()),
-                Err(error) => Err(std::io::Error::new(
-                    error.kind(),
-                    error.to_string(),
-                )),
+                Err(error) => Err(std::io::Error::new(error.kind(), error.to_string())),
             }
         }
 
@@ -107,10 +104,7 @@ mod tests {
         }
     }
 
-    fn handle(
-        dir: PathBuf,
-        process: Box<dyn ProcessControl>,
-    ) -> KillHandle {
+    fn handle(dir: PathBuf, process: Box<dyn ProcessControl>) -> KillHandle {
         KillHandle {
             runtime_dir: dir,
             process,
@@ -125,15 +119,10 @@ mod tests {
         let dir = temp_dir.path().to_path_buf();
         let process = MockProcess::success(9999);
 
-        let handle = handle(
-            dir,
-            Box::new(process),
-        );
+        let handle = handle(dir, Box::new(process));
 
         let result = handle.kill();
-        assert!(
-            result.is_ok(),
-        );
+        assert!(result.is_ok(),);
     }
 
     #[tokio::test]
@@ -142,10 +131,7 @@ mod tests {
 
         let process = MockProcess::failure(9999);
 
-        let handle = handle(
-            temp_dir.path().to_path_buf(),
-            Box::new(process),
-        );
+        let handle = handle(temp_dir.path().to_path_buf(), Box::new(process));
 
         let result = handle.kill();
 
@@ -159,16 +145,11 @@ mod tests {
 
         let lock_path = dir.join(knot_core::consts::KNOT_DAEMON_LOCK_FILE);
 
-        tokio::fs::write(&lock_path, "9999")
-            .await
-            .unwrap();
+        tokio::fs::write(&lock_path, "9999").await.unwrap();
 
         let process = MockProcess::failure(9999);
 
-        let handle = handle(
-            dir,
-            Box::new(process),
-        );
+        let handle = handle(dir, Box::new(process));
 
         let result = handle.kill();
 

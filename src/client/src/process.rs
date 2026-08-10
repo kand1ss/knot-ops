@@ -1,7 +1,6 @@
 use std::io::Result;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-
 pub trait ProcessControl {
     fn kill(&self) -> Result<()>;
     fn pid(&self) -> u32;
@@ -10,7 +9,7 @@ pub trait ProcessControl {
 pub enum ProcessVerification {
     NotRunning,
     Valid,
-    Mismatch(String)
+    Mismatch(String),
 }
 
 pub struct Process {
@@ -42,9 +41,7 @@ impl Process {
                     ProcessVerification::Mismatch(actual_name.to_string())
                 }
             }
-            None => {
-                ProcessVerification::NotRunning
-            }
+            None => ProcessVerification::NotRunning,
         }
     }
 }
@@ -52,14 +49,20 @@ impl Process {
 impl ProcessControl for Process {
     #[cfg(windows)]
     pub fn kill(&self) -> Result<()> {
-        use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
         use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_TERMINATE, TerminateProcess,
+        };
         unsafe {
             let handle = OpenProcess(PROCESS_TERMINATE, 0, self.pid);
-            if handle == 0 { return Err(std::io::Error::last_os_error()); }
+            if handle == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
             let ok = TerminateProcess(handle, 1);
             CloseHandle(handle);
-            if ok == 0 { return Err(std::io::Error::last_os_error()); }
+            if ok == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
         }
         Ok(())
     }

@@ -43,10 +43,14 @@ impl UnsyncedHandle {
     ) -> Result<(ControlHandle, CommandHandle<SyncResponse>), ClientError> {
         debug!("pushing initial workspace configuration to uninitialized daemon");
 
-        let response = self.controller.sync(workspace_manifest).await.map_err(|e| {
-            error!(error = %e, "failed to synchronize initial workspace configuration");
-            e
-        })?;
+        let response = self
+            .controller
+            .sync(workspace_manifest)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to synchronize initial workspace configuration");
+                e
+            })?;
 
         info!("initial synchronization successful, consuming uninitialized handle");
 
@@ -63,12 +67,12 @@ mod tests {
     use crate::test_utils::spawn_mock_server;
     use knot_proto::api::v1::daemon_service_client::DaemonServiceClient;
     use knot_proto::commands;
+    use knot_proto::commands::v1::SyncResult;
     use knot_proto::data::v1::WorkspaceMetadata;
     use std::sync::Arc;
     use tokio_stream::wrappers::ReceiverStream;
     use tonic::Response;
     use tonic::transport::Channel;
-    use knot_proto::commands::v1::SyncResult;
 
     fn handle(client: DaemonServiceClient<Channel>) -> ControlHandle {
         ControlHandle {
@@ -91,19 +95,23 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 let (tx, rx) = tokio::sync::mpsc::channel(1);
                 let mut response = Response::new(ReceiverStream::new(rx));
-                response.metadata_mut().insert("x-command-id", "cmd-sync-abc123".parse().unwrap());
+                response
+                    .metadata_mut()
+                    .insert("x-command-id", "cmd-sync-abc123".parse().unwrap());
                 tx.try_send(Ok(SyncResponse {
                     event: Some(commands::v1::sync_response::Event::Result(SyncResult {
                         services_added: vec!["test_service".to_string()],
                         services_changed: vec![],
                         services_removed: vec![],
-                    }))
-                })).unwrap();
+                    })),
+                }))
+                .unwrap();
                 Ok(response)
             }));
         }
 
-        let (returned_controller, mut sync_resp) = handle.sync(WorkspaceManifest::default()).await.unwrap();
+        let (returned_controller, mut sync_resp) =
+            handle.sync(WorkspaceManifest::default()).await.unwrap();
 
         let mut found = false;
 
@@ -118,10 +126,7 @@ mod tests {
             }
         }
 
-        assert!(
-            found,
-            "expected SyncResult event in sync event stream"
-        );
+        assert!(found, "expected SyncResult event in sync event stream");
 
         let _ = returned_controller;
     }

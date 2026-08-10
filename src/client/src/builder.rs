@@ -90,18 +90,17 @@ impl ClientBuilder {
                     daemon_launcher: self.launcher,
                     policy: Arc::clone(&policy),
                 })
-            },
+            }
             (true, true) => {
-                debug!(
-                    "daemon artifacts found. Daemon is online."
-                );
+                debug!("daemon artifacts found. Daemon is online.");
                 let handle = ConnectedHandle::new(&socket_path, Arc::clone(&policy)).await;
                 if let Ok(handle) = handle {
                     trace!("successfully connected to running daemon.");
                     ConnectState::Connected(handle)
-                }
-                else {
-                    warn!("daemon artifacts found but connection is failed. Checking for hung or stale state.");
+                } else {
+                    warn!(
+                        "daemon artifacts found but connection is failed. Checking for hung or stale state."
+                    );
                     if let Some(daemon_pid) = Self::read_as_u32(&lock_path).await {
                         let process = Process::new(daemon_pid, KNOT_DAEMON_BINARY_NAME.to_string());
                         match process.verify() {
@@ -116,7 +115,7 @@ impl ClientBuilder {
                                     daemon_launcher: self.launcher,
                                     policy: Arc::clone(&policy),
                                 })
-                            },
+                            }
                             ProcessVerification::NotRunning => {
                                 warn!(
                                     pid = process.pid,
@@ -128,7 +127,7 @@ impl ClientBuilder {
                                     daemon_launcher: self.launcher,
                                     policy: Arc::clone(&policy),
                                 })
-                            },
+                            }
                             ProcessVerification::Mismatch(actual) => {
                                 warn!(
                                     pid = process.pid,
@@ -143,8 +142,7 @@ impl ClientBuilder {
                                 })
                             }
                         }
-                    }
-                    else {
+                    } else {
                         warn!("PID file exists but is corrupted or empty. Treating as Stale.");
                         ConnectState::Stale(StaleHandle {
                             runtime_dir: runtime_dir,
@@ -153,11 +151,9 @@ impl ClientBuilder {
                         })
                     }
                 }
-            },
+            }
             _ => {
-                warn!(
-                    "Not all daemon artifacts found. Treating as Stale."
-                );
+                warn!("Not all daemon artifacts found. Treating as Stale.");
 
                 ConnectState::Stale(StaleHandle {
                     runtime_dir: runtime_dir,

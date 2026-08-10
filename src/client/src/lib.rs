@@ -14,9 +14,9 @@ pub mod launcher;
 pub mod policies;
 pub mod states;
 
+mod process;
 #[cfg(test)]
 pub mod test_utils;
-mod process;
 
 pub use builder::ClientBuilder;
 pub use client::KnotClient;

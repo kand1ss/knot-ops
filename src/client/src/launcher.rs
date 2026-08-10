@@ -36,10 +36,7 @@ pub trait DaemonLauncher {
         args = ?args
     )
 )]
-pub(crate) fn spawn_process(
-    binary_file: &Path,
-    args: &[String],
-) -> Result<u32, ClientError> {
+pub(crate) fn spawn_process(binary_file: &Path, args: &[String]) -> Result<u32, ClientError> {
     let mut command = Command::new(binary_file);
 
     for arg in args.iter() {

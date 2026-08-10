@@ -94,9 +94,9 @@ impl ConnectedHandle {
                 Ok(DaemonSession::Unsynced(handle))
             }
             Ok(WorkspaceState::InSync) => Ok(DaemonSession::Ready(controller)),
-            Ok(WorkspaceState::Unregistered) => {
-                Err(ClientError::Contract("workspace registration error".to_string()))
-            }
+            Ok(WorkspaceState::Unregistered) => Err(ClientError::Contract(
+                "workspace registration error".to_string(),
+            )),
             Ok(WorkspaceState::Unspecified) | Err(_) => {
                 Err(ClientError::Contract("unknown workspace state".to_string()))
             }
@@ -110,8 +110,7 @@ mod tests {
 
     use crate::test_utils::spawn_mock_server;
     use knot_proto::{
-        api::v1::daemon_service_client::DaemonServiceClient,
-        commands::v1::HandshakeResponse,
+        api::v1::daemon_service_client::DaemonServiceClient, commands::v1::HandshakeResponse,
         data::v1::WorkspaceState,
     };
     use tonic::{Code, Response};
@@ -237,13 +236,11 @@ mod tests {
             .handshake(workspace_metadata(), workspace_manifest())
             .await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Protocol(status))
-                    if status.code() == Code::Unavailable
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Protocol(status))
+                if status.code() == Code::Unavailable
+        ),);
     }
 
     #[tokio::test]
@@ -266,13 +263,11 @@ mod tests {
             .handshake(workspace_metadata(), workspace_manifest())
             .await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Contract(message))
-                    if message == "workspace registration error"
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message == "workspace registration error"
+        ),);
     }
 
     #[tokio::test]
@@ -295,13 +290,11 @@ mod tests {
             .handshake(workspace_metadata(), workspace_manifest())
             .await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Contract(message))
-                    if message == "unknown workspace state"
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message == "unknown workspace state"
+        ),);
     }
 
     #[tokio::test]
@@ -325,13 +318,11 @@ mod tests {
             .handshake(workspace_metadata(), workspace_manifest())
             .await;
 
-        assert!(
-            matches!(
-                result,
-                Err(ClientError::Contract(message))
-                    if message == "unknown workspace state"
-            ),
-        );
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message == "unknown workspace state"
+        ),);
     }
 
     #[tokio::test]
@@ -364,10 +355,7 @@ mod tests {
         match session {
             DaemonSession::Ready(controller) => {
                 assert_eq!(controller.workspace_meta.workspace_id, "my-workspace");
-                assert_eq!(
-                    controller.workspace_meta.root_path,
-                    "/home/test/project"
-                );
+                assert_eq!(controller.workspace_meta.root_path, "/home/test/project");
             }
 
             _ => panic!("expected Ready session"),

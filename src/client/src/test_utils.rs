@@ -8,10 +8,9 @@ use knot_proto::{
         daemon_service_server::{DaemonService, DaemonServiceServer},
     },
     command::v1::{CancelCommandRequest, CancelCommandResponse},
-    commands::v1::{DownRequest,
-                   DownResponse, HandshakeRequest, HandshakeResponse,
-                   LogsRequest, LogsResponse, StatusRequest, StatusResponse, SyncRequest, SyncResponse, UpRequest,
-                   UpResponse,
+    commands::v1::{
+        DownRequest, DownResponse, HandshakeRequest, HandshakeResponse, LogsRequest, LogsResponse,
+        StatusRequest, StatusResponse, SyncRequest, SyncResponse, UpRequest, UpResponse,
     },
 };
 use std::sync::Arc;
@@ -74,7 +73,10 @@ impl DaemonService for MockKnotDaemon {
     }
 
     type SyncStream = ReceiverStream<Result<SyncResponse, Status>>;
-    async fn sync(&self, request: Request<SyncRequest>) -> Result<Response<Self::SyncStream>, Status> {
+    async fn sync(
+        &self,
+        request: Request<SyncRequest>,
+    ) -> Result<Response<Self::SyncStream>, Status> {
         call_handler(&self.sync_handler, request, "sync").await
     }
 

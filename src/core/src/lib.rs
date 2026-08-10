@@ -38,6 +38,6 @@ pub mod utils;
 /// and other environment-specific constants used for IO operations.
 pub mod consts;
 
+pub mod metadata;
 /// Standard OS-specific filesystem paths for Knot artifacts.
 pub mod paths;
-pub mod metadata;

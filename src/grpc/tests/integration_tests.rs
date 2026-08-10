@@ -13,12 +13,12 @@ mod integration_tests {
     use tonic::transport::{Endpoint, Server};
     use tonic::{Request, Response, Status, Streaming};
 
-    use knot_grpc::{IncomingOptions, IpcConnector, IpcIncoming};
     use crate::echo::{
         EchoRequest, EchoResponse,
         echo_service_client::EchoServiceClient as EchoClient,
         echo_service_server::{EchoService, EchoServiceServer},
     };
+    use knot_grpc::{IncomingOptions, IpcConnector, IpcIncoming};
 
     fn make_socket_path(name: &str) -> (PathBuf, Option<tempfile::TempDir>) {
         #[cfg(unix)]

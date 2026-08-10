@@ -139,9 +139,7 @@ impl DaemonLifecycleError {
                 error,
             } => Some(format!(
                 "attempted to launch '{}'.\ndetails: {}\nsystem error: {}",
-                binary_path,
-                message,
-                error
+                binary_path, message, error
             )),
         }
     }
