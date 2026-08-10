@@ -18,5 +18,4 @@ multiple-versions = "warn"
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 unmaintained = "all"
-ignore = ["RUSTSEC-2025-0141"]
 
