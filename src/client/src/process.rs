@@ -1,6 +1,7 @@
 use std::io;
 use std::path::Path;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use thiserror::Error;
 use tokio::process::Command;
 use tracing::{error, info, instrument, trace, warn};
 
@@ -9,11 +10,15 @@ pub trait ProcessControl {
     fn pid(&self) -> u32;
 }
 
+#[derive(Debug, Error)]
 pub enum ProcessError {
+    #[error("process is not running")]
     NotRunning,
+    #[error("process name mismatch: expected {0}")]
     Mismatch(String),
 }
 
+#[derive(Debug)]
 pub struct Process {
     pub(crate) pid: u32,
 }

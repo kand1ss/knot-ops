@@ -13,7 +13,7 @@ pub(crate) mod handles;
 pub mod policies;
 pub mod states;
 
-mod process;
+pub mod process;
 #[cfg(test)]
 pub mod test_utils;
 
