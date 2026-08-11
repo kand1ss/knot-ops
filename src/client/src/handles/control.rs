@@ -194,11 +194,45 @@ mod tests {
     use super::*;
 
     use crate::test_utils::{control_handle, spawn_mock_server};
-    use knot_proto::commands::v1::{StatusResponse, SyncResponse, SyncResult};
-    use knot_proto::data::v1::WorkspaceManifest;
-    use tonic::Code;
-    use tonic::Response;
-    use tonic::metadata::MetadataValue;
+
+    use knot_proto::{
+        commands::v1::{StatusResponse, SyncResponse, SyncResult, sync_response},
+        data::v1::WorkspaceManifest,
+    };
+
+    use tokio_stream::StreamExt;
+    use tonic::{Code, Response, Status, metadata::MetadataValue};
+
+    fn command_stream<T>(
+        responses: impl IntoIterator<Item = Result<T, Status>>,
+    ) -> tonic::Response<tokio_stream::wrappers::ReceiverStream<Result<T, Status>>> {
+        let responses = responses.into_iter().collect::<Vec<_>>();
+
+        let (tx, rx) = tokio::sync::mpsc::channel(responses.len().max(1));
+
+        for response in responses {
+            tx.try_send(response)
+                .expect("failed to populate mock response stream");
+        }
+
+        Response::new(tokio_stream::wrappers::ReceiverStream::new(rx))
+    }
+
+    fn command_stream_with_id<T>(
+        command_id: &str,
+        responses: impl IntoIterator<Item = Result<T, Status>>,
+    ) -> Response<tokio_stream::wrappers::ReceiverStream<Result<T, Status>>> {
+        let mut response = command_stream(responses);
+
+        response.metadata_mut().insert(
+            "x-command-id",
+            command_id
+                .parse::<MetadataValue<_>>()
+                .expect("invalid test command id"),
+        );
+
+        response
+    }
 
     #[tokio::test]
     async fn status_returns_daemon_response() {
@@ -207,13 +241,69 @@ mod tests {
 
         {
             let mut handler = mock.status_handler.lock().await;
+
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(StatusResponse::default()))
             }));
         }
 
-        let status = controller.status().await.unwrap();
-        assert!(status.services.is_empty());
+        let status = controller
+            .status()
+            .await
+            .expect("status request should succeed");
+
+        assert!(status.services.is_empty(), "expected empty service list");
+    }
+
+    #[tokio::test]
+    async fn status_sends_workspace_id() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.status_handler.lock().await;
+
+            *handler = Some(Box::new(|req| {
+                let request = req.into_inner();
+
+                assert_eq!(request.workspace_id, "test_id");
+
+                assert!(
+                    request.services.is_empty(),
+                    "status() must query all services"
+                );
+
+                Ok(Response::new(StatusResponse::default()))
+            }));
+        }
+
+        controller
+            .status()
+            .await
+            .expect("status request should succeed");
+    }
+
+    #[tokio::test]
+    async fn status_returns_response_payload_unchanged() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        let expected = StatusResponse::default();
+
+        {
+            let mut handler = mock.status_handler.lock().await;
+
+            let expected = expected.clone();
+
+            *handler = Some(Box::new(move |_req| Ok(Response::new(expected.clone()))));
+        }
+
+        let actual = controller
+            .status()
+            .await
+            .expect("status request should succeed");
+
+        assert_eq!(actual, expected);
     }
 
     #[tokio::test]
@@ -223,9 +313,8 @@ mod tests {
 
         {
             let mut handler = mock.status_handler.lock().await;
-            *handler = Some(Box::new(|_req| {
-                Err(tonic::Status::permission_denied("forbidden"))
-            }));
+
+            *handler = Some(Box::new(|_req| Err(Status::permission_denied("forbidden"))));
         }
 
         let result = controller.status().await;
@@ -239,15 +328,17 @@ mod tests {
 
     #[tokio::test]
     async fn sync_sends_workspace_metadata_and_manifest() {
-        use tokio_stream::StreamExt;
-
         let (mock, client) = spawn_mock_server().await;
         let controller = control_handle(client);
+
+        let expected_manifest = WorkspaceManifest::default();
 
         {
             let mut handler = mock.sync_handler.lock().await;
 
-            *handler = Some(Box::new(|req| {
+            let expected_manifest = expected_manifest.clone();
+
+            *handler = Some(Box::new(move |req| {
                 let request = req.into_inner();
 
                 let metadata = request
@@ -255,52 +346,59 @@ mod tests {
                     .expect("sync request must contain workspace metadata");
 
                 assert_eq!(metadata.workspace_id, "test_id");
+
                 assert_eq!(metadata.root_path, "/test/path");
 
-                assert!(
-                    request.manifest.is_some(),
-                    "sync request must contain workspace manifest"
-                );
+                let manifest = request
+                    .manifest
+                    .expect("sync request must contain workspace manifest");
 
-                let (tx, rx) = tokio::sync::mpsc::channel(1);
+                assert_eq!(manifest, expected_manifest);
 
-                tx.try_send(Ok(SyncResponse {
-                    event: Some(knot_proto::commands::v1::sync_response::Event::Result(
-                        SyncResult {
+                Ok(command_stream_with_id(
+                    "cmd_sync_123",
+                    [Ok(SyncResponse {
+                        event: Some(sync_response::Event::Result(SyncResult {
                             services_added: vec!["service_a".to_string()],
                             services_removed: vec![],
                             services_changed: vec![],
-                        },
-                    )),
-                }))
-                .unwrap();
-
-                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-                response
-                    .metadata_mut()
-                    .insert("x-command-id", "cmd_sync_123".parse().unwrap());
-                Ok(response)
+                        })),
+                    })],
+                ))
             }));
         }
 
-        let mut sync_handle = controller.sync(WorkspaceManifest::default()).await.unwrap();
+        let mut handle = controller
+            .sync(expected_manifest)
+            .await
+            .expect("sync request should succeed");
 
-        let response = sync_handle
+        assert_eq!(handle.command_id, "cmd_sync_123");
+
+        let response = handle
             .next()
             .await
             .expect("expected SyncResponse event")
             .expect("SyncResponse stream returned an error");
 
         match response.event {
-            Some(knot_proto::commands::v1::sync_response::Event::Result(result)) => {
-                assert_eq!(result.services_added.len(), 1);
-                assert_eq!(result.services_added[0], "service_a");
+            Some(sync_response::Event::Result(result)) => {
+                assert_eq!(result.services_added, vec!["service_a"]);
+
+                assert!(result.services_removed.is_empty());
+
+                assert!(result.services_changed.is_empty());
             }
 
             event => {
                 panic!("expected SyncResult event, got: {event:?}");
             }
         }
+
+        assert!(
+            handle.next().await.is_none(),
+            "sync stream should terminate"
+        );
     }
 
     #[tokio::test]
@@ -310,8 +408,9 @@ mod tests {
 
         {
             let mut handler = mock.sync_handler.lock().await;
+
             *handler = Some(Box::new(|_req| {
-                Err(tonic::Status::failed_precondition("workspace locked"))
+                Err(Status::failed_precondition("workspace locked"))
             }));
         }
 
@@ -325,34 +424,97 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn up_sends_workspace_id_and_returns_command_handle() {
+    async fn sync_returns_contract_error_when_command_id_is_missing() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.sync_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream([Ok(SyncResponse::default())]))
+            }));
+        }
+
+        let result = controller.sync(WorkspaceManifest::default()).await;
+
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message.contains("x-command-id")
+        ),);
+    }
+
+    #[tokio::test]
+    async fn sync_propagates_stream_error() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.sync_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream_with_id(
+                    "sync-error",
+                    [
+                        Ok(SyncResponse::default()),
+                        Err(Status::internal("sync execution failed")),
+                    ],
+                ))
+            }));
+        }
+
+        let mut handle = controller
+            .sync(WorkspaceManifest::default())
+            .await
+            .expect("sync request should succeed");
+
+        assert!(handle.next().await.unwrap().is_ok());
+
+        let result = handle.next().await.expect("stream error must be present");
+
+        match result {
+            Err(status) => {
+                assert_eq!(status.code(), Code::Internal);
+
+                assert_eq!(status.message(), "sync execution failed");
+            }
+
+            Ok(_) => {
+                panic!("expected stream error");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn up_sends_workspace_id_and_all_services_marker() {
         let (mock, client) = spawn_mock_server().await;
         let controller = control_handle(client);
 
         {
             let mut handler = mock.up_handler.lock().await;
+
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
 
                 assert_eq!(request.workspace_id, "test_id");
+
                 assert!(request.services.is_empty(), "up() must start all services");
 
-                let (_tx, rx) = tokio::sync::mpsc::channel(1);
-
-                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-
-                response.metadata_mut().insert(
-                    "x-command-id",
-                    "cmd_up_123".parse::<MetadataValue<_>>().unwrap(),
-                );
-
-                Ok(response)
+                Ok(command_stream_with_id(
+                    "cmd_up_123",
+                    [Ok(knot_proto::commands::v1::UpResponse::default())],
+                ))
             }));
         }
 
-        let command = controller.up().await.unwrap();
+        let mut command = controller.up().await.expect("up request should succeed");
 
         assert_eq!(command.command_id, "cmd_up_123");
+
+        assert!(command.next().await.unwrap().is_ok());
+
+        assert!(command.next().await.is_none());
     }
 
     #[tokio::test]
@@ -362,12 +524,11 @@ mod tests {
 
         {
             let mut handler = mock.up_handler.lock().await;
-            *handler = Some(Box::new(|_req| {
-                let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
-                    rx,
-                )))
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream([Ok(
+                    knot_proto::commands::v1::UpResponse::default(),
+                )]))
             }));
         }
 
@@ -381,34 +542,92 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn down_sends_workspace_id_and_returns_command_handle() {
+    async fn up_propagates_grpc_error() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.up_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Err(Status::unavailable("daemon unavailable"))
+            }));
+        }
+
+        let result = controller.up().await;
+
+        assert!(matches!(
+            result,
+            Err(ClientError::Protocol(status))
+                if status.code() == Code::Unavailable
+        ),);
+    }
+
+    #[tokio::test]
+    async fn up_propagates_stream_error() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.up_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream_with_id(
+                    "up-error",
+                    [Err(Status::internal("service startup failed"))],
+                ))
+            }));
+        }
+
+        let mut command = controller.up().await.expect("up request should succeed");
+
+        let result = command.next().await.expect("stream error must exist");
+
+        match result {
+            Err(status) => {
+                assert_eq!(status.code(), Code::Internal);
+
+                assert_eq!(status.message(), "service startup failed");
+            }
+
+            Ok(_) => {
+                panic!("expected stream error");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn down_sends_workspace_id_and_all_services_marker() {
         let (mock, client) = spawn_mock_server().await;
         let controller = control_handle(client);
 
         {
             let mut handler = mock.down_handler.lock().await;
+
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
 
                 assert_eq!(request.workspace_id, "test_id");
+
                 assert!(request.services.is_empty(), "down() must stop all services");
 
-                let (_tx, rx) = tokio::sync::mpsc::channel(1);
-
-                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-
-                response.metadata_mut().insert(
-                    "x-command-id",
-                    "cmd_down_123".parse::<MetadataValue<_>>().unwrap(),
-                );
-
-                Ok(response)
+                Ok(command_stream_with_id(
+                    "cmd_down_123",
+                    [Ok(knot_proto::commands::v1::DownResponse::default())],
+                ))
             }));
         }
 
-        let command = controller.down().await.unwrap();
+        let mut command = controller
+            .down()
+            .await
+            .expect("down request should succeed");
 
         assert_eq!(command.command_id, "cmd_down_123");
+
+        assert!(command.next().await.unwrap().is_ok());
+
+        assert!(command.next().await.is_none());
     }
 
     #[tokio::test]
@@ -418,12 +637,11 @@ mod tests {
 
         {
             let mut handler = mock.down_handler.lock().await;
-            *handler = Some(Box::new(|_req| {
-                let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
-                    rx,
-                )))
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream([Ok(
+                    knot_proto::commands::v1::DownResponse::default(),
+                )]))
             }));
         }
 
@@ -437,28 +655,61 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn status_sends_workspace_id() {
+    async fn down_propagates_grpc_error() {
         let (mock, client) = spawn_mock_server().await;
         let controller = control_handle(client);
 
         {
-            let mut handler = mock.status_handler.lock().await;
-            *handler = Some(Box::new(|req| {
-                let request = req.into_inner();
+            let mut handler = mock.down_handler.lock().await;
 
-                assert_eq!(request.workspace_id, "test_id");
-                assert!(
-                    request.services.is_empty(),
-                    "status() must query all services"
-                );
-
-                Ok(Response::new(StatusResponse::default()))
+            *handler = Some(Box::new(|_req| {
+                Err(Status::unavailable("daemon unavailable"))
             }));
         }
 
-        let status = controller.status().await.unwrap();
+        let result = controller.down().await;
 
-        assert!(status.services.is_empty());
+        assert!(matches!(
+            result,
+            Err(ClientError::Protocol(status))
+                if status.code() == Code::Unavailable
+        ),);
+    }
+
+    #[tokio::test]
+    async fn down_propagates_stream_error() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.down_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream_with_id(
+                    "down-error",
+                    [Err(Status::internal("service shutdown failed"))],
+                ))
+            }));
+        }
+
+        let mut command = controller
+            .down()
+            .await
+            .expect("down request should succeed");
+
+        let result = command.next().await.expect("stream error must exist");
+
+        match result {
+            Err(status) => {
+                assert_eq!(status.code(), Code::Internal);
+
+                assert_eq!(status.message(), "service shutdown failed");
+            }
+
+            Ok(_) => {
+                panic!("expected stream error");
+            }
+        }
     }
 
     #[tokio::test]
@@ -468,44 +719,54 @@ mod tests {
 
         {
             let mut handler = mock.up_handler.lock().await;
+
             *handler = Some(Box::new(|req| {
                 assert!(req.into_inner().services.is_empty());
 
-                let (_tx, rx) = tokio::sync::mpsc::channel(1);
-
-                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-
-                response.metadata_mut().insert(
-                    "x-command-id",
-                    "up-test".parse::<MetadataValue<_>>().unwrap(),
-                );
-
-                Ok(response)
+                Ok(command_stream_with_id(
+                    "up-test",
+                    [Ok(knot_proto::commands::v1::UpResponse::default())],
+                ))
             }));
         }
 
         {
             let mut handler = mock.down_handler.lock().await;
+
             *handler = Some(Box::new(|req| {
                 assert!(req.into_inner().services.is_empty());
 
-                let (_tx, rx) = tokio::sync::mpsc::channel(1);
-
-                let mut response = Response::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-
-                response.metadata_mut().insert(
-                    "x-command-id",
-                    "down-test".parse::<MetadataValue<_>>().unwrap(),
-                );
-
-                Ok(response)
+                Ok(command_stream_with_id(
+                    "down-test",
+                    [Ok(knot_proto::commands::v1::DownResponse::default())],
+                ))
             }));
         }
 
-        let up = controller.up().await.unwrap();
-        let down = controller.down().await.unwrap();
+        let up = controller.up().await.expect("up should succeed");
+
+        let down = controller.down().await.expect("down should succeed");
 
         assert_eq!(up.command_id, "up-test");
+
         assert_eq!(down.command_id, "down-test");
+    }
+
+    #[tokio::test]
+    async fn command_id_header_is_used_as_command_handle_id() {
+        let (mock, client) = spawn_mock_server().await;
+        let controller = control_handle(client);
+
+        {
+            let mut handler = mock.up_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(command_stream_with_id("server-generated-id", []))
+            }));
+        }
+
+        let command = controller.up().await.expect("up should succeed");
+
+        assert_eq!(command.command_id, "server-generated-id");
     }
 }

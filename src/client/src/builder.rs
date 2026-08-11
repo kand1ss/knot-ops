@@ -14,6 +14,7 @@ use tracing::{debug, instrument, trace, warn};
 pub struct ClientBuilder {
     runtime_dir: PathBuf,
     daemon_path: PathBuf,
+    expected_daemon_name: String,
     policy: PolicyConfig,
 }
 impl Default for ClientBuilder {
@@ -21,6 +22,7 @@ impl Default for ClientBuilder {
         Self {
             runtime_dir: daemon_runtime_dir(),
             daemon_path: daemon_binary_path().unwrap(), // TODO - handle this better
+            expected_daemon_name: KNOT_DAEMON_BINARY_NAME.to_string(),
             policy: PolicyConfig::default(),
         }
     }
@@ -42,6 +44,11 @@ impl ClientBuilder {
 
     pub fn with_runtime_dir(mut self, path: impl AsRef<Path>) -> Self {
         self.runtime_dir = path.as_ref().to_owned();
+        self
+    }
+
+    pub fn with_expected_daemon_name(mut self, name: impl Into<String>) -> Self {
+        self.expected_daemon_name = name.into();
         self
     }
 
@@ -99,13 +106,20 @@ impl ClientBuilder {
                         "daemon artifacts found but connection is failed. Checking for hung or stale state."
                     );
                     if let Some(daemon_pid) = Self::read_as_u32(&lock_path).await {
-                        let expected_daemon_binary = KNOT_DAEMON_BINARY_NAME.to_string();
-                        match Process::bind(daemon_pid, expected_daemon_binary.clone()).await {
+                        debug!(
+                            pid = daemon_pid,
+                            expected = %self.expected_daemon_name,
+                            "binding to daemon process"
+                        );
+                        let expected_name = self.expected_daemon_name.clone();
+                        match Process::bind(daemon_pid, expected_name.clone()).await {
                             Ok(process) => {
                                 debug!(
                                     pid = daemon_pid,
-                                    "process at this PID is a valid knot daemon. Proceeding to kill it."
+                                    expected = %expected_name,
+                                    "process at this PID is a valid knot daemon"
                                 );
+
                                 ConnectState::Hung(KillHandle {
                                     runtime_dir,
                                     process: Box::new(process),
@@ -113,25 +127,29 @@ impl ClientBuilder {
                                     policy: Arc::clone(&policy),
                                 })
                             }
+
                             Err(ProcessError::NotRunning) => {
                                 warn!(
                                     pid = daemon_pid,
-                                    expected = expected_daemon_binary,
-                                    "process does not exist; assuming daemon is already dead. Treating as Stale."
+                                    expected = %expected_name,
+                                    "process does not exist; treating as stale"
                                 );
+
                                 ConnectState::Stale(StaleHandle {
                                     runtime_dir,
                                     daemon_path: self.daemon_path,
                                     policy: Arc::clone(&policy),
                                 })
                             }
-                            Err(ProcessError::Mismatch(actual)) => {
+
+                            Err(ProcessError::Mismatch { expected, actual }) => {
                                 warn!(
                                     pid = daemon_pid,
                                     actual = %actual,
-                                    expected = expected_daemon_binary,
-                                    "process at this PID does not match the expected knot binary; refusing to kill it. Treating as Stale."
+                                    expected = %expected,
+                                    "process at this PID does not match the expected daemon binary; treating as stale"
                                 );
+
                                 ConnectState::Stale(StaleHandle {
                                     runtime_dir,
                                     daemon_path: self.daemon_path,

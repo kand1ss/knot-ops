@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use crate::errors::ClientError;
 use crate::handles::StaleHandle;
 use crate::policies::PolicyConfig;
@@ -12,6 +13,7 @@ use tracing::{debug, instrument, warn};
 /// a valid PID file and the operating system confirms the process is resident,
 /// but the underlying communication socket or IPC channel is unhealthy or deadlocked.
 /// It exposes immediate recovery vectors like programmatic termination and restarts.
+#[derive(Debug)]
 pub struct KillHandle {
     /// The target filesystem path pointing to the active workspace directory.
     pub runtime_dir: PathBuf,

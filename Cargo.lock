@@ -573,6 +573,7 @@ dependencies = [
  "knot-core",
  "knot-grpc",
  "knot-proto",
+ "libc",
  "nix",
  "sysinfo",
  "tempfile",

@@ -46,3 +46,38 @@ impl KnotClient {
         Self::builder().connect().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn connect_delegates_to_default_builder() {
+        let result = KnotClient::connect().await;
+        let expected = KnotClient::builder().connect().await;
+
+        match (result, expected) {
+            (Ok(actual), Ok(expected)) => {
+                assert_eq!(
+                std::mem::discriminant(&actual),
+                std::mem::discriminant(&expected),
+            );
+            }
+
+            (Err(actual), Err(expected)) => {
+                assert_eq!(
+                actual.to_string(),
+                expected.to_string(),
+            );
+            }
+
+            (actual, expected) => {
+                panic!(
+                    "KnotClient::connect() and ClientBuilder::connect() \
+                 returned different result categories: \
+                 actual={actual:?}, expected={expected:?}"
+                );
+            }
+        }
+    }
+}

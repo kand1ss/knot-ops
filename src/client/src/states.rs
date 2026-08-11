@@ -7,6 +7,7 @@ pub enum DaemonSession {
 }
 
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum ConnectState {
     Offline(OfflineHandle),
     Stale(StaleHandle),

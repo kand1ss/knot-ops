@@ -3,7 +3,7 @@ use crate::{
     handles::{ControlHandle, UnsyncedHandle},
     policies::PolicyConfig,
     states::DaemonSession,
-    utils::request
+    utils::request,
 };
 use knot_proto::{
     api::v1::daemon_service_client::DaemonServiceClient,
@@ -11,11 +11,7 @@ use knot_proto::{
     data::v1::{WorkspaceManifest, WorkspaceMetadata},
 };
 use std::{path::Path, sync::Arc};
-use tokio::time::Duration;
-use tonic::{
-    Request,
-    transport::{Channel, Endpoint},
-};
+use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, error, instrument};
 
 use knot_grpc::IpcConnector;
@@ -100,13 +96,16 @@ impl ConnectedHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::test_utils::spawn_mock_server;
+
     use knot_proto::{
-        api::v1::daemon_service_client::DaemonServiceClient, commands::v1::HandshakeResponse,
-        data::v1::WorkspaceState,
+        api::v1::daemon_service_client::DaemonServiceClient,
+        commands::v1::{HandshakeRequest, HandshakeResponse},
+        data::v1::{WorkspaceManifest, WorkspaceState},
     };
-    use tonic::{Code, Response};
+
+    use std::sync::Arc;
+    use tonic::{Code, Request, Response, Status};
 
     fn handle(client: DaemonServiceClient<Channel>) -> ConnectedHandle {
         ConnectedHandle {
@@ -124,6 +123,14 @@ mod tests {
 
     fn workspace_manifest() -> WorkspaceManifest {
         WorkspaceManifest::default()
+    }
+
+    fn custom_workspace_manifest() -> WorkspaceManifest {
+        WorkspaceManifest {
+            // Keep this function populated with the fields that exist
+            // in the current protobuf definition.
+            ..Default::default()
+        }
     }
 
     #[tokio::test]
@@ -145,9 +152,12 @@ mod tests {
         let session = handle
             .handshake(workspace_metadata(), workspace_manifest())
             .await
-            .unwrap();
+            .expect("handshake should succeed");
 
-        assert!(matches!(session, DaemonSession::Unsynced(_)));
+        assert!(
+            matches!(session, DaemonSession::Unsynced(_)),
+            "expected Unsynced session"
+        );
     }
 
     #[tokio::test]
@@ -169,20 +179,23 @@ mod tests {
         let session = handle
             .handshake(workspace_metadata(), workspace_manifest())
             .await
-            .unwrap();
+            .expect("handshake should succeed");
 
-        assert!(matches!(session, DaemonSession::Ready(_)));
+        assert!(
+            matches!(session, DaemonSession::Ready(_)),
+            "expected Ready session"
+        );
     }
 
     #[tokio::test]
-    async fn handshake_sends_workspace_metadata_and_manifest() {
+    async fn handshake_sends_complete_workspace_metadata() {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
 
         {
             let mut handler = mock.handshake_handler.lock().await;
 
-            *handler = Some(Box::new(|req| {
+            *handler = Some(Box::new(|req: Request<HandshakeRequest>| {
                 let request = req.into_inner();
 
                 let metadata = request
@@ -190,12 +203,8 @@ mod tests {
                     .expect("handshake must contain workspace metadata");
 
                 assert_eq!(metadata.workspace_id, "workspace-test");
-                assert_eq!(metadata.root_path, "/tmp/knot-test");
 
-                assert!(
-                    request.manifest.is_some(),
-                    "handshake must contain workspace manifest"
-                );
+                assert_eq!(metadata.root_path, "/tmp/knot-test");
 
                 Ok(Response::new(HandshakeResponse {
                     state: WorkspaceState::InSync as i32,
@@ -207,7 +216,42 @@ mod tests {
         let session = handle
             .handshake(workspace_metadata(), workspace_manifest())
             .await
-            .unwrap();
+            .expect("handshake should succeed");
+
+        assert!(matches!(session, DaemonSession::Ready(_)));
+    }
+
+    #[tokio::test]
+    async fn handshake_sends_workspace_manifest() {
+        let (mock, client) = spawn_mock_server().await;
+        let handle = handle(client);
+
+        let expected_manifest = custom_workspace_manifest();
+
+        {
+            let expected_manifest = expected_manifest.clone();
+            let mut handler = mock.handshake_handler.lock().await;
+
+            *handler = Some(Box::new(move |req| {
+                let request = req.into_inner();
+
+                let actual_manifest = request
+                    .manifest
+                    .expect("handshake must contain workspace manifest");
+
+                assert_eq!(actual_manifest, expected_manifest);
+
+                Ok(Response::new(HandshakeResponse {
+                    state: WorkspaceState::InSync as i32,
+                    ..Default::default()
+                }))
+            }));
+        }
+
+        let session = handle
+            .handshake(workspace_metadata(), expected_manifest)
+            .await
+            .expect("handshake should succeed");
 
         assert!(matches!(session, DaemonSession::Ready(_)));
     }
@@ -221,7 +265,7 @@ mod tests {
             let mut handler = mock.handshake_handler.lock().await;
 
             *handler = Some(Box::new(|_req| {
-                Err(tonic::Status::unavailable("daemon unavailable"))
+                Err(Status::unavailable("daemon unavailable"))
             }));
         }
 
@@ -323,6 +367,11 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
 
+        let metadata = WorkspaceMetadata {
+            workspace_id: "my-workspace".to_string(),
+            root_path: "/home/test/project".to_string(),
+        };
+
         {
             let mut handler = mock.handshake_handler.lock().await;
 
@@ -335,20 +384,18 @@ mod tests {
         }
 
         let session = handle
-            .handshake(
-                WorkspaceMetadata {
-                    workspace_id: "my-workspace".to_string(),
-                    root_path: "/home/test/project".to_string(),
-                },
-                workspace_manifest(),
-            )
+            .handshake(metadata.clone(), workspace_manifest())
             .await
-            .unwrap();
+            .expect("handshake should succeed");
 
         match session {
             DaemonSession::Ready(controller) => {
-                assert_eq!(controller.workspace_meta.workspace_id, "my-workspace");
-                assert_eq!(controller.workspace_meta.root_path, "/home/test/project");
+                assert_eq!(
+                    controller.workspace_meta.workspace_id,
+                    metadata.workspace_id
+                );
+
+                assert_eq!(controller.workspace_meta.root_path, metadata.root_path);
             }
 
             _ => panic!("expected Ready session"),
@@ -359,6 +406,11 @@ mod tests {
     async fn handshake_preserves_workspace_metadata_in_unsynced_controller() {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
+
+        let metadata = WorkspaceMetadata {
+            workspace_id: "out-of-sync".to_string(),
+            root_path: "/workspace/project".to_string(),
+        };
 
         {
             let mut handler = mock.handshake_handler.lock().await;
@@ -372,30 +424,156 @@ mod tests {
         }
 
         let session = handle
-            .handshake(
-                WorkspaceMetadata {
-                    workspace_id: "out-of-sync".to_string(),
-                    root_path: "/workspace/project".to_string(),
-                },
-                workspace_manifest(),
-            )
+            .handshake(metadata.clone(), workspace_manifest())
             .await
-            .unwrap();
+            .expect("handshake should succeed");
 
         match session {
             DaemonSession::Unsynced(unsynced) => {
                 assert_eq!(
                     unsynced.controller.workspace_meta.workspace_id,
-                    "out-of-sync"
+                    metadata.workspace_id
                 );
 
                 assert_eq!(
                     unsynced.controller.workspace_meta.root_path,
-                    "/workspace/project"
+                    metadata.root_path
                 );
             }
 
             _ => panic!("expected Unsynced session"),
         }
+    }
+
+    #[tokio::test]
+    async fn handshake_preserves_policy_in_ready_controller() {
+        let (mock, client) = spawn_mock_server().await;
+
+        let policy = Arc::new(PolicyConfig::default());
+
+        let handle = ConnectedHandle {
+            client,
+            policy: Arc::clone(&policy),
+        };
+
+        {
+            let mut handler = mock.handshake_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(Response::new(HandshakeResponse {
+                    state: WorkspaceState::InSync as i32,
+                    ..Default::default()
+                }))
+            }));
+        }
+
+        let session = handle
+            .handshake(workspace_metadata(), workspace_manifest())
+            .await
+            .expect("handshake should succeed");
+
+        match session {
+            DaemonSession::Ready(controller) => {
+                assert!(
+                    Arc::ptr_eq(&controller.policy, &policy),
+                    "policy Arc must be preserved"
+                );
+            }
+
+            _ => panic!("expected Ready session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn handshake_preserves_policy_in_unsynced_controller() {
+        let (mock, client) = spawn_mock_server().await;
+
+        let policy = Arc::new(PolicyConfig::default());
+
+        let handle = ConnectedHandle {
+            client,
+            policy: Arc::clone(&policy),
+        };
+
+        {
+            let mut handler = mock.handshake_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(Response::new(HandshakeResponse {
+                    state: WorkspaceState::OutOfSync as i32,
+                    ..Default::default()
+                }))
+            }));
+        }
+
+        let session = handle
+            .handshake(workspace_metadata(), workspace_manifest())
+            .await
+            .expect("handshake should succeed");
+
+        match session {
+            DaemonSession::Unsynced(unsynced) => {
+                assert!(
+                    Arc::ptr_eq(&unsynced.controller.policy, &policy),
+                    "policy Arc must be preserved"
+                );
+            }
+
+            _ => panic!("expected Unsynced session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn handshake_propagates_internal_server_error() {
+        let (mock, client) = spawn_mock_server().await;
+        let handle = handle(client);
+
+        {
+            let mut handler = mock.handshake_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Err(Status::internal("internal daemon failure"))
+            }));
+        }
+
+        let result = handle
+            .handshake(workspace_metadata(), workspace_manifest())
+            .await;
+
+        match result {
+            Err(ClientError::Protocol(status)) => {
+                assert_eq!(status.code(), Code::Internal);
+
+                assert_eq!(status.message(), "internal daemon failure");
+            }
+
+            _ => {
+                panic!("expected ClientError::Protocol");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn handshake_rejects_missing_response_state() {
+        let (mock, client) = spawn_mock_server().await;
+        let handle = handle(client);
+
+        {
+            let mut handler = mock.handshake_handler.lock().await;
+
+            *handler = Some(Box::new(|_req| {
+                Ok(Response::new(HandshakeResponse::default()))
+            }));
+        }
+
+        let result = handle
+            .handshake(workspace_metadata(), workspace_manifest())
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ClientError::Contract(message))
+                if message == "unknown workspace state"
+        ),);
     }
 }

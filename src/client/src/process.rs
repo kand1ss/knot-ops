@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::fmt::Debug;
 use std::io;
 use std::path::Path;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
@@ -6,7 +7,7 @@ use thiserror::Error;
 use tokio::process::Command;
 use tracing::{error, info, instrument, trace, warn};
 
-pub trait ProcessControl {
+pub trait ProcessControl: Debug {
     fn kill(&self) -> std::io::Result<()>;
     fn pid(&self) -> u32;
 }
@@ -15,8 +16,12 @@ pub trait ProcessControl {
 pub enum ProcessError {
     #[error("process is not running")]
     NotRunning,
-    #[error("process name mismatch: expected {0}")]
-    Mismatch(String),
+
+    #[error("process name mismatch: expected '{expected}', got '{actual}'")]
+    Mismatch {
+        expected: String,
+        actual: String,
+    },
 }
 
 #[derive(Debug)]
@@ -28,6 +33,7 @@ impl Process {
     fn new(pid: u32) -> Self {
         Self { pid }
     }
+    pub fn pid(&self) -> u32 { self.pid }
 
     pub async fn bind(pid: u32, expected_name: String) -> Result<Self, ProcessError> {
         let sys_pid = Pid::from(pid as usize);
@@ -46,7 +52,10 @@ impl Process {
                     if actual_name.eq_ignore_ascii_case(&expected_name) {
                         Ok(Self::new(pid))
                     } else {
-                        Err(ProcessError::Mismatch(actual_name.to_string()))
+                        Err(ProcessError::Mismatch {
+                            expected: expected_name,
+                            actual: actual_name.to_string(),
+                        })
                     }
                 }
                 None => Err(ProcessError::NotRunning),
@@ -97,11 +106,19 @@ impl Process {
     ) -> io::Result<Self> {
         let child = Command::new(path)
             .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn()?;
 
-        Ok(Self {
-            pid: child.id().unwrap(), // TODO - check for None
-        })
+        let pid = child.id().ok_or_else(|| {
+            io::Error::other(format!(
+                "process at '{}' exited immediately and yielded no PID",
+                path.display()
+            ))
+        })?;
+
+        Ok(Self { pid })
     }
 }
 
