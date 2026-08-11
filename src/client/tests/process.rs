@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate,  ProcessStatus, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
 use tokio::time::{sleep, timeout};
 
 use knot_client::process::{Process, ProcessControl, ProcessError};
@@ -80,8 +80,8 @@ async fn wait_until_not_running(pid: u32) {
             }
         }
     })
-        .await
-        .expect("process did not terminate within timeout");
+    .await
+    .expect("process did not terminate within timeout");
 }
 
 struct ProcessGuard(Process);
