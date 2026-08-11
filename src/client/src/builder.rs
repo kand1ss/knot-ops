@@ -52,30 +52,12 @@ impl ClientBuilder {
         self
     }
 
-    /// Resolves the workspace environment and evaluates the daemon's current operational state.
-    ///
     /// This method performs a multistep inspection to determine how to connect to the daemon:
-    /// 1. Recursively searches upwards to find the `.knot` workspace directory.
-    /// 2. Inspects the filesystem for existing PID and socket files.
-    /// 3. Cross-references the discovered PID with the operating system's process table.
-    /// 4. Attempts to establish a gRPC connection if the process and socket are deemed healthy.
-    ///
-    /// This method consumes the builder to transfer ownership of the `launcher` configuration
-    /// to the resulting state handle.
-    ///
-    /// # Arguments
-    ///
-    /// * `directory` - The starting path to begin searching for the workspace root.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `ConnectState` enum representing the exact lifecycle phase of the daemon
-    /// (e.g., `Offline`, `Connected`, `Hung`, or `Stale`).
-    ///
-    /// # Errors
-    ///
-    /// Returns a `ClientError` (specifically `WorkspaceError::NotInitialized`) if no valid
-    /// workspace directory is found in the path hierarchy.
+    /// 1. Checks whether the daemon lock file exists.
+    /// 2. Attempts to establish an IPC connection to the daemon.
+    /// 3. If the connection fails, reads the daemon PID from the lock file.
+    /// 4. Cross-references the PID with the operating system's process table.
+    /// 5. Classifies the daemon as hung or stale based on the process state.
     #[instrument(skip_all)]
     pub async fn connect(self) -> Result<ConnectState, ClientError> {
         debug!("starting connection sequence...");
@@ -85,99 +67,122 @@ impl ClientBuilder {
         let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
         let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
 
-        let handle = match (lock_path.exists(), socket_path.exists()) {
-            (false, false) => {
-                debug!("daemon artifacts not found. Daemon is offline.");
-
-                ConnectState::Offline(OfflineHandle {
-                    runtime_dir,
-                    daemon_path: self.daemon_path,
-                    policy: Arc::clone(&policy),
-                })
-            }
-            (true, true) => {
-                debug!("daemon artifacts found. Daemon is online.");
-                let handle = ConnectedHandle::new(&socket_path, Arc::clone(&policy)).await;
-                if let Ok(handle) = handle {
-                    trace!("successfully connected to running daemon.");
-                    ConnectState::Connected(handle)
-                } else {
+        // The lock file is the daemon's lifecycle marker.
+        //
+        // We deliberately do NOT check socket_path.exists():
+        // on Windows the IPC endpoint may be a named pipe rather than
+        // a filesystem entry, so filesystem existence is not a reliable
+        // indication that the endpoint is available.
+        if !lock_path.exists() {
+            #[cfg(unix)]
+            {
+                if socket_path.exists() {
                     warn!(
-                        "daemon artifacts found but connection is failed. Checking for hung or stale state."
+                        "daemon lock file not found but socket file exists. \
+                         Treating as stale."
                     );
-                    if let Some(daemon_pid) = Self::read_as_u32(&lock_path).await {
-                        debug!(
-                            pid = daemon_pid,
-                            expected = %self.expected_daemon_name,
-                            "binding to daemon process"
-                        );
-                        let expected_name = self.expected_daemon_name.clone();
-                        match Process::bind(daemon_pid, expected_name.clone()).await {
-                            Ok(process) => {
-                                debug!(
-                                    pid = daemon_pid,
-                                    expected = %expected_name,
-                                    "process at this PID is a valid knot daemon"
-                                );
-
-                                ConnectState::Hung(KillHandle {
-                                    runtime_dir,
-                                    process: Box::new(process),
-                                    daemon_path: self.daemon_path,
-                                    policy: Arc::clone(&policy),
-                                })
-                            }
-
-                            Err(ProcessError::NotRunning) => {
-                                warn!(
-                                    pid = daemon_pid,
-                                    expected = %expected_name,
-                                    "process does not exist; treating as stale"
-                                );
-
-                                ConnectState::Stale(StaleHandle {
-                                    runtime_dir,
-                                    daemon_path: self.daemon_path,
-                                    policy: Arc::clone(&policy),
-                                })
-                            }
-
-                            Err(ProcessError::Mismatch { expected, actual }) => {
-                                warn!(
-                                    pid = daemon_pid,
-                                    actual = %actual,
-                                    expected = %expected,
-                                    "process at this PID does not match the expected daemon binary; treating as stale"
-                                );
-
-                                ConnectState::Stale(StaleHandle {
-                                    runtime_dir,
-                                    daemon_path: self.daemon_path,
-                                    policy: Arc::clone(&policy),
-                                })
-                            }
-                        }
-                    } else {
-                        warn!("PID file exists but is corrupted or empty. Treating as Stale.");
-                        ConnectState::Stale(StaleHandle {
-                            runtime_dir,
-                            daemon_path: self.daemon_path,
-                            policy: Arc::clone(&policy),
-                        })
-                    }
+                    return Ok(ConnectState::Stale(StaleHandle {
+                        runtime_dir,
+                        daemon_path: self.daemon_path,
+                        policy: Arc::clone(&policy),
+                    }));
                 }
             }
-            _ => {
-                warn!("Not all daemon artifacts found. Treating as Stale.");
 
-                ConnectState::Stale(StaleHandle {
+            debug!("daemon lock file not found. Daemon is offline.");
+            return Ok(ConnectState::Offline(OfflineHandle {
+                runtime_dir,
+                daemon_path: self.daemon_path,
+                policy: Arc::clone(&policy),
+            }));
+        }
+
+        debug!("daemon lock file found. Attempting to connect to daemon.");
+
+        // IPC availability is determined by an actual connection attempt,
+        // not by checking the endpoint's filesystem existence.
+        match ConnectedHandle::new(&socket_path, Arc::clone(&policy)).await {
+            Ok(handle) => {
+                trace!("successfully connected to running daemon.");
+
+                return Ok(ConnectState::Connected(handle));
+            }
+
+            Err(_) => {
+                warn!(
+                    "daemon lock file exists but connection failed. \
+                 Checking for hung or stale state."
+                );
+            }
+        }
+
+        let daemon_pid = match Self::read_as_u32(&lock_path).await {
+            Some(pid) => pid,
+            None => {
+                warn!("PID file exists but is corrupted or empty. Treating as stale.");
+
+                return Ok(ConnectState::Stale(StaleHandle {
                     runtime_dir,
                     daemon_path: self.daemon_path,
                     policy: Arc::clone(&policy),
-                })
+                }));
             }
         };
-        Ok(handle)
+
+        debug!(
+            pid = daemon_pid,
+            expected = %self.expected_daemon_name,
+            "binding to daemon process"
+        );
+
+        let expected_name = self.expected_daemon_name.clone();
+
+        match Process::bind(daemon_pid, expected_name.clone()).await {
+            Ok(process) => {
+                debug!(
+                    pid = daemon_pid,
+                    expected = %expected_name,
+                    "process at this PID is a valid knot daemon"
+                );
+
+                Ok(ConnectState::Hung(KillHandle {
+                    runtime_dir,
+                    process: Box::new(process),
+                    daemon_path: self.daemon_path,
+                    policy: Arc::clone(&policy),
+                }))
+            }
+
+            Err(ProcessError::NotRunning) => {
+                warn!(
+                    pid = daemon_pid,
+                    expected = %expected_name,
+                    "process does not exist; treating as stale"
+                );
+
+                Ok(ConnectState::Stale(StaleHandle {
+                    runtime_dir,
+                    daemon_path: self.daemon_path,
+                    policy: Arc::clone(&policy),
+                }))
+            }
+
+            Err(ProcessError::Mismatch { expected, actual }) => {
+                warn!(
+                    pid = daemon_pid,
+                    actual = %actual,
+                    expected = %expected,
+                    "process at this PID does not match the expected daemon binary; \
+                     treating as stale"
+                );
+
+                Ok(ConnectState::Stale(StaleHandle {
+                    runtime_dir,
+                    daemon_path: self.daemon_path,
+                    policy: Arc::clone(&policy),
+                }))
+            }
+        }
     }
 
     async fn read_as_u32(path: &Path) -> Option<u32> {
