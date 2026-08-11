@@ -7,14 +7,12 @@ flowchart TD
     QConnection -->|Failed / Refused| QProcess{Process table PID verification?}
     QProcess -->|Alive / Valid knotd| Kill[KillHandle]
     QProcess -->|Dead / Mismatch| Stale[StaleHandle]
-
     Kill -->|kill process| Stale
     Stale -->|clean volatile files| Offline
     Offline -->|launch daemon| Connected
     Connected --> QHandshake{Daemon handshake state?}
     QHandshake -->|InSync| Control[ControlHandle / Ready]
     QHandshake -->|OutOfSync| Unsynced[UnsyncedHandle]
-
     Unsynced -->|sync manifest| Control
     Control -->|Execute up/down/sync| Command[CommandHandle]
     Command -->|cancel command| Control
