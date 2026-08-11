@@ -1,6 +1,7 @@
 use crate::errors::ClientError;
 use crate::handles::CommandHandle;
 use crate::policies::PolicyConfig;
+use crate::utils::request;
 use knot_proto::api::v1::daemon_service_client::DaemonServiceClient;
 use knot_proto::commands::v1::{
     DownRequest, DownResponse, StatusRequest, StatusResponse, SyncRequest, SyncResponse, UpRequest,
@@ -8,8 +9,6 @@ use knot_proto::commands::v1::{
 };
 use knot_proto::data::v1::{WorkspaceManifest, WorkspaceMetadata};
 use std::sync::Arc;
-use tokio::time::Duration;
-use tonic::Request;
 use tonic::{Response, transport::Channel};
 use tracing::{debug, error, info, instrument};
 
@@ -26,14 +25,6 @@ pub struct ControlHandle {
 }
 
 impl ControlHandle {
-    fn request<R>(&self, req: R, timeout: Option<Duration>) -> Result<Request<R>, ClientError> {
-        let mut request = Request::new(req);
-        if let Some(duration) = timeout {
-            request.set_timeout(duration);
-        }
-        Ok(request)
-    }
-
     /// Extracts the `x-command-id` from the gRPC response metadata.
     fn get_command_id<R>(response: &Response<R>) -> Result<String, ClientError> {
         response
@@ -66,13 +57,13 @@ impl ControlHandle {
 
         let mut client = self.client.clone();
         let response = client
-            .sync(self.request(
+            .sync(request(
                 SyncRequest {
                     metadata: Some(self.workspace_meta.clone()),
                     manifest: Some(workspace_manifest),
                 },
                 Some(self.policy.timeout.fast_commands),
-            )?)
+            ))
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to synchronize workspace configuration");
@@ -102,13 +93,13 @@ impl ControlHandle {
 
         let mut client = self.client.clone();
         let response = client
-            .up(self.request(
+            .up(request(
                 UpRequest {
                     services: vec![],
                     workspace_id: self.workspace_meta.workspace_id.clone(),
                 },
                 self.policy.timeout.long_streams,
-            )?)
+            ))
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to initiate 'up' command");
@@ -139,13 +130,13 @@ impl ControlHandle {
 
         let mut client = self.client.clone();
         let response = client
-            .down(self.request(
+            .down(request(
                 DownRequest {
                     services: vec![],
                     workspace_id: self.workspace_meta.workspace_id.clone(),
                 },
                 self.policy.timeout.long_streams,
-            )?)
+            ))
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to initiate 'down' command");
@@ -176,13 +167,13 @@ impl ControlHandle {
 
         let mut client = self.client.clone();
         let response = client
-            .status(self.request(
+            .status(request(
                 StatusRequest {
                     services: vec![],
                     workspace_id: self.workspace_meta.workspace_id.clone(),
                 },
                 Some(self.policy.timeout.fast_commands),
-            )?)
+            ))
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to fetch status from daemon");

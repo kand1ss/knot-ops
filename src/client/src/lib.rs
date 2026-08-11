@@ -16,6 +16,7 @@ pub mod states;
 pub mod process;
 #[cfg(test)]
 pub mod test_utils;
+mod utils;
 
 pub use builder::ClientBuilder;
 pub use client::KnotClient;

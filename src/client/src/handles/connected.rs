@@ -3,6 +3,7 @@ use crate::{
     handles::{ControlHandle, UnsyncedHandle},
     policies::PolicyConfig,
     states::DaemonSession,
+    utils::request
 };
 use knot_proto::{
     api::v1::daemon_service_client::DaemonServiceClient,
@@ -57,14 +58,6 @@ impl ConnectedHandle {
         Ok(Self { client, policy })
     }
 
-    fn request<R>(&self, req: R, timeout: Option<Duration>) -> Request<R> {
-        let mut request = Request::new(req);
-        if let Some(duration) = timeout {
-            request.set_timeout(duration);
-        }
-        request
-    }
-
     pub async fn handshake(
         self,
         workspace_meta: WorkspaceMetadata,
@@ -72,7 +65,7 @@ impl ConnectedHandle {
     ) -> Result<DaemonSession, ClientError> {
         let mut client = self.client.clone();
         let response = client
-            .handshake(self.request(
+            .handshake(request(
                 HandshakeRequest {
                     metadata: Some(workspace_meta.clone()),
                     manifest: Some(workspace_manifest),
