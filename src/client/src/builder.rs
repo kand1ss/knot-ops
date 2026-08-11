@@ -1,14 +1,8 @@
-use crate::process::{Process, ProcessVerification};
-use crate::{
-    errors::ClientError,
-    handles::*,
-    launcher::{DaemonLauncher, DefaultLauncher},
-    policies::*,
-    states::ConnectState,
-};
+use crate::process::{Process, ProcessError};
+use crate::{errors::ClientError, handles::*, policies::*, states::ConnectState};
 use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
-use knot_core::paths::{KNOT_DAEMON_BINARY_NAME, daemon_runtime_dir};
-use std::path::Path;
+use knot_core::paths::{KNOT_DAEMON_BINARY_NAME, daemon_binary_path, daemon_runtime_dir};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, instrument, trace, warn};
 
@@ -18,33 +12,29 @@ use tracing::{debug, instrument, trace, warn};
 /// strategy used to spawn the background daemon process, before executing the state
 /// resolution sequence via [`Self::connect`].
 pub struct ClientBuilder {
-    launcher: Box<dyn DaemonLauncher + Send + Sync + 'static>,
+    daemon_path: PathBuf,
     policy: PolicyConfig,
 }
 impl Default for ClientBuilder {
     fn default() -> Self {
         Self {
-            launcher: Box::new(DefaultLauncher::new()),
+            daemon_path: daemon_binary_path().unwrap(), // TODO - handle this better
             policy: PolicyConfig::default(),
         }
     }
 }
 impl ClientBuilder {
-    /// Overrides the default daemon launch strategy.
-    ///
-    /// This is particularly useful for injecting mock launchers during testing or
-    /// explicitly defining whether to use the system path versus the current executable.
-    ///
-    /// # Arguments
-    ///
-    /// * `launcher` - A type that implements the `DaemonLauncher` trait.
-    pub fn with_launcher(mut self, launcher: impl DaemonLauncher + Send + Sync + 'static) -> Self {
-        self.launcher = Box::new(launcher);
-        self
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_timeout(mut self, timeout: TimeoutPolicy) -> Self {
         self.policy.timeout = timeout;
+        self
+    }
+
+    pub fn with_daemon_path(mut self, path: impl AsRef<Path>) -> Self {
+        self.daemon_path = path.as_ref().to_owned();
         self
     }
 
@@ -87,7 +77,7 @@ impl ClientBuilder {
 
                 ConnectState::Offline(OfflineHandle {
                     runtime_dir,
-                    daemon_launcher: self.launcher,
+                    daemon_path: self.daemon_path,
                     policy: Arc::clone(&policy),
                 })
             }
@@ -102,9 +92,9 @@ impl ClientBuilder {
                         "daemon artifacts found but connection is failed. Checking for hung or stale state."
                     );
                     if let Some(daemon_pid) = Self::read_as_u32(&lock_path).await {
-                        let process = Process::new(daemon_pid, KNOT_DAEMON_BINARY_NAME.to_string());
-                        match process.verify() {
-                            ProcessVerification::Valid => {
+                        let expected_daemon_binary = KNOT_DAEMON_BINARY_NAME.to_string();
+                        match Process::bind(daemon_pid, expected_daemon_binary.clone()).await {
+                            Ok(process) => {
                                 debug!(
                                     pid = daemon_pid,
                                     "process at this PID is a valid knot daemon. Proceeding to kill it."
@@ -112,32 +102,32 @@ impl ClientBuilder {
                                 ConnectState::Hung(KillHandle {
                                     runtime_dir,
                                     process: Box::new(process),
-                                    daemon_launcher: self.launcher,
+                                    daemon_path: self.daemon_path,
                                     policy: Arc::clone(&policy),
                                 })
                             }
-                            ProcessVerification::NotRunning => {
+                            Err(ProcessError::NotRunning) => {
                                 warn!(
-                                    pid = process.pid,
-                                    expected = process.name,
+                                    pid = daemon_pid,
+                                    expected = expected_daemon_binary,
                                     "process does not exist; assuming daemon is already dead. Treating as Stale."
                                 );
                                 ConnectState::Stale(StaleHandle {
                                     runtime_dir,
-                                    daemon_launcher: self.launcher,
+                                    daemon_path: self.daemon_path,
                                     policy: Arc::clone(&policy),
                                 })
                             }
-                            ProcessVerification::Mismatch(actual) => {
+                            Err(ProcessError::Mismatch(actual)) => {
                                 warn!(
-                                    pid = process.pid,
+                                    pid = daemon_pid,
                                     actual = %actual,
-                                    expected = process.name,
+                                    expected = expected_daemon_binary,
                                     "process at this PID does not match the expected knot binary; refusing to kill it. Treating as Stale."
                                 );
                                 ConnectState::Stale(StaleHandle {
                                     runtime_dir,
-                                    daemon_launcher: self.launcher,
+                                    daemon_path: self.daemon_path,
                                     policy: Arc::clone(&policy),
                                 })
                             }
@@ -146,7 +136,7 @@ impl ClientBuilder {
                         warn!("PID file exists but is corrupted or empty. Treating as Stale.");
                         ConnectState::Stale(StaleHandle {
                             runtime_dir,
-                            daemon_launcher: self.launcher,
+                            daemon_path: self.daemon_path,
                             policy: Arc::clone(&policy),
                         })
                     }
@@ -157,7 +147,7 @@ impl ClientBuilder {
 
                 ConnectState::Stale(StaleHandle {
                     runtime_dir,
-                    daemon_launcher: self.launcher,
+                    daemon_path: self.daemon_path,
                     policy: Arc::clone(&policy),
                 })
             }

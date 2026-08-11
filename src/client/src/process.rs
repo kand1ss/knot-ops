@@ -1,54 +1,94 @@
-use std::io::Result;
+use std::io;
+use std::path::Path;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use tokio::process::Command;
+use tracing::{error, info, instrument, trace, warn};
 
 pub trait ProcessControl {
-    fn kill(&self) -> Result<()>;
+    fn kill(&self) -> std::io::Result<()>;
     fn pid(&self) -> u32;
 }
 
-pub enum ProcessVerification {
+pub enum ProcessError {
     NotRunning,
-    Valid,
     Mismatch(String),
 }
 
 pub struct Process {
     pub(crate) pid: u32,
-    pub(crate) name: String,
 }
 
 impl Process {
-    pub fn new(pid: u32, name: String) -> Self {
-        Self { pid, name }
+    fn new(pid: u32) -> Self {
+        Self { pid }
     }
 
-    pub fn verify(&self) -> ProcessVerification {
-        let pid = Pid::from(self.pid as usize);
-        let mut sys = System::new();
+    pub async fn bind(pid: u32, expected_name: String) -> Result<Self, ProcessError> {
+        let sys_pid = Pid::from(pid as usize);
+        tokio::task::spawn_blocking(move || {
+            let mut sys = System::new();
 
-        sys.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&[pid]),
-            false,
-            ProcessRefreshKind::nothing(),
-        );
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[sys_pid]),
+                false,
+                ProcessRefreshKind::nothing(),
+            );
 
-        match sys.process(pid) {
-            Some(process) => {
-                let actual_name = process.name().to_string_lossy();
-                if actual_name.eq_ignore_ascii_case(&self.name) {
-                    ProcessVerification::Valid
-                } else {
-                    ProcessVerification::Mismatch(actual_name.to_string())
+            match sys.process(sys_pid) {
+                Some(process) => {
+                    let actual_name = process.name().to_string_lossy();
+                    if actual_name.eq_ignore_ascii_case(&expected_name) {
+                        Ok(Self::new(pid))
+                    } else {
+                        Err(ProcessError::Mismatch(actual_name.to_string()))
+                    }
                 }
+                None => Err(ProcessError::NotRunning),
             }
-            None => ProcessVerification::NotRunning,
+        })
+        .await
+        .map_err(|_| ProcessError::NotRunning)?
+    }
+
+    #[instrument(
+        skip_all,
+        name = "process_spawn",
+        fields(
+            bin = %binary.display(),
+        ))]
+    pub fn spawn(binary: &Path) -> io::Result<Self> {
+        let mut command = Command::new(binary);
+        trace!("spawning process...");
+
+        let child = command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e: io::Error| {
+                error!(error = %e, "failed to spawn process");
+                e
+            })?;
+
+        match child.id() {
+            Some(id) => {
+                info!("process successfully spawned with PID: {}", id);
+                Ok(Self::new(id))
+            }
+            None => {
+                warn!("daemon process exited immediately after spawning.");
+                Err(io::Error::other(format!(
+                    "daemon process at '{}' exited immediately and yielded no PID. It might have crashed on startup.",
+                    binary.to_string_lossy()
+                )))
+            }
         }
     }
 }
 
 impl ProcessControl for Process {
     #[cfg(windows)]
-    fn kill(&self) -> Result<()> {
+    fn kill(&self) -> io::Result<()> {
         use windows_sys::Win32::Foundation::CloseHandle;
         use windows_sys::Win32::System::Threading::{
             OpenProcess, PROCESS_TERMINATE, TerminateProcess,
@@ -68,11 +108,10 @@ impl ProcessControl for Process {
     }
 
     #[cfg(unix)]
-    fn kill(&self) -> Result<()> {
+    fn kill(&self) -> io::Result<()> {
         use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
-        kill(Pid::from_raw(self.pid as i32), Signal::SIGKILL)
-            .map_err(|e| std::io::Error::from_raw_os_error(e as i32))
+        kill(Pid::from_raw(self.pid as i32), Signal::SIGKILL).map_err(io::Error::from)
     }
 
     fn pid(&self) -> u32 {

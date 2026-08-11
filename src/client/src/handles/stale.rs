@@ -1,4 +1,4 @@
-use crate::{handles::OfflineHandle, launcher::DaemonLauncher, policies::PolicyConfig};
+use crate::{handles::OfflineHandle, policies::PolicyConfig};
 use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 #[cfg(not(windows))]
 use knot_core::consts::KNOT_SOCKET_FILE;
@@ -15,7 +15,7 @@ use tracing::{debug, error, info, instrument};
 /// The only permitted operation in this state is purging these artifacts via [`Self::clean`].
 pub struct StaleHandle {
     pub(crate) runtime_dir: PathBuf,
-    pub(crate) daemon_launcher: Box<dyn DaemonLauncher + Send + Sync>,
+    pub(crate) daemon_path: PathBuf,
     pub(crate) policy: Arc<PolicyConfig>,
 }
 
@@ -76,7 +76,7 @@ impl StaleHandle {
 
         Ok(OfflineHandle {
             runtime_dir: self.runtime_dir,
-            daemon_launcher: self.daemon_launcher,
+            daemon_path: self.daemon_path,
             policy: Arc::clone(&self.policy),
         })
     }
@@ -85,27 +85,11 @@ impl StaleHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::errors::ClientError;
-    use async_trait::async_trait;
-    use std::path::Path;
-
-    struct DummyLauncher;
-
-    #[async_trait]
-    impl DaemonLauncher for DummyLauncher {
-        async fn launch(&self) -> Result<u32, ClientError> {
-            Ok(1)
-        }
-
-        fn binary_path(&self) -> &Path {
-            Path::new("/bin/knotd")
-        }
-    }
 
     fn handle(dir: PathBuf) -> StaleHandle {
         StaleHandle {
             runtime_dir: dir,
-            daemon_launcher: Box::new(DummyLauncher),
+            daemon_path: PathBuf::from("/mock/bin/knotd"),
             policy: Arc::new(PolicyConfig::default()),
         }
     }

@@ -10,7 +10,6 @@ mod builder;
 mod client;
 pub mod errors;
 pub(crate) mod handles;
-pub mod launcher;
 pub mod policies;
 pub mod states;
 

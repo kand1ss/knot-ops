@@ -1,7 +1,7 @@
 use crate::errors::{ClientError, DaemonLifecycleError};
 use crate::handles::ConnectedHandle;
-use crate::launcher::DaemonLauncher;
 use crate::policies::PolicyConfig;
+use crate::process::Process;
 use knot_core::consts::KNOT_SOCKET_FILE;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use tracing::{debug, error, info, instrument};
 
 pub struct OfflineHandle {
     pub runtime_dir: PathBuf,
-    pub(crate) daemon_launcher: Box<dyn DaemonLauncher + Send + Sync>,
+    pub(crate) daemon_path: PathBuf,
     pub(crate) policy: Arc<PolicyConfig>,
 }
 
@@ -29,7 +29,7 @@ impl OfflineHandle {
     #[instrument(skip(self), name = "launch_daemon")]
     pub async fn launch(self) -> Result<ConnectedHandle, ClientError> {
         info!("spawning daemon process...");
-        let _pid = self.daemon_launcher.launch().await.map_err(|e| {
+        let _process = Process::spawn(&self.daemon_path).map_err(|e| {
             error!(error = %e, "failed to spawn daemon");
             e
         })?;
@@ -54,11 +54,7 @@ impl OfflineHandle {
                 return Err(DaemonLifecycleError::LaunchFailed {
                     message: "daemon process was spawned, but IPC socket never appeared"
                         .to_string(),
-                    binary_path: self
-                        .daemon_launcher
-                        .binary_path()
-                        .to_string_lossy()
-                        .into_owned(),
+                    binary_path: self.daemon_path.to_string_lossy().into_owned(),
                     error: "socket not found".to_string(),
                 }
                 .into());
@@ -71,83 +67,5 @@ impl OfflineHandle {
             );
             tokio::time::sleep(delay).await;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use async_trait::async_trait;
-    use std::path::Path;
-
-    struct MockFailingLauncher;
-
-    #[async_trait]
-    impl DaemonLauncher for MockFailingLauncher {
-        async fn launch(&self) -> Result<u32, ClientError> {
-            Ok(9999) // Mock PID
-        }
-
-        fn binary_path(&self) -> &Path {
-            Path::new("/mock/bin/knotd")
-        }
-    }
-
-    struct MockLaunchErrorLauncher;
-
-    #[async_trait]
-    impl DaemonLauncher for MockLaunchErrorLauncher {
-        async fn launch(&self) -> Result<u32, ClientError> {
-            Err(DaemonLifecycleError::LaunchFailed {
-                message: "spawn failed".to_string(),
-                binary_path: self.binary_path().to_string_lossy().into_owned(),
-                error: "permission denied".to_string(),
-            }
-            .into())
-        }
-
-        fn binary_path(&self) -> &Path {
-            Path::new("/mock/bin/knotd")
-        }
-    }
-
-    fn handle() -> OfflineHandle {
-        OfflineHandle {
-            runtime_dir: PathBuf::from("/mock/dir"),
-            daemon_launcher: Box::new(MockFailingLauncher),
-            policy: Arc::new(PolicyConfig::default()),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_offline_launch_timeout() {
-        let handle = handle();
-        let result = handle.launch().await;
-        assert!(matches!(
-            result,
-            Err(ClientError::Daemon(
-                DaemonLifecycleError::LaunchFailed { .. }
-            ))
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_offline_launch_propagates_launcher_error_without_polling() {
-        let handle = OfflineHandle {
-            runtime_dir: PathBuf::from("/mock/dir"),
-            daemon_launcher: Box::new(MockLaunchErrorLauncher),
-            policy: Arc::new(PolicyConfig::default()),
-        };
-
-        let result = handle.launch().await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Daemon(DaemonLifecycleError::LaunchFailed {
-                message,
-                error,
-                ..
-            })) if message == "spawn failed" && error == "permission denied"
-        ));
     }
 }

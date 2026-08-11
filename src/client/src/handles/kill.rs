@@ -1,6 +1,5 @@
 use crate::errors::ClientError;
 use crate::handles::StaleHandle;
-use crate::launcher::DaemonLauncher;
 use crate::policies::PolicyConfig;
 use crate::process::ProcessControl;
 use std::path::PathBuf;
@@ -18,8 +17,7 @@ pub struct KillHandle {
     pub runtime_dir: PathBuf,
     /// The process to terminate.
     pub(crate) process: Box<dyn ProcessControl>,
-    /// The backing launcher engine configuration used to spin up subsequent runtime instances.
-    pub(crate) daemon_launcher: Box<dyn DaemonLauncher + Send + Sync>,
+    pub(crate) daemon_path: PathBuf,
     pub(crate) policy: Arc<PolicyConfig>,
 }
 
@@ -41,7 +39,7 @@ impl KillHandle {
         debug!("transitioning to stale state to trigger environment cleanup");
         Ok(StaleHandle {
             runtime_dir: self.runtime_dir,
-            daemon_launcher: self.daemon_launcher,
+            daemon_path: self.daemon_path,
             policy: self.policy,
         })
     }
@@ -50,21 +48,6 @@ impl KillHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use std::path::Path;
-
-    struct DummyLauncher;
-
-    #[async_trait]
-    impl DaemonLauncher for DummyLauncher {
-        async fn launch(&self) -> Result<u32, ClientError> {
-            Ok(9999)
-        }
-
-        fn binary_path(&self) -> &Path {
-            Path::new("/bin/knotd")
-        }
-    }
 
     #[derive(Debug)]
     struct MockProcess {
@@ -108,7 +91,7 @@ mod tests {
         KillHandle {
             runtime_dir: dir,
             process,
-            daemon_launcher: Box::new(DummyLauncher),
+            daemon_path: PathBuf::from("/mock/bin/knotd"),
             policy: Arc::new(PolicyConfig::default()),
         }
     }
