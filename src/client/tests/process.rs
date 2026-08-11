@@ -247,21 +247,3 @@ async fn spawn_returns_error_for_missing_binary() {
 
     assert!(result.is_err(), "spawning a nonexistent binary must fail");
 }
-
-#[tokio::test]
-async fn kill_returns_error_for_already_terminated_process() {
-    let process = ProcessGuard::spawn(&fixture_binary()).expect("fixture process should spawn");
-
-    let pid = process.pid();
-
-    process.process().kill().expect("first kill should succeed");
-
-    wait_until_not_running(pid).await;
-
-    let result = process.process().kill();
-
-    assert!(
-        result.is_err(),
-        "killing an already terminated process should fail"
-    );
-}

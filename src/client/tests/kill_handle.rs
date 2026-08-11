@@ -81,20 +81,16 @@ fn current_process_name(pid: u32) -> String {
         .unwrap_or_default()
 }
 
-fn process_exists(pid: u32) -> bool {
-    #[cfg(unix)]
-    {
-        // kill(pid, 0) checks whether the process exists without
-        // actually sending a termination signal.
-        unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
-    }
+#[cfg(windows)]
+fn process_exists() -> bool {
+    // Process::spawn/kill is already exercised by the test. For Windows
+    // we avoid depending on Unix-specific process inspection.
+    true
+}
 
-    #[cfg(windows)]
-    {
-        // Process::spawn/kill is already exercised by the test. For Windows
-        // we avoid depending on Unix-specific process inspection.
-        true
-    }
+#[cfg(unix)]
+fn process_exists(pid: u32) -> bool {
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
 fn create_handle(runtime_dir: &Path, process: Process, daemon_path: PathBuf) -> KillHandle {
@@ -119,10 +115,21 @@ async fn kill_terminates_real_process() {
     let process = spawn_fixture_process();
     let pid = process.pid();
 
-    assert!(
-        process_exists(pid),
-        "fixture process must be running before kill"
-    );
+    #[cfg(windows)]
+    {
+        assert!(
+            crate::process_exists(),
+            "fixture process must be running before kill"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        assert!(
+            process_exists(pid),
+            "fixture process must be running before kill"
+        );
+    }
 
     let handle = create_handle(temp_dir.path(), process, daemon_path);
 

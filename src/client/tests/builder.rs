@@ -1,8 +1,11 @@
 use knot_client::ClientBuilder;
-use knot_client::process::{Process, ProcessControl};
 use knot_client::states::ConnectState;
-use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
+use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 
+#[cfg(unix)]
+use knot_client::process::{Process, ProcessControl};
+#[cfg(unix)]
+use knot_core::consts::KNOT_SOCKET_FILE;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
@@ -180,16 +183,17 @@ async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
         .expect("failed to create runtime directory");
 
     let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
-    let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
-
     tokio::fs::write(&lock_path, "4294967295")
         .await
         .expect("failed to create stale lock file");
 
     #[cfg(unix)]
-    tokio::fs::write(&socket_path, b"not a unix socket")
-        .await
-        .expect("failed to create fake socket");
+    {
+        let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
+        tokio::fs::write(&socket_path, b"not a unix socket")
+            .await
+            .expect("failed to create fake socket");
+    }
 
     let result = ClientBuilder::new()
         .with_runtime_dir(&runtime_dir)
@@ -215,7 +219,10 @@ async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
     assert!(!lock_path.exists(), "stale lock file must be removed");
 
     #[cfg(unix)]
-    assert!(!socket_path.exists(), "stale socket must be removed");
+    {
+        let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
+        assert!(!socket_path.exists(), "stale socket must be removed");
+    }
 }
 
 #[tokio::test]
@@ -229,16 +236,17 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
         .expect("failed to create runtime directory");
 
     let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
-    let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
-
     tokio::fs::write(&lock_path, "not-a-pid")
         .await
         .expect("failed to create corrupted lock file");
 
     #[cfg(unix)]
-    tokio::fs::write(&socket_path, b"not a unix socket")
-        .await
-        .expect("failed to create fake socket");
+    {
+        let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
+        tokio::fs::write(&socket_path, b"not a unix socket")
+            .await
+            .expect("failed to create fake socket");
+    }
 
     let result = ClientBuilder::new()
         .with_runtime_dir(&runtime_dir)
@@ -263,7 +271,10 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
     assert!(!lock_path.exists());
 
     #[cfg(unix)]
-    assert!(!socket_path.exists());
+    {
+        let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
+        assert!(!socket_path.exists());
+    }
 }
 
 #[tokio::test]
