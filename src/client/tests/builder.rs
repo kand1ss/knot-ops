@@ -1,65 +1,51 @@
-use knot_client::ClientBuilder;
 use knot_client::process::{Process, ProcessControl};
 use knot_client::states::ConnectState;
+use knot_client::ClientBuilder;
 use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
+
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
-/// Creates a small executable fixture that stays alive until killed.
+/// Returns a system executable that can be kept alive long enough for the test.
 ///
-/// The executable name is intentionally configurable because `ClientBuilder`
-/// validates the process name before creating a `KillHandle`.
-fn create_dummy_binary(temp_dir: &TempDir, name: &str) -> PathBuf {
+/// The important property is that the process name reported by `sysinfo` is
+/// deterministic and can therefore be passed to `ClientBuilder::with_expected_daemon_name`.
+fn fixture_process() -> (PathBuf, Vec<String>, &'static str) {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-
-        let path = temp_dir.path().join(name);
-
-        std::fs::write(
-            &path,
-            br#"#!/bin/sh
-trap 'exit 0' TERM INT
-while true; do
-    sleep 1
-done
-"#,
+        // `sleep 60` remains alive long enough for the test and is available
+        // on standard Unix environments used by CI.
+        (
+            PathBuf::from("/bin/sleep"),
+            vec!["60".to_string()],
+            "sleep",
         )
-        .expect("failed to write fixture executable");
-
-        let mut permissions = std::fs::metadata(&path)
-            .expect("failed to stat fixture executable")
-            .permissions();
-
-        permissions.set_mode(0o755);
-
-        std::fs::set_permissions(&path, permissions).expect("failed to make fixture executable");
-
-        path
     }
 
     #[cfg(windows)]
     {
-        let path = temp_dir.path().join(format!("{name}.cmd"));
-
-        std::fs::write(
-            &path,
-            "@echo off\r\n\
-             :loop\r\n\
-             timeout /t 1 /nobreak >nul\r\n\
-             goto loop\r\n",
+        // PowerShell is available on supported Windows runners.
+        //
+        // `-NoProfile -Command Start-Sleep -Seconds 60` keeps the process
+        // alive without creating any temporary executable/script file.
+        (
+            PathBuf::from(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+            vec![
+                "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                "Start-Sleep -Seconds 60".to_string(),
+            ],
+            "powershell.exe",
         )
-        .expect("failed to write fixture executable");
-
-        path
     }
 }
 
 /// Waits until the given PID no longer exists.
 async fn wait_until_process_exits(pid: u32) {
-    for _ in 0..100 {
+    for _ in 0..250 {
         if !process_exists(pid) {
             return;
         }
@@ -73,8 +59,12 @@ async fn wait_until_process_exits(pid: u32) {
 fn process_exists(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        // `kill -0` checks process existence without sending a signal.
-        match Command::new("kill").args(["-0", &pid.to_string()]).status() {
+        // `kill -0` checks whether the process exists without sending
+        // a termination signal.
+        match Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+        {
             Ok(status) => status.success(),
             Err(_) => false,
         }
@@ -82,6 +72,10 @@ fn process_exists(pid: u32) -> bool {
 
     #[cfg(windows)]
     {
+        // `tasklist` is available on Windows CI runners.
+        //
+        // We deliberately check the PID rather than the process name because
+        // the latter is irrelevant to this helper.
         match Command::new("tasklist")
             .args(["/FI", &format!("PID eq {pid}")])
             .output()
@@ -106,34 +100,33 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         .await
         .expect("failed to create runtime directory");
 
-    let daemon_path = create_dummy_binary(&temp_dir, "knot_fixture");
+    let (daemon_path, args, expected_name) = fixture_process();
 
-    let process = Process::spawn(&daemon_path).expect("failed to spawn fixture process");
+    let process = Process::spawn_with_args(&daemon_path, &args)
+        .expect("failed to spawn fixture process");
 
     let pid = process.pid();
+
     println!("fixture pid: {pid}");
     println!("fixture path: {}", daemon_path.display());
-
-    let pid = process.pid();
 
     let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
     let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
 
-    // The lock file makes the client believe that a daemon is running.
+    // Make the client believe that the daemon is running.
     tokio::fs::write(&lock_path, pid.to_string())
         .await
         .expect("failed to create daemon lock file");
 
-    // The socket exists but is not a real Unix socket.
-    // ConnectedHandle::new() must therefore fail, and connect()
-    // must continue with process-state inspection.
+    // The socket exists but is invalid. ConnectedHandle::new() must fail,
+    // causing ClientBuilder to inspect the process table.
     tokio::fs::write(&socket_path, b"not a unix socket")
         .await
         .expect("failed to create fake socket");
 
     let result = ClientBuilder::new()
         .with_daemon_path(&daemon_path)
-        .with_expected_daemon_name("knot_fixture")
+        .with_expected_daemon_name(expected_name)
         .with_runtime_dir(&runtime_dir)
         .connect()
         .await
@@ -143,7 +136,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         ConnectState::Hung(handle) => handle,
 
         other => {
-            // Make sure the fixture cannot leak if the state machine
+            // Prevent the system process from leaking if the state machine
             // unexpectedly returns another state.
             let _ = process.kill();
 
@@ -179,7 +172,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
 
     assert!(
         !socket_path.exists(),
-        "The socket file needs to be deleted following stale cleanup."
+        "socket file must be removed after stale cleanup"
     );
 }
 
@@ -222,7 +215,10 @@ async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
 
     assert_eq!(handle.runtime_dir, runtime_dir);
 
-    let offline_handle = handle.clean().await.expect("stale cleanup should succeed");
+    let offline_handle = handle
+        .clean()
+        .await
+        .expect("stale cleanup should succeed");
 
     assert_eq!(offline_handle.runtime_dir, runtime_dir);
 
@@ -270,7 +266,10 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
 
     assert_eq!(handle.runtime_dir, runtime_dir);
 
-    let offline_handle = handle.clean().await.expect("stale cleanup should succeed");
+    let offline_handle = handle
+        .clean()
+        .await
+        .expect("stale cleanup should succeed");
 
     assert_eq!(offline_handle.runtime_dir, runtime_dir);
 
