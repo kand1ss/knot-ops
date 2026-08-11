@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate,  ProcessStatus, System};
 use tokio::time::{sleep, timeout};
 
 use knot_client::process::{Process, ProcessControl, ProcessError};
@@ -54,21 +54,34 @@ async fn wait_until_not_running(pid: u32) {
             let sys_pid = Pid::from(pid as usize);
 
             let mut system = System::new();
+
             system.refresh_processes_specifics(
                 ProcessesToUpdate::Some(&[sys_pid]),
                 false,
                 ProcessRefreshKind::nothing(),
             );
 
-            if system.process(sys_pid).is_none() {
-                return;
-            }
+            match system.process(sys_pid) {
+                None => return,
 
-            sleep(Duration::from_millis(25)).await;
+                Some(process) if process.status() == ProcessStatus::Zombie => {
+                    // On Unix, SIGKILL terminates the process immediately,
+                    // but a child process remains visible as a zombie until
+                    // its parent reaps it with waitpid().
+                    //
+                    // For the purpose of this test, a zombie is already
+                    // terminated.
+                    return;
+                }
+
+                Some(_) => {
+                    sleep(Duration::from_millis(25)).await;
+                }
+            }
         }
     })
-    .await
-    .expect("process did not terminate within timeout");
+        .await
+        .expect("process did not terminate within timeout");
 }
 
 struct ProcessGuard(Process);
