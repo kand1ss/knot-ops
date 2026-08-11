@@ -12,12 +12,14 @@ use tracing::{debug, instrument, trace, warn};
 /// strategy used to spawn the background daemon process, before executing the state
 /// resolution sequence via [`Self::connect`].
 pub struct ClientBuilder {
+    runtime_dir: PathBuf,
     daemon_path: PathBuf,
     policy: PolicyConfig,
 }
 impl Default for ClientBuilder {
     fn default() -> Self {
         Self {
+            runtime_dir: daemon_runtime_dir(),
             daemon_path: daemon_binary_path().unwrap(), // TODO - handle this better
             policy: PolicyConfig::default(),
         }
@@ -35,6 +37,11 @@ impl ClientBuilder {
 
     pub fn with_daemon_path(mut self, path: impl AsRef<Path>) -> Self {
         self.daemon_path = path.as_ref().to_owned();
+        self
+    }
+
+    pub fn with_runtime_dir(mut self, path: impl AsRef<Path>) -> Self {
+        self.runtime_dir = path.as_ref().to_owned();
         self
     }
 
@@ -67,7 +74,7 @@ impl ClientBuilder {
         debug!("starting connection sequence...");
 
         let policy = Arc::new(self.policy);
-        let runtime_dir = daemon_runtime_dir();
+        let runtime_dir = self.runtime_dir;
         let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
         let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
 
