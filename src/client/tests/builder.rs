@@ -1,12 +1,12 @@
+use knot_client::ClientBuilder;
 use knot_client::process::{Process, ProcessControl};
 use knot_client::states::ConnectState;
-use knot_client::ClientBuilder;
 use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
 
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 /// Returns a system executable that can be kept alive long enough for the test.
 ///
@@ -17,11 +17,7 @@ fn fixture_process() -> (PathBuf, Vec<String>, &'static str) {
     {
         // `sleep 60` remains alive long enough for the test and is available
         // on standard Unix environments used by CI.
-        (
-            PathBuf::from("/bin/sleep"),
-            vec!["60".to_string()],
-            "sleep",
-        )
+        (PathBuf::from("/bin/sleep"), vec!["60".to_string()], "sleep")
     }
 
     #[cfg(windows)]
@@ -61,10 +57,7 @@ fn process_exists(pid: u32) -> bool {
     {
         // `kill -0` checks whether the process exists without sending
         // a termination signal.
-        match Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-        {
+        match Command::new("kill").args(["-0", &pid.to_string()]).status() {
             Ok(status) => status.success(),
             Err(_) => false,
         }
@@ -102,8 +95,8 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
 
     let (daemon_path, args, expected_name) = fixture_process();
 
-    let process = Process::spawn_with_args(&daemon_path, &args)
-        .expect("failed to spawn fixture process");
+    let process =
+        Process::spawn_with_args(&daemon_path, &args).expect("failed to spawn fixture process");
 
     let pid = process.pid();
 
@@ -215,10 +208,7 @@ async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
 
     assert_eq!(handle.runtime_dir, runtime_dir);
 
-    let offline_handle = handle
-        .clean()
-        .await
-        .expect("stale cleanup should succeed");
+    let offline_handle = handle.clean().await.expect("stale cleanup should succeed");
 
     assert_eq!(offline_handle.runtime_dir, runtime_dir);
 
@@ -266,10 +256,7 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
 
     assert_eq!(handle.runtime_dir, runtime_dir);
 
-    let offline_handle = handle
-        .clean()
-        .await
-        .expect("stale cleanup should succeed");
+    let offline_handle = handle.clean().await.expect("stale cleanup should succeed");
 
     assert_eq!(offline_handle.runtime_dir, runtime_dir);
 
