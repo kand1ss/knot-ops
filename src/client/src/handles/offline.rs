@@ -8,10 +8,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, instrument};
 
+#[derive(Debug)]
 pub struct OfflineHandle {
     pub runtime_dir: PathBuf,
-    pub(crate) daemon_path: PathBuf,
-    pub(crate) policy: Arc<PolicyConfig>,
+    pub daemon_path: PathBuf,
+    pub policy: Arc<PolicyConfig>,
 }
 
 impl OfflineHandle {
@@ -31,7 +32,11 @@ impl OfflineHandle {
         info!("spawning daemon process...");
         let _process = Process::spawn(&self.daemon_path).map_err(|e| {
             error!(error = %e, "failed to spawn daemon");
-            e
+            ClientError::from(DaemonLifecycleError::LaunchFailed {
+                message: "failed to execute daemon binary".to_string(),
+                binary_path: self.daemon_path.to_string_lossy().into_owned(),
+                error: e.to_string(),
+            })
         })?;
 
         let mut retries = 40;

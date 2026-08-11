@@ -16,9 +16,9 @@ pub struct KillHandle {
     /// The target filesystem path pointing to the active workspace directory.
     pub runtime_dir: PathBuf,
     /// The process to terminate.
-    pub(crate) process: Box<dyn ProcessControl>,
-    pub(crate) daemon_path: PathBuf,
-    pub(crate) policy: Arc<PolicyConfig>,
+    pub process: Box<dyn ProcessControl>,
+    pub daemon_path: PathBuf,
+    pub policy: Arc<PolicyConfig>,
 }
 
 impl KillHandle {
