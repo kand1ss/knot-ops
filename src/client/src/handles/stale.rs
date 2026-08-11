@@ -13,10 +13,11 @@ use tracing::{debug, error, info, instrument};
 /// is no longer running, but volatile files (such as the PID file or UNIX domain socket)
 /// were left behind on the filesystem (e.g., due to a panic, power loss, or a forced `SIGKILL`).
 /// The only permitted operation in this state is purging these artifacts via [`Self::clean`].
+#[derive(Debug)]
 pub struct StaleHandle {
-    pub(crate) runtime_dir: PathBuf,
-    pub(crate) daemon_path: PathBuf,
-    pub(crate) policy: Arc<PolicyConfig>,
+    pub runtime_dir: PathBuf,
+    pub daemon_path: PathBuf,
+    pub policy: Arc<PolicyConfig>,
 }
 
 impl StaleHandle {
@@ -62,14 +63,21 @@ impl StaleHandle {
         }
 
         let lock_path = self.daemon_lock_path();
-        if lock_path.exists() {
-            debug!(path = %lock_path.display(), "removing stale lock file");
-            tokio::fs::remove_file(&lock_path).await.map_err(|e| {
-                error!(error = %e, path = %lock_path.display(), "failed to remove lock file");
-                e
-            })?;
-        } else {
-            debug!("lock file not found, skipping removal");
+        match tokio::fs::remove_file(&lock_path).await {
+            Ok(()) => {
+                debug!(path = %lock_path.display(), "removed stale lock file");
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                debug!(path = %lock_path.display(), "lock file not found, skipping removal");
+            }
+            Err(error) => {
+                error!(
+                    error = %error,
+                    path = %lock_path.display(),
+                    "failed to remove stale lock file"
+                );
+                return Err(error);
+            }
         }
 
         info!("volatile files successfully cleaned up, transitioning to offline state");
