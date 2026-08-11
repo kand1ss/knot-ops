@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
@@ -88,6 +89,19 @@ impl Process {
                 )))
             }
         }
+    }
+
+    pub fn spawn_with_args(
+        path: &Path,
+        args: &[impl AsRef<OsStr>],
+    ) -> io::Result<Self> {
+        let child = Command::new(path)
+            .args(args)
+            .spawn()?;
+
+        Ok(Self {
+            pid: child.id().unwrap(), // TODO - check for None
+        })
     }
 }
 
