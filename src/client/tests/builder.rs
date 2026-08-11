@@ -1,12 +1,13 @@
 use knot_client::ClientBuilder;
 use knot_client::process::{Process, ProcessControl};
 use knot_client::states::ConnectState;
-use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
+use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
+#[cfg(unix)]
+use knot_core::consts::KNOT_SOCKET_FILE;
 
 use std::path::PathBuf;
 use std::time::Duration;
 
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tempfile::TempDir;
 use tokio::time::sleep;
 
@@ -35,12 +36,33 @@ fn fixture_process() -> (PathBuf, Vec<String>, &'static str) {
     }
 }
 
-/// Returns whether the process currently exists according to the OS process
-/// table.
-///
-/// `sysinfo` is used instead of shelling out to `kill`/`tasklist` because the
-/// latter can report stale process information, especially on Windows.
+#[cfg(unix)]
 fn process_exists(pid: u32) -> bool {
+    let stat_path = format!("/proc/{pid}/stat");
+
+    match std::fs::read_to_string(stat_path) {
+        Ok(stat) => {
+            // /proc/<pid>/stat:
+            // pid (comm) state ...
+            //
+            // The process name may contain spaces and parentheses, so find
+            // the final ')' first and read the state immediately after it.
+            match stat.rfind(')') {
+                Some(pos) => stat[pos + 2..]
+                    .chars()
+                    .next()
+                    .is_some_and(|state| state != 'Z'),
+                None => false,
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(_) => true,
+    }
+}
+
+#[cfg(windows)]
+fn process_exists(pid: u32) -> bool {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
     let sys_pid = Pid::from(pid as usize);
 
     let mut system = System::new();
@@ -54,7 +76,6 @@ fn process_exists(pid: u32) -> bool {
     system.process(sys_pid).is_some()
 }
 
-/// Waits until the given PID disappears from the process table.
 async fn wait_until_process_exits(pid: u32) {
     for _ in 0..250 {
         if !process_exists(pid) {
@@ -72,7 +93,6 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
     let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
-
     tokio::fs::create_dir_all(&runtime_dir)
         .await
         .expect("failed to create runtime directory");
@@ -83,14 +103,12 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         Process::spawn_with_args(&daemon_path, &args).expect("failed to spawn fixture process");
 
     let pid = process.pid();
-
     assert!(
         process_exists(pid),
         "fixture process {pid} must be running before connect"
     );
 
     let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
-    let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
 
     // Make the client believe that the daemon is running.
     tokio::fs::write(&lock_path, pid.to_string())
@@ -101,9 +119,13 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
     //
     // ConnectedHandle::new() must fail, causing ClientBuilder to inspect
     // the process table and classify the daemon as Hung.
-    tokio::fs::write(&socket_path, b"not a valid IPC endpoint")
-        .await
-        .expect("failed to create fake socket");
+    #[cfg(unix)]
+    {
+        let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
+        tokio::fs::write(&socket_path, b"not a valid IPC endpoint")
+            .await
+            .expect("failed to create fake socket");
+    }
 
     let result = ClientBuilder::new()
         .with_daemon_path(&daemon_path)
@@ -150,10 +172,14 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         "lock file must be removed after stale cleanup"
     );
 
-    assert!(
-        !socket_path.exists(),
-        "socket file must be removed after stale cleanup"
-    );
+    #[cfg(unix)]
+    {
+        let socket_path = runtime_dir.join(KNOT_SOCKET_FILE);
+        assert!(
+            !socket_path.exists(),
+            "socket file must be removed after stale cleanup"
+        );
+    }
 }
 
 #[tokio::test]
