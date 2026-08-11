@@ -1,7 +1,7 @@
 use crate::errors::{ClientError, DaemonLifecycleError};
 use crate::handles::ConnectedHandle;
 use crate::policies::PolicyConfig;
-use crate::process::Process;
+use crate::process::{Process, ProcessControl};
 use knot_core::consts::KNOT_SOCKET_FILE;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,7 +30,7 @@ impl OfflineHandle {
     #[instrument(skip(self), name = "launch_daemon")]
     pub async fn launch(self) -> Result<ConnectedHandle, ClientError> {
         info!("spawning daemon process...");
-        let _process = Process::spawn(&self.daemon_path).map_err(|e| {
+        let process = Process::spawn(&self.daemon_path).map_err(|e| {
             error!(error = %e, "failed to spawn daemon");
             ClientError::from(DaemonLifecycleError::LaunchFailed {
                 message: "failed to execute daemon binary".to_string(),
@@ -55,6 +55,7 @@ impl OfflineHandle {
 
             retries -= 1;
             if retries == 0 {
+                let _ = process.kill();
                 error!("daemon launch timeout: socket never appeared.");
                 return Err(DaemonLifecycleError::LaunchFailed {
                     message: "daemon process was spawned, but IPC socket never appeared"
