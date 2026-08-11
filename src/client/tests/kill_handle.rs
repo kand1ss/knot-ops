@@ -13,19 +13,16 @@ use tokio::time::{sleep, timeout};
 fn spawn_fixture_process() -> Process {
     #[cfg(unix)]
     {
-        Process::spawn_with_args(
-        Path::new("/bin/sleep"),
-            &["60"],
-        )
-        .expect("failed to spawn fixture process")
+        Process::spawn_with_args(Path::new("/bin/sleep"), &["60"])
+            .expect("failed to spawn fixture process")
     }
 
     #[cfg(windows)]
-        {
+    {
         Process::spawn_with_args(
             Path::new(r"C:\Windows\System32\ping.exe"),
-                &["-n", "60", "127.0.0.1"],
-            )
+            &["-n", "60", "127.0.0.1"],
+        )
         .expect("failed to spawn fixture process")
     }
 }
@@ -34,12 +31,7 @@ async fn wait_until_process_exits(pid: u32) {
     timeout(Duration::from_secs(5), async {
         loop {
             let exists = tokio::task::spawn_blocking(move || {
-                use sysinfo::{
-                    Pid,
-                    ProcessRefreshKind,
-                    ProcessesToUpdate,
-                    System,
-                };
+                use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
                 let sys_pid = Pid::from(pid as usize);
 
@@ -53,8 +45,8 @@ async fn wait_until_process_exits(pid: u32) {
 
                 system.process(sys_pid).is_some()
             })
-                .await
-                .expect("process inspection task panicked");
+            .await
+            .expect("process inspection task panicked");
 
             if !exists {
                 return;
@@ -63,8 +55,8 @@ async fn wait_until_process_exits(pid: u32) {
             sleep(Duration::from_millis(25)).await;
         }
     })
-        .await
-        .expect("process did not terminate within timeout");
+    .await
+    .expect("process did not terminate within timeout");
 }
 
 /// Returns the process name reported by sysinfo.
@@ -116,8 +108,7 @@ fn create_handle(runtime_dir: &Path, process: Process, daemon_path: PathBuf) -> 
 
 #[tokio::test]
 async fn kill_terminates_real_process() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     #[cfg(unix)]
     let daemon_path = PathBuf::from("/bin/sleep");
@@ -133,28 +124,20 @@ async fn kill_terminates_real_process() {
         "fixture process must be running before kill"
     );
 
-    let handle = create_handle(
-        temp_dir.path(),
-        process,
-        daemon_path,
-    );
+    let handle = create_handle(temp_dir.path(), process, daemon_path);
 
     let stale_handle = handle
         .kill()
         .expect("kill should terminate the real process");
 
-    assert_eq!(
-        stale_handle.runtime_dir,
-        temp_dir.path()
-    );
+    assert_eq!(stale_handle.runtime_dir, temp_dir.path());
 
     wait_until_process_exits(pid).await;
 }
 
 #[tokio::test]
 async fn kill_returns_stale_handle_with_original_runtime_dir() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     #[cfg(unix)]
     let daemon_path = PathBuf::from("/bin/sleep");
@@ -165,33 +148,20 @@ async fn kill_returns_stale_handle_with_original_runtime_dir() {
     let process = spawn_fixture_process();
     let pid = process.pid();
 
-    let handle = create_handle(
-        temp_dir.path(),
-        process,
-        daemon_path.clone(),
-    );
+    let handle = create_handle(temp_dir.path(), process, daemon_path.clone());
 
-    let stale_handle = handle
-        .kill()
-        .expect("kill should succeed");
+    let stale_handle = handle.kill().expect("kill should succeed");
 
     wait_until_process_exits(pid).await;
 
-    assert_eq!(
-        stale_handle.runtime_dir,
-        temp_dir.path()
-    );
+    assert_eq!(stale_handle.runtime_dir, temp_dir.path());
 
-    assert_eq!(
-        stale_handle.daemon_path,
-        daemon_path
-    );
+    assert_eq!(stale_handle.daemon_path, daemon_path);
 }
 
 #[tokio::test]
 async fn kill_preserves_policy_in_returned_stale_handle() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     #[cfg(unix)]
     let daemon_path = PathBuf::from("/bin/sleep");
@@ -211,9 +181,7 @@ async fn kill_preserves_policy_in_returned_stale_handle() {
         policy: Arc::clone(&policy),
     };
 
-    let stale_handle = handle
-        .kill()
-        .expect("kill should succeed");
+    let stale_handle = handle.kill().expect("kill should succeed");
 
     wait_until_process_exits(pid).await;
 

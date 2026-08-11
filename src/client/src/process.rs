@@ -18,10 +18,7 @@ pub enum ProcessError {
     NotRunning,
 
     #[error("process name mismatch: expected '{expected}', got '{actual}'")]
-    Mismatch {
-        expected: String,
-        actual: String,
-    },
+    Mismatch { expected: String, actual: String },
 }
 
 #[derive(Debug)]
@@ -33,7 +30,9 @@ impl Process {
     fn new(pid: u32) -> Self {
         Self { pid }
     }
-    pub fn pid(&self) -> u32 { self.pid }
+    pub fn pid(&self) -> u32 {
+        self.pid
+    }
 
     pub async fn bind(pid: u32, expected_name: String) -> Result<Self, ProcessError> {
         let sys_pid = Pid::from(pid as usize);
@@ -100,10 +99,7 @@ impl Process {
         }
     }
 
-    pub fn spawn_with_args(
-        path: &Path,
-        args: &[impl AsRef<OsStr>],
-    ) -> io::Result<Self> {
+    pub fn spawn_with_args(path: &Path, args: &[impl AsRef<OsStr>]) -> io::Result<Self> {
         let child = Command::new(path)
             .args(args)
             .stdin(std::process::Stdio::null())

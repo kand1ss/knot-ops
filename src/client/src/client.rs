@@ -59,16 +59,13 @@ mod tests {
         match (result, expected) {
             (Ok(actual), Ok(expected)) => {
                 assert_eq!(
-                std::mem::discriminant(&actual),
-                std::mem::discriminant(&expected),
-            );
+                    std::mem::discriminant(&actual),
+                    std::mem::discriminant(&expected),
+                );
             }
 
             (Err(actual), Err(expected)) => {
-                assert_eq!(
-                actual.to_string(),
-                expected.to_string(),
-            );
+                assert_eq!(actual.to_string(), expected.to_string(),);
             }
 
             (actual, expected) => {

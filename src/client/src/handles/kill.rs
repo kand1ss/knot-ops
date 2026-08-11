@@ -1,8 +1,8 @@
-use std::fmt::Debug;
 use crate::errors::ClientError;
 use crate::handles::StaleHandle;
 use crate::policies::PolicyConfig;
 use crate::process::ProcessControl;
+use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, instrument, warn};

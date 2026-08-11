@@ -1,16 +1,11 @@
-use knot_client::{
-    ClientBuilder,
-};
+use knot_client::ClientBuilder;
 use knot_client::process::{Process, ProcessControl};
-use knot_core::consts::{
-    KNOT_DAEMON_LOCK_FILE,
-    KNOT_SOCKET_FILE,
-};
+use knot_client::states::ConnectState;
+use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use tokio::time::{Duration, sleep};
-use knot_client::states::ConnectState;
 
 /// Creates a small executable fixture that stays alive until killed.
 ///
@@ -32,7 +27,7 @@ while true; do
 done
 "#,
         )
-            .expect("failed to write fixture executable");
+        .expect("failed to write fixture executable");
 
         let mut permissions = std::fs::metadata(&path)
             .expect("failed to stat fixture executable")
@@ -40,8 +35,7 @@ done
 
         permissions.set_mode(0o755);
 
-        std::fs::set_permissions(&path, permissions)
-            .expect("failed to make fixture executable");
+        std::fs::set_permissions(&path, permissions).expect("failed to make fixture executable");
 
         path
     }
@@ -57,7 +51,7 @@ done
              timeout /t 1 /nobreak >nul\r\n\
              goto loop\r\n",
         )
-            .expect("failed to write fixture executable");
+        .expect("failed to write fixture executable");
 
         path
     }
@@ -80,10 +74,7 @@ fn process_exists(pid: u32) -> bool {
     #[cfg(unix)]
     {
         // `kill -0` checks process existence without sending a signal.
-        match Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-        {
+        match Command::new("kill").args(["-0", &pid.to_string()]).status() {
             Ok(status) => status.success(),
             Err(_) => false,
         }
@@ -107,8 +98,7 @@ fn process_exists(pid: u32) -> bool {
 #[cfg(unix)]
 #[tokio::test]
 async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
 
@@ -116,13 +106,9 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         .await
         .expect("failed to create runtime directory");
 
-    let daemon_path = create_dummy_binary(
-        &temp_dir,
-        "knot_fixture",
-    );
+    let daemon_path = create_dummy_binary(&temp_dir, "knot_fixture");
 
-    let process = Process::spawn(&daemon_path)
-        .expect("failed to spawn fixture process");
+    let process = Process::spawn(&daemon_path).expect("failed to spawn fixture process");
 
     let pid = process.pid();
     println!("fixture pid: {pid}");
@@ -199,8 +185,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
 
 #[tokio::test]
 async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
 
@@ -237,29 +222,19 @@ async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
 
     assert_eq!(handle.runtime_dir, runtime_dir);
 
-    let offline_handle = handle
-        .clean()
-        .await
-        .expect("stale cleanup should succeed");
+    let offline_handle = handle.clean().await.expect("stale cleanup should succeed");
 
     assert_eq!(offline_handle.runtime_dir, runtime_dir);
 
-    assert!(
-        !lock_path.exists(),
-        "stale lock file must be removed"
-    );
+    assert!(!lock_path.exists(), "stale lock file must be removed");
 
     #[cfg(unix)]
-    assert!(
-        !socket_path.exists(),
-        "stale socket must be removed"
-    );
+    assert!(!socket_path.exists(), "stale socket must be removed");
 }
 
 #[tokio::test]
 async fn connect_returns_stale_when_lock_file_is_corrupted() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
 
@@ -295,10 +270,7 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
 
     assert_eq!(handle.runtime_dir, runtime_dir);
 
-    let offline_handle = handle
-        .clean()
-        .await
-        .expect("stale cleanup should succeed");
+    let offline_handle = handle.clean().await.expect("stale cleanup should succeed");
 
     assert_eq!(offline_handle.runtime_dir, runtime_dir);
 
@@ -310,8 +282,7 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
 
 #[tokio::test]
 async fn connect_returns_stale_when_only_lock_file_exists() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
 
@@ -340,8 +311,7 @@ async fn connect_returns_stale_when_only_lock_file_exists() {
 #[cfg(unix)]
 #[tokio::test]
 async fn connect_returns_stale_when_only_socket_exists() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
 
@@ -369,8 +339,7 @@ async fn connect_returns_stale_when_only_socket_exists() {
 
 #[tokio::test]
 async fn connect_returns_offline_when_no_daemon_artifacts_exist() {
-    let temp_dir = TempDir::new()
-        .expect("failed to create temporary directory");
+    let temp_dir = TempDir::new().expect("failed to create temporary directory");
 
     let runtime_dir = temp_dir.path().join("runtime");
 

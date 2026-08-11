@@ -130,7 +130,10 @@ async fn bind_returns_mismatch_for_running_process_with_wrong_name() {
     let result = Process::bind(pid, "definitely-not-the-current-process".into()).await;
 
     match result {
-        Err(ProcessError::Mismatch { actual: actual_name, ..} ) => {
+        Err(ProcessError::Mismatch {
+            actual: actual_name,
+            ..
+        }) => {
             assert!(!actual_name.is_empty());
             assert_eq!(actual_name, current_process_name());
         }
