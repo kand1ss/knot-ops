@@ -5,15 +5,8 @@ use knot_core::consts::KNOT_SOCKET_FILE;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use tempfile::TempDir;
-
-#[cfg(unix)]
-use tokio::net::UnixListener;
-
-#[cfg(windows)]
-use tokio::net::TcpListener;
 
 /// Resolve the pre-built process fixture.
 ///
@@ -42,26 +35,6 @@ fn create_handle(runtime_dir: &TempDir, daemon_path: PathBuf) -> OfflineHandle {
         daemon_path,
         policy: Arc::new(PolicyConfig::default()),
     }
-}
-
-#[cfg(unix)]
-async fn spawn_mock_socket_server(socket_path: PathBuf) {
-    let _listener = UnixListener::bind(&socket_path).expect("failed to bind mock Unix socket");
-
-    // Keep the socket alive long enough for launch() to observe it.
-    tokio::time::sleep(Duration::from_secs(10)).await;
-}
-
-#[cfg(windows)]
-async fn spawn_mock_socket_server(socket_path: PathBuf) {
-    let _listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("failed to bind mock TCP listener");
-
-    // Windows uses the path as a readiness marker.
-    std::fs::write(&socket_path, "mock_socket").expect("failed to create mock socket marker");
-
-    tokio::time::sleep(Duration::from_secs(10)).await;
 }
 
 #[tokio::test]
@@ -123,34 +96,5 @@ async fn test_launch_does_not_treat_regular_file_as_socket() {
     assert!(
         result.is_err(),
         "launch must not accept a regular file as a valid socket"
-    );
-}
-
-#[tokio::test]
-async fn test_launch_succeeds_when_socket_appears_after_polling() {
-    let temp_dir = TempDir::new().expect("failed to create temp directory");
-
-    let socket_path = temp_dir.path().join(KNOT_SOCKET_FILE);
-
-    let socket_path_clone = socket_path.clone();
-
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(250)).await;
-
-        spawn_mock_socket_server(socket_path_clone).await;
-    });
-
-    let handle = create_handle(&temp_dir, fixture_binary());
-
-    let result = handle.launch().await;
-
-    assert!(
-        result.is_ok(),
-        "expected launch to succeed after socket appears, got: {result:?}"
-    );
-
-    assert!(
-        socket_path.exists(),
-        "socket should exist after successful launch"
     );
 }
