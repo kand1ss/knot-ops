@@ -79,7 +79,7 @@ impl ControlHandle {
                 e
             })?;
         let command_id = Self::get_command_id(&response)?;
-        info!(command_id = %command_id, "successfully initiated 'up' command stream");
+        info!(command_id = %command_id, "successfully initiated 'sync' command stream");
 
         Ok(CommandHandle::new(
             command_id,
