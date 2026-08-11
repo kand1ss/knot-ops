@@ -4,6 +4,7 @@ use knot_client::states::ConnectState;
 use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 #[cfg(unix)]
 use knot_core::consts::KNOT_SOCKET_FILE;
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -36,28 +37,29 @@ fn fixture_process() -> (PathBuf, Vec<String>, &'static str) {
     }
 }
 
-#[cfg(unix)]
 fn process_exists(pid: u32) -> bool {
-    let stat_path = format!("/proc/{pid}/stat");
+    let sys_pid = Pid::from(pid as usize);
+    let mut system = System::new();
 
-    match std::fs::read_to_string(stat_path) {
-        Ok(stat) => {
-            // /proc/<pid>/stat:
-            // pid (comm) state ...
-            //
-            // The process name may contain spaces and parentheses, so find
-            // the final ')' first and read the state immediately after it.
-            match stat.rfind(')') {
-                Some(pos) => stat[pos + 2..]
-                    .chars()
-                    .next()
-                    .is_some_and(|state| state != 'Z'),
-                None => false,
-            }
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[sys_pid]),
+        false,
+        ProcessRefreshKind::nothing(),
+    );
+
+    system.process(sys_pid).is_some()
+}
+
+async fn wait_until_process_running(pid: u32) {
+    for _ in 0..50 {
+        if process_exists(pid) {
+            return;
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-        Err(_) => true,
+
+        sleep(Duration::from_millis(20)).await;
     }
+
+    panic!("process {pid} did not appear in process table");
 }
 
 #[cfg(windows)]
@@ -103,10 +105,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         Process::spawn_with_args(&daemon_path, &args).expect("failed to spawn fixture process");
 
     let pid = process.pid();
-    assert!(
-        process_exists(pid),
-        "fixture process {pid} must be running before connect"
-    );
+    wait_until_process_running(pid).await;
 
     let lock_path = runtime_dir.join(KNOT_DAEMON_LOCK_FILE);
 
