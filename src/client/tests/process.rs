@@ -33,6 +33,25 @@ fn current_process_name() -> String {
         .into_owned()
 }
 
+fn process_name(pid: u32) -> String {
+    let sys_pid = Pid::from(pid as usize);
+
+    let mut system = System::new();
+
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[sys_pid]),
+        false,
+        ProcessRefreshKind::nothing(),
+    );
+
+    system
+        .process(sys_pid)
+        .expect("spawned process must be visible in sysinfo")
+        .name()
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// Returns a PID which is very unlikely to exist.
 ///
 /// We deliberately use a value near the upper end of u32 rather than
@@ -204,17 +223,23 @@ async fn spawn_starts_process() {
 #[tokio::test]
 async fn spawned_process_can_be_bound() {
     let binary = fixture_binary();
-    let spawned = ProcessGuard::spawn(&binary).expect("fixture process should spawn");
-    let pid = spawned.pid();
-    let name = current_process_name();
 
+    let spawned =
+        ProcessGuard::spawn(&binary)
+            .expect("fixture process should spawn");
+
+    let pid = spawned.pid();
+    let name = process_name(pid);
     let bound = Process::bind(pid, name)
         .await
         .expect("bind should succeed for spawned process");
 
     assert_eq!(bound.pid(), pid);
 
-    bound.kill().expect("spawned process should be killable");
+    bound
+        .kill()
+        .expect("spawned process should be killable");
+
     wait_until_not_running(pid).await;
 }
 
