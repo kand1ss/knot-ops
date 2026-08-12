@@ -62,22 +62,6 @@ async fn wait_until_process_running(pid: u32) {
     panic!("process {pid} did not appear in process table");
 }
 
-#[cfg(windows)]
-fn process_exists(pid: u32) -> bool {
-    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-    let sys_pid = Pid::from(pid as usize);
-
-    let mut system = System::new();
-
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::Some(&[sys_pid]),
-        false,
-        ProcessRefreshKind::nothing(),
-    );
-
-    system.process(sys_pid).is_some()
-}
-
 async fn wait_until_process_exits(pid: u32) {
     for _ in 0..250 {
         if !process_exists(pid) {
