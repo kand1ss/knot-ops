@@ -97,6 +97,37 @@ impl Process {
         self.pid
     }
 
+    #[cfg(windows)]
+    fn normalize_process_name(name: &str) -> &str {
+        name.strip_suffix(".exe")
+            .or_else(|| name.strip_suffix(".EXE"))
+            .unwrap_or(name)
+    }
+
+    #[cfg(not(windows))]
+    fn normalize_process_name(name: &str) -> &str {
+        name
+    }
+
+    /// Compares two process names for equality after normalizing them and ignoring case differences.
+    ///
+    /// This function takes two process names as input, normalizes them, and checks if they are equal
+    /// in a case-insensitive manner. The normalization process is handled by the `normalize_process_name`
+    /// method, which prepares the process names for comparison. The comparison itself is performed
+    /// with ASCII case insensitivity.
+    ///
+    /// # Parameters
+    /// - `actual`: A string slice representing the actual process name.
+    /// - `expected`: A string slice representing the expected process name.
+    ///
+    /// # Returns
+    /// - `true` if the normalized process names are equal, ignoring ASCII case differences.
+    /// - `false` otherwise.
+    fn process_names_match(actual: &str, expected: &str) -> bool {
+        Self::normalize_process_name(actual)
+            .eq_ignore_ascii_case(Self::normalize_process_name(expected))
+    }
+
     /// Asynchronously binds to a process with the given process identifier (PID) and checks if its name matches
     /// the expected name. If successful, returns an instance of `Self`; otherwise, returns an appropriate `ProcessError`.
     ///
@@ -139,7 +170,7 @@ impl Process {
             match sys.process(sys_pid) {
                 Some(process) => {
                     let actual_name = process.name().to_string_lossy();
-                    if actual_name.eq_ignore_ascii_case(&expected_name) {
+                    if Self::process_names_match(&actual_name, &expected_name) {
                         Ok(Self::new(pid))
                     } else {
                         Err(ProcessError::Mismatch {
