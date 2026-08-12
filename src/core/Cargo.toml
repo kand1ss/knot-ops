@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 directories = "6.0.0"
 serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.18"
 
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2.183"

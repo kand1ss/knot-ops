@@ -1,3 +1,4 @@
+use knot_core::errors::PathResolutionError;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -20,6 +21,9 @@ pub enum ClientError {
 
     #[error("protocol contract violation")]
     Contract(String),
+
+    #[error("failed to resolve daemon binary path")]
+    PathResolution(#[from] PathResolutionError),
 }
 
 impl ClientError {
@@ -31,6 +35,10 @@ impl ClientError {
             Self::Transport(e) => Some(e.to_string()),
             Self::Io(e) => Some(e.to_string()),
             Self::Contract(msg) => Some(msg.clone()),
+            Self::PathResolution(_) => Some(
+                "the OS reported no valid application data directory for the current user"
+                    .to_string(),
+            ),
         }
     }
 
@@ -74,6 +82,11 @@ impl ClientError {
                     "verify disk space and directory permissions, or try running 'knot repair'.",
                 ),
             },
+            Self::PathResolution(_) => Some(
+                "Ensure your environment has a valid \
+                home directory configured (e.g. the $HOME variable on Linux/macOS, \
+                or a valid user profile on Windows), then retry.",
+            ),
         }
     }
 }

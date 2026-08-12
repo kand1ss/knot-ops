@@ -119,6 +119,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
     }
 
     let result = ClientBuilder::new()
+        .unwrap()
         .with_daemon_path(&daemon_path)
         .with_expected_daemon_name(expected_name)
         .with_runtime_dir(&runtime_dir)
@@ -199,6 +200,7 @@ async fn connect_returns_stale_when_lock_file_contains_dead_pid() {
     }
 
     let result = ClientBuilder::new()
+        .unwrap()
         .with_runtime_dir(&runtime_dir)
         .with_expected_daemon_name("knotd")
         .connect()
@@ -255,6 +257,7 @@ async fn connect_returns_stale_when_lock_file_is_corrupted() {
     }
 
     let result = ClientBuilder::new()
+        .unwrap()
         .with_runtime_dir(&runtime_dir)
         .connect()
         .await
@@ -301,6 +304,7 @@ async fn connect_returns_stale_when_only_lock_file_exists() {
         .expect("failed to create lock file");
 
     let result = ClientBuilder::new()
+        .unwrap()
         .with_runtime_dir(&runtime_dir)
         .connect()
         .await
@@ -330,6 +334,7 @@ async fn connect_returns_stale_when_only_socket_exists() {
         .expect("failed to create socket artifact");
 
     let result = ClientBuilder::new()
+        .unwrap()
         .with_runtime_dir(&runtime_dir)
         .connect()
         .await
@@ -352,6 +357,7 @@ async fn connect_returns_offline_when_no_daemon_artifacts_exist() {
         .expect("failed to create runtime directory");
 
     let result = ClientBuilder::new()
+        .unwrap()
         .with_runtime_dir(&runtime_dir)
         .connect()
         .await

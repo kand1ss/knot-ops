@@ -1,3 +1,4 @@
+use crate::errors::PathResolutionError;
 use directories::ProjectDirs;
 use std::path::PathBuf;
 
@@ -21,16 +22,17 @@ pub const KNOT_DAEMON_BINARY_NAME: &str = "knotd";
 /// This resolves through `directories::ProjectDirs`, so it follows the native
 /// user data location on Windows, Linux, and macOS instead of relying on
 /// privileged install directories.
-pub fn binary_dir() -> Option<PathBuf> {
+pub fn binary_dir() -> Result<PathBuf, PathResolutionError> {
     ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
         .map(|dirs| dirs.data_dir().join(BIN_DIR))
+        .ok_or(PathResolutionError)
 }
 
-pub fn cli_binary_path() -> Option<PathBuf> {
+pub fn cli_binary_path() -> Result<PathBuf, PathResolutionError> {
     binary_dir().map(|dir| dir.join(KNOT_CLI_BINARY_NAME))
 }
 
-pub fn daemon_binary_path() -> Option<PathBuf> {
+pub fn daemon_binary_path() -> Result<PathBuf, PathResolutionError> {
     binary_dir().map(|dir| dir.join(KNOT_DAEMON_BINARY_NAME))
 }
 

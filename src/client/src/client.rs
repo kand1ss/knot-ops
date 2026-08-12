@@ -17,8 +17,8 @@ impl KnotClient {
     /// # Returns
     ///
     /// Returns a default-initialized [`ClientBuilder`].
-    pub fn builder() -> ClientBuilder {
-        ClientBuilder::default()
+    pub fn builder() -> Result<ClientBuilder, ClientError> {
+        ClientBuilder::new()
     }
 
     /// A convenience method to rapidly connect to the daemon using default settings.
@@ -43,7 +43,7 @@ impl KnotClient {
     /// Returns a `ClientError` if the workspace is not initialized, or if a severe
     /// filesystem/I/O error occurs during the inspection sequence.
     pub async fn connect() -> Result<ConnectState, ClientError> {
-        Self::builder().connect().await
+        Self::builder()?.connect().await
     }
 }
 
@@ -54,7 +54,7 @@ mod tests {
     #[tokio::test]
     async fn connect_delegates_to_default_builder() {
         let result = KnotClient::connect().await;
-        let expected = KnotClient::builder().connect().await;
+        let expected = KnotClient::builder().unwrap().connect().await;
 
         match (result, expected) {
             (Ok(actual), Ok(expected)) => {

@@ -41,3 +41,18 @@ pub mod consts;
 pub mod metadata;
 /// Standard OS-specific filesystem paths for Knot artifacts.
 pub mod paths;
+
+/// The `errors` module provides definitions and utilities for handling
+/// errors throughout the application. This may include custom error
+/// types, conversions, and error-related functionality tailored to
+/// the application's domain.
+///
+/// Typical usage:
+/// - Define and manage application-specific errors.
+/// - Implement `std::error::Error` and `std::fmt::Display` for custom error types.
+/// - Facilitate consistent error handling and propagation.
+///
+/// Note:
+/// Ensure errors defined in this module are meaningful and provide
+/// clear context when surfaced to aid debugging and maintenance.
+pub mod errors;

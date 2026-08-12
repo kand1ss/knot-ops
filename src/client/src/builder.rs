@@ -17,19 +17,14 @@ pub struct ClientBuilder {
     expected_daemon_name: String,
     policy: PolicyConfig,
 }
-impl Default for ClientBuilder {
-    fn default() -> Self {
-        Self {
+impl ClientBuilder {
+    pub fn new() -> Result<Self, ClientError> {
+        Ok(Self {
             runtime_dir: daemon_runtime_dir(),
-            daemon_path: daemon_binary_path().unwrap(), // TODO - handle this better
+            daemon_path: daemon_binary_path()?,
             expected_daemon_name: KNOT_DAEMON_BINARY_NAME.to_string(),
             policy: PolicyConfig::default(),
-        }
-    }
-}
-impl ClientBuilder {
-    pub fn new() -> Self {
-        Self::default()
+        })
     }
 
     pub fn with_timeout(mut self, timeout: TimeoutPolicy) -> Self {
