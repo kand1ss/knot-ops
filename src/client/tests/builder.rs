@@ -47,21 +47,15 @@ fn process_exists(pid: u32) -> bool {
         ProcessRefreshKind::nothing(),
     );
 
-    match system.process(sys_pid) {
-        Some(process) => {
-            #[cfg(unix)]
-            {
-                use sysinfo::ProcessStatus;
-                !matches!(process.status(), ProcessStatus::Zombie)
-            }
-
-            #[cfg(not(unix))]
-            {
-                true
-            }
+    system.process(sys_pid).map_or(false, |_process| {
+        #[cfg(unix)]
+        {
+            use sysinfo::ProcessStatus;
+            !matches!(_process.status(), ProcessStatus::Zombie)
         }
-        None => false,
-    }
+        #[cfg(not(unix))]
+        true
+    })
 }
 
 async fn wait_until_process_running(pid: u32) {
