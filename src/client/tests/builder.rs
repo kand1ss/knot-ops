@@ -47,7 +47,7 @@ fn process_exists(pid: u32) -> bool {
         ProcessRefreshKind::nothing(),
     );
 
-    system.process(sys_pid).map_or(false, |_process| {
+    system.process(sys_pid).is_some_and(|_process| {
         #[cfg(unix)]
         {
             use sysinfo::ProcessStatus;
