@@ -48,11 +48,11 @@ impl ClientError {
             Self::Daemon(daemon) => daemon.solution(),
             Self::Contract(_) => Some("ensure your CLI and daemon versions match."),
             Self::Transport(_) => {
-                Some("the daemon might have crashed. Try running 'knot repair' or check logs.")
+                Some("the daemon might have crashed. Try running 'knot up' or check logs.")
             }
             Self::Protocol(status) => match status.code() {
                 tonic::Code::Unavailable => Some(
-                    "the daemon is unreachable. It may have crashed or was shut down. Run 'knot repair'.",
+                    "the daemon is unreachable. It may have crashed or was shut down. Run 'knot up'.",
                 ),
                 tonic::Code::Unimplemented => Some(
                     "version mismatch: the daemon does not support this command. Update your CLI or Daemon.",
@@ -61,9 +61,9 @@ impl ClientError {
                     Some("the workspace is not in the correct state to execute this command.")
                 }
                 tonic::Code::PermissionDenied => Some(
-                    "you do not have the required permissions to execute this request via the IPC socket.",
+                    "you do not have the required permissions to execute this request.",
                 ),
-                _ => Some("check the daemon logs for more details using 'knot logs'."),
+                _ => Some("check the daemon logs for more details using 'knot daemon logs'."),
             },
             Self::Io(e) => match e.kind() {
                 std::io::ErrorKind::PermissionDenied => {
@@ -73,13 +73,13 @@ impl ClientError {
                     Some("a required file or directory was not found. check your workspace paths.")
                 }
                 std::io::ErrorKind::AlreadyExists => Some(
-                    "a file or socket already exists where knot is trying to create one. try running 'knot repair'.",
+                    "a file or socket already exists where knot is trying to create one. try running 'knot inspect'.",
                 ),
                 std::io::ErrorKind::AddrInUse => {
                     Some("the required port or IPC socket is already in use by another process.")
                 }
                 _ => Some(
-                    "verify disk space and directory permissions, or try running 'knot repair'.",
+                    "verify disk space and directory permissions.",
                 ),
             },
             Self::PathResolution(_) => Some(
@@ -120,7 +120,7 @@ impl WorkspaceError {
                 Some("run 'knot init' to set up a new workspace in this directory.")
             }
             Self::BrokenData(_) => {
-                Some("try running 'knot repair' or delete the corrupted file to recreate it.")
+                Some("try running 'knot inspect' or delete the corrupted file to recreate it.")
             }
         }
     }
