@@ -60,9 +60,9 @@ impl ClientError {
                 tonic::Code::FailedPrecondition => {
                     Some("the workspace is not in the correct state to execute this command.")
                 }
-                tonic::Code::PermissionDenied => Some(
-                    "you do not have the required permissions to execute this request.",
-                ),
+                tonic::Code::PermissionDenied => {
+                    Some("you do not have the required permissions to execute this request.")
+                }
                 _ => Some("check the daemon logs for more details using 'knot daemon logs'."),
             },
             Self::Io(e) => match e.kind() {
@@ -78,9 +78,7 @@ impl ClientError {
                 std::io::ErrorKind::AddrInUse => {
                     Some("the required port or IPC socket is already in use by another process.")
                 }
-                _ => Some(
-                    "verify disk space and directory permissions.",
-                ),
+                _ => Some("verify disk space and directory permissions."),
             },
             Self::PathResolution(_) => Some(
                 "Ensure your environment has a valid \
