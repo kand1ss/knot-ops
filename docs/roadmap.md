@@ -29,12 +29,12 @@ and connectivity plane are stable.
 
 ## v0.1 — Service Orchestration Foundation
 
-**Goal: manage local process-backed services with a global daemon and a
-consistent workspace model.**
+**Goal: a minimal, working daemon and CLI managing process-backed services,
+with a stable workspace and hashing model from day one.**
 
 ### Daemon
 
-- Global daemon and local IPC endpoint
+- Global (user-session) daemon and local IPC endpoint
 - Workspace registration with immutable `workspace_id`
 - `Handshake` for daemon reachability, workspace registration, and cheap
   configuration-drift detection before workspace-scoped commands
@@ -43,15 +43,29 @@ consistent workspace model.**
 - Service DAG engine for dependency ordering
 - `ProcessRuntime` for local process lifecycle management
 - In-memory runtime state store
-- Service statuses: `Stopped`, `Starting`, `Running`, `Failed`
+- Service statuses: `Stopped`, `Starting`, `Running`, `Waiting`, `Failed`
+  — limited to states the v0.1 engine can actually produce.
+  `Degraded`, `Restarting`, and `Stopping` are introduced in v0.2 alongside
+  the restart-policy engine that generates them, not before.
 
 ### CLI
 
 - `knot init` — initialize and register a workspace
 - `knot up` — synchronize when needed, then start services
 - `knot down` — stop services
-- `knot status` — list workspace services and their statuses
-- `knot ps <workspace>` - list running services in workspace
+- `knot ps` — list services in the current workspace and their status
+- `knot inspect` — inspect state and find problems
+- `knot daemon logs` — read the daemon's own operational log directly from
+  disk (no IPC dependency — must work even when the daemon is unreachable)
+
+#### Global flags
+
+- `-d`, `--detach` — detach from the daemon and run in the background
+- `--debug` — enable debug logging
+- `--workspace <path>` — use a specific workspace
+- `--no-color` — disable ANSI color output
+- `--no-interactive` — disable interactive prompts
+- `--no-sync` — disable synchronization before starting services
 
 ### Config — `[services.<service>]`
 
@@ -67,10 +81,80 @@ depends_on = ["postgres"]
 
 ---
 
-## v0.2 — Service Connectivity
+## v0.2 — Observability
+
+**Goal: make what the daemon already captures visible to the user.**
+
+### Daemon
+
+- Log aggregation across runtimes, built on the internal capture added in
+  v0.2
+- Service lifecycle events surfaced through the daemon
+- Diagnostics for configuration drift and failed health checks
+
+### CLI
+
+- `knot logs <service>` / `knot logs --all`
+- `knot logs --count <n>`
+- `knot logs --follow` / `-f`
+
+---
+
+## v0.3 — Reliability
+
+**Goal: keep services running and recover from failure without manual
+intervention, on the runtime already proven in v0.1.**
+
+### Daemon
+
+- Persistent runtime state store (SQLite)
+- Crash recovery and runtime reattachment
+- Health checks: `Command`, `Tcp`, `Http`, and `ProcessAlive`
+- Restart policies: `Never`, `Always`, `OnFailure`, and `Backoff`
+- Extended service statuses: `Degraded`, `Restarting`, `Stopping`
+- Internal stdout/stderr capture for services, buffered per-service in the
+  daemon (in-memory or on-disk). No public API yet — this exists so that
+  restart-loop diagnostics aren't lost before v0.3 ships log aggregation.
+  Without this, a service that fails and restarts repeatedly in v0.2 leaves
+  no trace of *why*, and that gap can't be closed retroactively.
+
+### CLI
+
+- `knot restart`
+
+---
+
+## v0.4 — Multiple Runtimes
+
+**Goal: run process-backed and container-backed services through the same
+service lifecycle and connectivity model.**
+
+### Daemon
+
+- Stable runtime-driver contract for start, stop, inspect, and endpoint
+  discovery — generalized now against two real runtimes, not designed
+  speculatively ahead of the second one
+- `DockerRuntime` for Docker container lifecycle management
+- Runtime-specific endpoint discovery feeding the common endpoint registry
+- Health checks and restart policies (v0.2) apply uniformly across both
+  runtimes
+- Uniform dependency handling and state transitions across runtimes
+
+### Config
+
+```toml
+[services.postgres]
+runtime = "docker"
+image   = "postgres:16"
+port    = 5432
+```
+
+---
+
+## v0.5 — Network Core
 
 **Goal: make services reachable through stable local names instead of
-runtime-specific addresses.**
+runtime-specific addresses, across both runtimes introduced in v0.4.**
 
 ### Daemon
 
@@ -92,53 +176,10 @@ protocols, and cross-host routing are explicitly out of scope.
 
 ---
 
-## v0.3 — Multiple Runtimes
+## v0.6 — Extended Management
 
-**Goal: run process-backed and container-backed services through the same
-service lifecycle and connectivity model.**
-
-### Daemon
-
-- Stable runtime-driver contract for start, stop, inspect, and endpoint
-  discovery
-- `DockerRuntime` for Docker container lifecycle management
-- Runtime-specific endpoint discovery feeding the common endpoint registry
-- Uniform dependency handling and state transitions across runtimes
-
-### Config
-
-```toml
-[services.postgres]
-runtime = "docker"
-image   = "postgres:16"
-port    = 5432
-```
-
----
-
-## v0.4 — Reliability and Recovery
-
-**Goal: preserve service state and recover safely from daemon failures.**
-
-### Daemon
-
-- Persistent runtime state store (SQLite)
-- Crash recovery and runtime reattachment
-- Health checks: `Command`, `Tcp`, `Http`, and `ProcessAlive`
-- Restart policies: `Never`, `Always`, `OnFailure`, and `Backoff`
-- Extended service statuses: `Waiting`, `Degraded`, `Restarting`, and
-  `Stopping`
-
-### CLI
-
-- `knot restart`
-
----
-
-## v0.5 — Service Operations
-
-**Goal: operate subsets of a service graph without losing dependency and
-connectivity guarantees.**
+**Goal: operate subsets of a service graph and manage multiple workspaces,
+without losing the dependency and connectivity guarantees from v0.4–v0.5.**
 
 ### CLI
 
@@ -147,6 +188,7 @@ connectivity guarantees.**
 - `knot down --service <name>` / `-s <name>`
 - `knot down --group <name>` / `-g <name>`
 - `knot daemon start`, `stop`, and `status`
+- `knot workspace list` — list registered workspaces
 
 ### Config
 
@@ -158,37 +200,15 @@ app   = ["backend", "frontend"]
 
 ---
 
-## v0.6 — Observability
+## v0.7 — CLI Improvements
 
-**Goal: make the service graph, runtime state, and connectivity decisions
-observable.**
-
-### Daemon
-
-- Log aggregation across runtimes
-- Service lifecycle and routing events
-- Diagnostics for configuration drift, endpoint registration, and failed
-  resolution
+**Goal: improve the day-to-day look and feel of the CLI.**
 
 ### CLI
 
-- `knot logs <service>` / `knot logs --all`
-- `knot logs --count <n>`
-- `knot logs --follow` / `-f`
-- Service endpoint and route details in `knot status`
-
----
-
-## v0.7 — TUI Dashboard
-
-**Goal: provide a live view of services, their runtimes, and connectivity.**
-
-### TUI
-
-- Service table: name, runtime, status, endpoint, uptime, and restarts
-- Live logs panel
-- Dependency and routing status
-- Navigation between services
+- Improved output formatting for `ps`, `logs`, and `status`-style views
+- Service endpoint and route details surfaced in `ps`
+- Consistent color/interactive conventions across all commands
 
 ---
 
@@ -211,8 +231,12 @@ observable.**
 
 ## Future Considerations
 
-- Additional runtimes are evaluated by their ability to implement the runtime
-  contract and register service endpoints.
+- A TUI dashboard (live service table, log panel, dependency/routing view)
+  is a plausible future direction but is explicitly deferred past v0.8, not
+  scheduled — CLI improvements (v0.7) are the near-term investment in
+  usability instead.
+- Additional runtimes are evaluated by their ability to implement the
+  runtime contract and register service endpoints.
 - Hooks, SDKs, and reusable components remain possible extensions, but must
   not define the service model or bypass the daemon's lifecycle and
   connectivity guarantees.
