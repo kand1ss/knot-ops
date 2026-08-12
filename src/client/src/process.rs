@@ -64,25 +64,25 @@ impl Process {
         .map_err(|_| ProcessError::NotRunning)?
     }
 
+    pub fn spawn(binary: &Path) -> io::Result<Self> {
+        let args: [String; 0] = [];
+        Self::spawn_with_args(binary, &args)
+    }
+
     #[instrument(
         skip_all,
         name = "process_spawn",
         fields(
             bin = %binary.display(),
         ))]
-    pub fn spawn(binary: &Path) -> io::Result<Self> {
-        let mut command = Command::new(binary);
+    pub fn spawn_with_args(binary: &Path, args: &[impl AsRef<OsStr>]) -> io::Result<Self> {
         trace!("spawning process...");
-
-        let child = command
+        let child = Command::new(binary)
+            .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e: io::Error| {
-                error!(error = %e, "failed to spawn process");
-                e
-            })?;
+            .spawn()?;
 
         match child.id() {
             Some(id) => {
@@ -97,24 +97,6 @@ impl Process {
                 )))
             }
         }
-    }
-
-    pub fn spawn_with_args(path: &Path, args: &[impl AsRef<OsStr>]) -> io::Result<Self> {
-        let child = Command::new(path)
-            .args(args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
-
-        let pid = child.id().ok_or_else(|| {
-            io::Error::other(format!(
-                "process at '{}' exited immediately and yielded no PID",
-                path.display()
-            ))
-        })?;
-
-        Ok(Self { pid })
     }
 }
 
