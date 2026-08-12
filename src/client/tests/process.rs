@@ -206,12 +206,14 @@ async fn spawned_process_can_be_bound() {
     let binary = fixture_binary();
     let spawned = ProcessGuard::spawn(&binary).expect("fixture process should spawn");
     let pid = spawned.pid();
+    let name = current_process_name();
 
-    let bound = Process::bind(pid, BINARY.into())
+    let bound = Process::bind(pid, name)
         .await
         .expect("bind should succeed for spawned process");
 
     assert_eq!(bound.pid(), pid);
+
     bound.kill().expect("spawned process should be killable");
     wait_until_not_running(pid).await;
 }
