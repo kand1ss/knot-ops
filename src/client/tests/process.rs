@@ -7,6 +7,8 @@ use tokio::time::{sleep, timeout};
 
 use knot_client::process::{Process, ProcessControl, ProcessError};
 
+const BINARY: &str = "process-fixture";
+
 /// Returns the PID of the current test process.
 fn current_pid() -> u32 {
     std::process::id()
@@ -45,7 +47,10 @@ fn nonexistent_pid() -> u32 {
 /// `CARGO_BIN_EXE_process-fixture` is available for integration tests
 /// when the binary is declared in Cargo.toml.
 fn fixture_binary() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_process-fixture"))
+    PathBuf::from(
+        std::env::var(format!("CARGO_BIN_EXE_{BINARY}"))
+            .expect("CARGO_BIN_EXE_<name> is set by Cargo during integration tests"),
+    )
 }
 
 async fn wait_until_not_running(pid: u32) {
@@ -178,9 +183,7 @@ async fn spawn_starts_process() {
 
     // Verify that the process actually exists.
     let sys_pid = Pid::from(pid as usize);
-
     let mut system = System::new();
-
     system.refresh_processes_specifics(
         ProcessesToUpdate::Some(&[sys_pid]),
         false,
@@ -201,44 +204,21 @@ async fn spawn_starts_process() {
 #[tokio::test]
 async fn spawned_process_can_be_bound() {
     let binary = fixture_binary();
-
     let spawned = ProcessGuard::spawn(&binary).expect("fixture process should spawn");
-
     let pid = spawned.pid();
 
-    let expected_name = {
-        let sys_pid = Pid::from(pid as usize);
-        let mut system = System::new();
-
-        system.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&[sys_pid]),
-            false,
-            ProcessRefreshKind::nothing(),
-        );
-
-        system
-            .process(sys_pid)
-            .expect("spawned process should exist")
-            .name()
-            .to_string_lossy()
-            .into_owned()
-    };
-
-    let bound = Process::bind(pid, expected_name)
+    let bound = Process::bind(pid, BINARY.into())
         .await
         .expect("bind should succeed for spawned process");
 
     assert_eq!(bound.pid(), pid);
-
     bound.kill().expect("spawned process should be killable");
-
     wait_until_not_running(pid).await;
 }
 
 #[tokio::test]
 async fn kill_terminates_spawned_process() {
     let process = ProcessGuard::spawn(&fixture_binary()).expect("fixture process should spawn");
-
     let pid = process.pid();
 
     process
@@ -257,6 +237,5 @@ async fn spawn_returns_error_for_missing_binary() {
     assert!(!path.exists());
 
     let result = Process::spawn(&path);
-
     assert!(result.is_err(), "spawning a nonexistent binary must fail");
 }
