@@ -1,0 +1,20 @@
+[package]
+name = "knot-sys"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sysinfo = "0.39.3"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["fs", "io-util", "process", "rt-multi-thread", "time", "net"] }
+tracing = "0.1.44"
+async-trait = "0.1.89"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = "0.61.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.189"

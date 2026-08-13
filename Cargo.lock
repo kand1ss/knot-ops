@@ -573,6 +573,7 @@ dependencies = [
  "knot-core",
  "knot-grpc",
  "knot-proto",
+ "knot-sys",
  "libc",
  "nix",
  "sysinfo",
@@ -625,6 +626,19 @@ dependencies = [
  "tonic-build",
  "tonic-prost",
  "tonic-prost-build",
+]
+
+[[package]]
+name = "knot-sys"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "libc",
+ "sysinfo",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "windows-sys",
 ]
 
 [[package]]
