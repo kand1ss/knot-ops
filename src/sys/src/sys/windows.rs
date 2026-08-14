@@ -48,13 +48,16 @@ impl ProcessControl for ProcessHandle<OwnedHandle> {
     }
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
-        let handle = self.process_ref.as_raw_handle();
+        let handle = self.process_ref.try_clone()?;
 
         let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
 
         tokio::task::spawn_blocking(move || {
             let result = unsafe {
-                windows_sys::Win32::System::Threading::WaitForSingleObject(handle, timeout_ms)
+                windows_sys::Win32::System::Threading::WaitForSingleObject(
+                    handle.as_raw_handle(),
+                    timeout_ms,
+                )
             };
 
             match result {
@@ -64,15 +67,11 @@ impl ProcessControl for ProcessHandle<OwnedHandle> {
                     Err(io::Error::last_os_error().into())
                 }
 
-                _ => Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "unexpected WaitForSingleObject result",
-                )
-                .into()),
+                _ => Err(io::Error::other("unexpected WaitForSingleObject result").into()),
             }
         })
         .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err).into())?
+        .map_err(io::Error::other)?
     }
 
     fn check_permissions(&self) -> Result<bool, ProcessError> {
