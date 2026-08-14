@@ -4,7 +4,6 @@ use crate::process::ProcessHandle;
 use crate::traits::ProcessControl;
 use std::io;
 use std::time::Duration;
-use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System};
 
 impl ProcessHandle<ProcessMetadata> {
     fn ensure_pid_not_reused(&self) -> io::Result<bool> {
@@ -32,6 +31,7 @@ fn send_signal(pid: u32, signal: libc::c_int) -> io::Result<()> {
     Ok(())
 }
 
+#[async_trait::async_trait]
 impl ProcessControl for ProcessHandle<ProcessMetadata> {
     fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
         Ok(Self {
