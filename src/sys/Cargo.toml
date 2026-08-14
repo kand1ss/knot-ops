@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "process-fixture"
+path = "tests/fixtures/process.rs"
+
 [dependencies]
 sysinfo = "0.39.3"
 thiserror = "2.0.18"
@@ -18,3 +22,6 @@ windows-sys = "0.61.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.189"
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["macros"] }
