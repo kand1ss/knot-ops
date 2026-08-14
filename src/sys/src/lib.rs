@@ -1,10 +1,10 @@
 mod errors;
 pub use errors::*;
 
-mod process;
-pub use process::*;
+pub mod process;
+pub use process::Process;
 
 pub mod metadata;
 mod sys;
-mod traits;
+pub mod traits;
 mod utils;

@@ -1,4 +1,3 @@
-use crate::process::ProcessHandle;
 use crate::traits::ProcessControl;
 
 use crate::ProcessError;
@@ -12,8 +11,13 @@ use windows_sys::Win32::System::Threading::{
     TerminateProcess,
 };
 
+#[derive(Debug)]
+pub struct WindowsProcessHandle {
+    pub(crate) handle: OwnedHandle,
+}
+
 #[async_trait::async_trait]
-impl ProcessControl for ProcessHandle<OwnedHandle> {
+impl ProcessControl for WindowsProcessHandle {
     fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
         let raw = unsafe {
             OpenProcess(
@@ -29,13 +33,12 @@ impl ProcessControl for ProcessHandle<OwnedHandle> {
         }
 
         Ok(Self {
-            metadata,
-            process_ref: unsafe { OwnedHandle::from_raw_handle(raw.cast()) },
+            handle: unsafe { OwnedHandle::from_raw_handle(raw.cast()) },
         })
     }
 
     fn kill(&self) -> Result<bool, ProcessError> {
-        let raw = self.process_ref.as_raw_handle();
+        let raw = self.handle.as_raw_handle();
         let ok = unsafe { TerminateProcess(raw, 1) };
         if ok == 0 {
             return Err(io::Error::last_os_error().into());
@@ -48,7 +51,7 @@ impl ProcessControl for ProcessHandle<OwnedHandle> {
     }
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
-        let handle = self.process_ref.try_clone()?;
+        let handle = self.handle.try_clone()?;
 
         let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
 

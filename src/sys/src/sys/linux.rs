@@ -1,4 +1,3 @@
-use crate::process::ProcessHandle;
 use crate::traits::ProcessControl;
 
 use crate::ProcessError;
@@ -29,8 +28,13 @@ pub fn send_signal(pid_fd: &AsyncFd<OwnedFd>, signal: libc::c_int) -> io::Result
     Ok(())
 }
 
+#[derive(Debug)]
+pub struct LinuxProcessHandle {
+    pub(crate) process_ref: ProcessRef
+}
+
 #[async_trait::async_trait]
-impl ProcessControl for ProcessHandle<ProcessRef> {
+impl ProcessControl for LinuxProcessHandle {
     fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
         let pid = metadata.pid;
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
@@ -41,7 +45,6 @@ impl ProcessControl for ProcessHandle<ProcessRef> {
 
         let fd = unsafe { OwnedFd::from_raw_fd(fd as libc::c_int) };
         Ok(Self {
-            metadata,
             process_ref: ProcessRef::new(fd)?,
         })
     }

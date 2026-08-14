@@ -2,8 +2,7 @@ use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::io;
 use std::io::ErrorKind;
-#[cfg(target_os = "linux")]
-use std::os::fd::OwnedFd;
+use std::ops::Deref;
 use std::path::Path;
 use tokio::process::Command;
 use tokio::time::Duration;
@@ -12,31 +11,31 @@ use tracing::{info, instrument, trace, warn};
 use crate::errors::ProcessError;
 use crate::metadata::ProcessMetadata;
 use crate::traits::ProcessControl;
+use crate::sys;
 
-#[cfg(windows)]
-use std::os::windows::io::OwnedHandle;
 #[cfg(target_os = "linux")]
-use tokio::io::unix::AsyncFd;
+pub type Process = PlatformProcess<sys::linux::LinuxProcessHandle>;
+#[cfg(windows)]
+pub type Process = PlatformProcess<sys::windows::WindowsProcessHandle>;
+#[cfg(target_os = "macos")]
+pub type Process = PlatformProcess<sys::macos::MacosProcessHandle>;
 
 #[derive(Debug)]
-pub struct ProcessHandle<T> {
-    pub(crate) process_ref: T,
+pub struct PlatformProcess<T: ProcessControl> {
+    pub(crate) handle: T,
     pub(crate) metadata: ProcessMetadata,
 }
 
-#[derive(Debug)]
-pub struct Process {
-    #[cfg(target_os = "linux")]
-    pub(crate) handle: ProcessHandle<AsyncFd<OwnedFd>>,
-    #[cfg(windows)]
-    pub(crate) handle: ProcessHandle<OwnedHandle>,
-    #[cfg(target_os = "macos")]
-    pub(crate) handle: ProcessHandle<ProcessMetadata>,
+impl<T: ProcessControl> Deref for PlatformProcess<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.handle
+    }
 }
 
-impl Process {
+impl<T: ProcessControl> PlatformProcess<T> {
     pub fn pid(&self) -> u32 {
-        self.handle.metadata.pid
+        self.metadata.pid
     }
 
     async fn compare(expected_name: &str, actual_name: &str) -> Result<(), ProcessError> {
@@ -73,11 +72,11 @@ impl Process {
         let metadata = Self::spawn_extract_metadata(pid).await?;
         Self::compare(&expected_name, &metadata.name).await?;
 
-        let handle = ProcessHandle::bind(metadata.clone()).map_err(ProcessError::Io)?;
+        let handle = T::bind(metadata.clone()).map_err(ProcessError::Io)?;
         let metadata_after = Self::spawn_extract_metadata(pid).await?;
 
         if metadata == metadata_after {
-            Ok(Self { handle })
+            Ok(Self { handle, metadata })
         } else {
             Err(ProcessError::Mismatch {
                 expected: expected_name,
@@ -130,13 +129,13 @@ impl Process {
         }
     }
 
-    pub async fn kill(self, timeout: Duration) -> Result<bool, ProcessError> {
+    pub async fn kill(&self, timeout: Duration) -> Result<bool, ProcessError> {
         self.handle.check_permissions()?;
         self.handle.kill()?;
         self.handle.wait(timeout).await
     }
 
-    pub async fn terminate(self, timeout: Duration) -> Result<bool, ProcessError> {
+    pub async fn terminate(&self, timeout: Duration) -> Result<bool, ProcessError> {
         self.handle.check_permissions()?;
         self.handle.terminate()?;
         self.handle.wait(timeout).await

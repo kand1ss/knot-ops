@@ -1,19 +1,23 @@
 use crate::ProcessError;
 use crate::metadata::ProcessMetadata;
-use crate::process::ProcessHandle;
 use crate::traits::ProcessControl;
 use std::io;
 use std::time::Duration;
 
-impl ProcessHandle<ProcessMetadata> {
+#[derive(Debug)]
+pub struct MacosProcessHandle {
+    pub(crate) fingerprint: ProcessMetadata,
+}
+
+impl MacosProcessHandle {
     fn ensure_pid_not_reused(&self) -> io::Result<bool> {
-        let metadata = ProcessMetadata::extract(self.process_ref.pid)?;
-        Ok(metadata == self.process_ref)
+        let metadata = ProcessMetadata::extract(self.fingerprint.pid)?;
+        Ok(metadata == self.fingerprint)
     }
 
     fn check_identity(&self) -> Result<bool, ProcessError> {
-        match ProcessMetadata::extract(self.process_ref.pid) {
-            Ok(metadata) if metadata == self.process_ref => Ok(true),
+        match ProcessMetadata::extract(self.fingerprint.pid) {
+            Ok(metadata) if metadata == self.fingerprint => Ok(true),
             Ok(_) => Err(ProcessError::Reused),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(ProcessError::Io(e)),
@@ -32,17 +36,16 @@ fn send_signal(pid: u32, signal: libc::c_int) -> io::Result<()> {
 }
 
 #[async_trait::async_trait]
-impl ProcessControl for ProcessHandle<ProcessMetadata> {
+impl ProcessControl for MacosProcessHandle {
     fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
         Ok(Self {
-            process_ref: metadata.clone(),
-            metadata,
+            fingerprint: metadata.clone(),
         })
     }
 
     fn kill(&self) -> Result<bool, ProcessError> {
         match self.ensure_pid_not_reused()? {
-            true => send_signal(self.process_ref.pid, libc::SIGKILL).map_err(ProcessError::Io)?,
+            true => send_signal(self.fingerprint.pid, libc::SIGKILL).map_err(ProcessError::Io)?,
             false => return Err(ProcessError::Reused),
         }
         Ok(true)
@@ -50,7 +53,7 @@ impl ProcessControl for ProcessHandle<ProcessMetadata> {
 
     fn terminate(&self) -> Result<bool, ProcessError> {
         match self.ensure_pid_not_reused()? {
-            true => send_signal(self.process_ref.pid, libc::SIGTERM).map_err(ProcessError::Io)?,
+            true => send_signal(self.fingerprint.pid, libc::SIGTERM).map_err(ProcessError::Io)?,
             false => return Err(ProcessError::Reused),
         }
         Ok(true)
@@ -60,11 +63,10 @@ impl ProcessControl for ProcessHandle<ProcessMetadata> {
         let deadline = tokio::time::Instant::now() + timeout;
 
         loop {
-            let handle = self.process_ref.clone();
+            let fingerprint = self.fingerprint.clone();
             let exists = tokio::task::spawn_blocking(move || {
-                let owned = ProcessHandle {
-                    process_ref: handle.clone(),
-                    metadata: handle,
+                let owned = MacosProcessHandle {
+                    fingerprint: fingerprint.clone(),
                 };
                 owned.check_identity()
             })
@@ -87,7 +89,7 @@ impl ProcessControl for ProcessHandle<ProcessMetadata> {
 
     fn check_permissions(&self) -> Result<bool, ProcessError> {
         match self.ensure_pid_not_reused()? {
-            true => send_signal(self.process_ref.pid, 0).map_err(ProcessError::Io)?,
+            true => send_signal(self.fingerprint.pid, 0).map_err(ProcessError::Io)?,
             false => return Err(ProcessError::Reused),
         }
         Ok(true)
