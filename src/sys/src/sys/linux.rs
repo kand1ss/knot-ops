@@ -6,6 +6,7 @@ use crate::metadata::ProcessMetadata;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::time::Duration;
+use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 
 type ProcessRef = AsyncFd<OwnedFd>;
@@ -57,20 +58,17 @@ impl ProcessControl for ProcessHandle<ProcessRef> {
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         if timeout.is_zero() {
-            let mut guard = self.process_ref.readable().await?;
-            return match guard.try_io(|_| Ok(())) {
-                Ok(result) => {
-                    result?;
-                    Ok(true)
+            match self.process_ref.try_io(Interest::READABLE, |_| Ok(())) {
+                Ok(_) => {
+                    return Ok(true);
                 }
-                Err(_) => Ok(false),
-            };
+                Err(_) => return Ok(false),
+            }
         }
 
         let wait = async {
             loop {
                 let mut guard = self.process_ref.readable().await?;
-
                 match guard.try_io(|_| Ok(())) {
                     Ok(result) => {
                         result?;
