@@ -18,6 +18,9 @@ pub enum ProcessError {
     #[error("process name mismatch: expected '{expected}', got '{actual}'")]
     Mismatch { expected: String, actual: String },
 
+    #[error("process reused")]
+    Reused,
+
     #[error("io error")]
     Io(#[from] io::Error),
 }

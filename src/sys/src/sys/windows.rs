@@ -1,23 +1,25 @@
 use crate::process::ProcessHandle;
 use crate::traits::ProcessControl;
 
+use crate::ProcessError;
+use crate::metadata::ProcessMetadata;
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::time::Duration;
 use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
-    QueryFullProcessImageNameW, TerminateProcess,
+    TerminateProcess,
 };
 
 #[async_trait::async_trait]
 impl ProcessControl for ProcessHandle<OwnedHandle> {
-    fn open_process(pid: u32) -> io::Result<Self> {
+    fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
         let raw = unsafe {
             OpenProcess(
                 PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
                 0,
-                pid,
+                metadata.pid,
             )
         };
 
@@ -27,44 +29,25 @@ impl ProcessControl for ProcessHandle<OwnedHandle> {
         }
 
         Ok(Self {
-            pid,
+            metadata,
             process_ref: unsafe { OwnedHandle::from_raw_handle(raw.cast()) },
         })
     }
 
-    fn executable_name(&self) -> io::Result<String> {
-        let raw = self.process_ref.as_raw_handle();
-        let mut buf = [0u16; 260];
-        let mut size = buf.len() as u32;
-
-        let ok = unsafe { QueryFullProcessImageNameW(raw, 0, buf.as_mut_ptr(), &mut size) };
-        if ok == 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        let path = String::from_utf16_lossy(&buf[..size as usize]);
-        let actual_name = std::path::Path::new(&path)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
-        Ok(actual_name)
-    }
-
-    fn kill(&self) -> io::Result<()> {
+    fn kill(&self) -> Result<bool, ProcessError> {
         let raw = self.process_ref.as_raw_handle();
         let ok = unsafe { TerminateProcess(raw, 1) };
         if ok == 0 {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
-        Ok(())
+        Ok(true)
     }
 
-    fn terminate(&self) -> io::Result<()> {
+    fn terminate(&self) -> Result<bool, ProcessError> {
         self.kill()
     }
 
-    async fn wait(&self, timeout: Duration) -> io::Result<bool> {
+    async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         let handle = self.process_ref.as_raw_handle();
 
         let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
@@ -77,19 +60,22 @@ impl ProcessControl for ProcessHandle<OwnedHandle> {
             match result {
                 windows_sys::Win32::Foundation::WAIT_OBJECT_0 => Ok(true),
                 windows_sys::Win32::Foundation::WAIT_TIMEOUT => Ok(false),
-                windows_sys::Win32::Foundation::WAIT_FAILED => Err(io::Error::last_os_error()),
+                windows_sys::Win32::Foundation::WAIT_FAILED => {
+                    Err(io::Error::last_os_error().into())
+                }
 
                 _ => Err(io::Error::new(
                     io::ErrorKind::Other,
                     "unexpected WaitForSingleObject result",
-                )),
+                )
+                .into()),
             }
         })
         .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err).into())?
     }
 
-    fn check_permissions(&self) -> io::Result<()> {
-        Ok(())
+    fn check_permissions(&self) -> Result<bool, ProcessError> {
+        Ok(true)
     }
 }

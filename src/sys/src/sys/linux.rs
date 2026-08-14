@@ -1,6 +1,8 @@
 use crate::process::ProcessHandle;
 use crate::traits::ProcessControl;
 
+use crate::ProcessError;
+use crate::metadata::ProcessMetadata;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::time::Duration;
@@ -28,7 +30,8 @@ pub fn send_signal(pid_fd: &AsyncFd<OwnedFd>, signal: libc::c_int) -> io::Result
 
 #[async_trait::async_trait]
 impl ProcessControl for ProcessHandle<ProcessRef> {
-    fn open_process(pid: u32) -> io::Result<Self> {
+    fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
+        let pid = metadata.pid;
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
 
         if fd < 0 {
@@ -37,26 +40,22 @@ impl ProcessControl for ProcessHandle<ProcessRef> {
 
         let fd = unsafe { OwnedFd::from_raw_fd(fd as libc::c_int) };
         Ok(Self {
-            pid,
+            metadata,
             process_ref: ProcessRef::new(fd)?,
         })
     }
 
-    fn executable_name(&self) -> io::Result<String> {
-        let pid = self.pid;
-        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm"))?;
-        Ok(comm)
+    fn kill(&self) -> Result<bool, ProcessError> {
+        send_signal(&self.process_ref, libc::SIGKILL)?;
+        Ok(true)
     }
 
-    fn kill(&self) -> io::Result<()> {
-        send_signal(&self.process_ref, libc::SIGKILL)
+    fn terminate(&self) -> Result<bool, ProcessError> {
+        send_signal(&self.process_ref, libc::SIGTERM)?;
+        Ok(true)
     }
 
-    fn terminate(&self) -> io::Result<()> {
-        send_signal(&self.process_ref, libc::SIGTERM)
-    }
-
-    async fn wait(&self, timeout: Duration) -> io::Result<bool> {
+    async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         if timeout.is_zero() {
             let mut guard = self.process_ref.readable().await?;
             return match guard.try_io(|_| Ok(())) {
@@ -87,7 +86,8 @@ impl ProcessControl for ProcessHandle<ProcessRef> {
             .unwrap_or(Ok(false))
     }
 
-    fn check_permissions(&self) -> io::Result<()> {
-        send_signal(&self.process_ref, 0)
+    fn check_permissions(&self) -> Result<bool, ProcessError> {
+        send_signal(&self.process_ref, 0)?;
+        Ok(true)
     }
 }

@@ -4,12 +4,12 @@ use std::io;
 #[cfg(target_os = "linux")]
 use std::os::fd::OwnedFd;
 use std::path::Path;
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::process::Command;
 use tokio::time::Duration;
 use tracing::{info, instrument, trace, warn};
 
 use crate::errors::ProcessError;
+use crate::metadata::ProcessMetadata;
 use crate::traits::ProcessControl;
 
 #[cfg(windows)]
@@ -20,7 +20,7 @@ use tokio::io::unix::AsyncFd;
 #[derive(Debug)]
 pub struct ProcessHandle<T> {
     pub(crate) process_ref: T,
-    pub(crate) pid: u32,
+    pub(crate) metadata: ProcessMetadata,
 }
 
 #[derive(Debug)]
@@ -29,42 +29,24 @@ pub struct Process {
     pub(crate) handle: ProcessHandle<AsyncFd<OwnedFd>>,
     #[cfg(windows)]
     pub(crate) handle: ProcessHandle<OwnedHandle>,
+    #[cfg(target_os = "macos")]
+    pub(crate) handle: ProcessHandle<ProcessMetadata>,
 }
 
 impl Process {
     pub fn pid(&self) -> u32 {
-        self.handle.pid
+        self.handle.metadata.pid
     }
 
-    async fn acquire(pid: u32, expected_name: String) -> Result<(), ProcessError> {
-        let sys_pid = Pid::from(pid as usize);
-        let expected_name = expected_name.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut sys = System::new();
-
-            sys.refresh_processes_specifics(
-                ProcessesToUpdate::Some(&[sys_pid]),
-                false,
-                ProcessRefreshKind::nothing(),
-            );
-
-            match sys.process(sys_pid) {
-                Some(process) => {
-                    let actual_name = process.name().to_string_lossy();
-                    if crate::utils::process_names_match(&actual_name, &expected_name) {
-                        Ok(())
-                    } else {
-                        Err(ProcessError::Mismatch {
-                            expected: expected_name,
-                            actual: actual_name.to_string(),
-                        })
-                    }
-                }
-                None => Err(ProcessError::NotRunning),
-            }
-        })
-        .await
-        .map_err(|_| ProcessError::NotRunning)?
+    async fn compare(expected_name: &str, actual_name: &str) -> Result<(), ProcessError> {
+        if crate::utils::process_names_match(actual_name, expected_name) {
+            Ok(())
+        } else {
+            Err(ProcessError::Mismatch {
+                expected: expected_name.to_string(),
+                actual: actual_name.to_string(),
+            })
+        }
     }
 
     #[instrument(
@@ -76,22 +58,26 @@ impl Process {
         )
     )]
     pub async fn bind(pid: u32, expected_name: String) -> Result<Self, ProcessError> {
-        Self::acquire(pid, expected_name.clone()).await?;
+        let metadata = tokio::task::spawn_blocking(move || ProcessMetadata::extract(pid))
+            .await
+            .map_err(|e| ProcessError::Io(io::Error::other(e)))??;
+        Self::compare(&expected_name, &metadata.name).await?;
+        let handle = ProcessHandle::bind(metadata.clone()).map_err(ProcessError::Io)?;
 
-        let handle = ProcessHandle::open_process(pid).map_err(ProcessError::Io)?;
-        let process_name = handle.executable_name().map_err(ProcessError::Io)?;
-
-        if crate::utils::process_names_match(&process_name, &expected_name) {
-            info!("successfully bound to process");
+        let metadata_after = {
+            let pid = metadata.pid;
+            tokio::task::spawn_blocking(move || ProcessMetadata::extract(pid))
+                .await
+                .map_err(|e| ProcessError::Io(io::Error::other(e)))??
+        };
+        if metadata == metadata_after {
+            Ok(Self { handle })
         } else {
-            warn!(actual = %process_name, "process name mismatch; cannot bind to process");
-            return Err(ProcessError::Mismatch {
+            Err(ProcessError::Mismatch {
                 expected: expected_name,
-                actual: process_name,
-            });
+                actual: metadata_after.name,
+            })
         }
-
-        Ok(Self { handle })
     }
 
     pub async fn spawn(binary: &Path) -> Result<Self, ProcessError> {
@@ -138,13 +124,13 @@ impl Process {
         }
     }
 
-    pub async fn kill(self, timeout: Duration) -> io::Result<bool> {
+    pub async fn kill(self, timeout: Duration) -> Result<bool, ProcessError> {
         self.handle.check_permissions()?;
         self.handle.kill()?;
         self.handle.wait(timeout).await
     }
 
-    pub async fn terminate(self, timeout: Duration) -> io::Result<bool> {
+    pub async fn terminate(self, timeout: Duration) -> Result<bool, ProcessError> {
         self.handle.check_permissions()?;
         self.handle.terminate()?;
         self.handle.wait(timeout).await
