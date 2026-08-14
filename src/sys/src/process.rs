@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::io;
+use std::io::ErrorKind;
 #[cfg(target_os = "linux")]
 use std::os::fd::OwnedFd;
 use std::path::Path;
@@ -49,6 +50,17 @@ impl Process {
         }
     }
 
+    async fn spawn_extract_metadata(pid: u32) -> Result<ProcessMetadata, ProcessError> {
+        let metadata = tokio::task::spawn_blocking(move || ProcessMetadata::extract(pid))
+            .await
+            .map_err(|e| ProcessError::Io(io::Error::other(e)))?
+            .map_err(|e| match e.kind() {
+                ErrorKind::NotFound => ProcessError::NotRunning,
+                _ => ProcessError::Io(e),
+            })?;
+        Ok(metadata)
+    }
+
     #[instrument(
         skip_all,
         name = "process_bind",
@@ -58,18 +70,12 @@ impl Process {
         )
     )]
     pub async fn bind(pid: u32, expected_name: String) -> Result<Self, ProcessError> {
-        let metadata = tokio::task::spawn_blocking(move || ProcessMetadata::extract(pid))
-            .await
-            .map_err(|e| ProcessError::Io(io::Error::other(e)))??;
+        let metadata = Self::spawn_extract_metadata(pid).await?;
         Self::compare(&expected_name, &metadata.name).await?;
-        let handle = ProcessHandle::bind(metadata.clone()).map_err(ProcessError::Io)?;
 
-        let metadata_after = {
-            let pid = metadata.pid;
-            tokio::task::spawn_blocking(move || ProcessMetadata::extract(pid))
-                .await
-                .map_err(|e| ProcessError::Io(io::Error::other(e)))??
-        };
+        let handle = ProcessHandle::bind(metadata.clone()).map_err(ProcessError::Io)?;
+        let metadata_after = Self::spawn_extract_metadata(pid).await?;
+
         if metadata == metadata_after {
             Ok(Self { handle })
         } else {
@@ -133,6 +139,11 @@ impl Process {
     pub async fn terminate(self, timeout: Duration) -> Result<bool, ProcessError> {
         self.handle.check_permissions()?;
         self.handle.terminate()?;
+        self.handle.wait(timeout).await
+    }
+
+    pub async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
+        self.handle.check_permissions()?;
         self.handle.wait(timeout).await
     }
 }
