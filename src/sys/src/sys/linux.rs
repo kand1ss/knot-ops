@@ -40,15 +40,14 @@ pub struct LinuxProcessHandle {
 }
 
 impl LinuxProcessHandle {
-    fn poll_readable_now(&self) -> Result<bool, ProcessError> {
+    fn poll_readable_now(&self) -> io::Result<bool> {
         let mut pfd = libc::pollfd {
             fd: self.process_ref.as_raw_fd(),
             events: libc::POLLIN,
             revents: 0,
         };
-
         match unsafe { libc::poll(&mut pfd, 1, 0) } {
-            -1 => Err(map_signal_error(io::Error::last_os_error())),
+            -1 => Err(io::Error::last_os_error()),
             0 => Ok(false),
             _ => Ok(pfd.revents & libc::POLLIN != 0),
         }
@@ -83,18 +82,34 @@ impl ProcessControl for LinuxProcessHandle {
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         if timeout.is_zero() {
-            return self.poll_readable_now();
+            return self
+                .poll_readable_now()
+                .map_err(map_signal_error);
         }
 
         let wait_for_exit = async {
-            self.process_ref
-                .readable()
-                .await
-                .map_err(ProcessError::Io)
+            loop {
+                let mut guard = self.process_ref.readable().await?;
+                let really_ready = guard.try_io(|_| {
+                    if self.poll_readable_now()? {
+                        Ok(())
+                    } else {
+                        Err(io::Error::from(io::ErrorKind::WouldBlock))
+                    }
+                });
+
+                match really_ready {
+                    Ok(result) => {
+                        result?;
+                        return Ok(true);
+                    }
+                    Err(_would_block) => continue,
+                }
+            }
         };
 
         match tokio::time::timeout(timeout, wait_for_exit).await {
-            Ok(result) => result.map(|_guard| true),
+            Ok(result) => result.map_err(map_signal_error),
             Err(_elapsed) => Ok(false),
         }
     }
