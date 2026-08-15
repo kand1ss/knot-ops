@@ -5,7 +5,6 @@ use crate::metadata::ProcessMetadata;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::time::Duration;
-use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 
 type ProcessRef = AsyncFd<OwnedFd>;
@@ -40,6 +39,22 @@ pub struct LinuxProcessHandle {
     pub(crate) process_ref: ProcessRef,
 }
 
+impl LinuxProcessHandle {
+    fn poll_readable_now(&self) -> Result<bool, ProcessError> {
+        let mut pfd = libc::pollfd {
+            fd: self.process_ref.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+
+        match unsafe { libc::poll(&mut pfd, 1, 0) } {
+            -1 => Err(map_signal_error(io::Error::last_os_error())),
+            0 => Ok(false),
+            _ => Ok(pfd.revents & libc::POLLIN != 0),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl ProcessControl for LinuxProcessHandle {
     fn bind(metadata: ProcessMetadata) -> Result<Self, ProcessError> {
@@ -68,30 +83,20 @@ impl ProcessControl for LinuxProcessHandle {
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         if timeout.is_zero() {
-            return match self.process_ref.try_io(Interest::READABLE, |_| Ok(())) {
-                Ok(_) => {
-                    Ok(true)
-                }
-                Err(_) => Ok(false),
-            }
+            return self.poll_readable_now();
         }
 
-        let wait = async {
-            loop {
-                let mut guard = self.process_ref.readable().await?;
-                match guard.try_io(|_| Ok(())) {
-                    Ok(result) => {
-                        result?;
-                        return Ok(true);
-                    }
-                    Err(_) => continue,
-                }
-            }
+        let wait_for_exit = async {
+            self.process_ref
+                .readable()
+                .await
+                .map_err(ProcessError::Io)
         };
 
-        tokio::time::timeout(timeout, wait)
-            .await
-            .unwrap_or(Ok(false))
+        match tokio::time::timeout(timeout, wait_for_exit).await {
+            Ok(result) => result.map(|_guard| true),
+            Err(_elapsed) => Ok(false),
+        }
     }
 
     fn check_permissions(&self) -> Result<(), ProcessError> {
