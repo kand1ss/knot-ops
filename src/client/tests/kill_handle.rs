@@ -88,6 +88,7 @@ async fn wait_until_process_exits(pid: u32) {
 /// Returns the process name reported by sysinfo.
 ///
 /// This is used only to poll whether the process is still alive.
+#[cfg(unix)]
 fn current_process_name(pid: u32) -> String {
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -262,10 +263,13 @@ async fn bind_returns_mismatch_when_process_name_differs() {
     let result = Process::bind(pid, "definitely-not-sleep".to_string()).await;
 
     match result {
-        Err(ProcessError::Mismatch { expected, actual }) => {
+        Err(ProcessError::Mismatch {
+            expected,
+            actual: _actual,
+        }) => {
             assert_eq!(expected, "definitely-not-sleep");
             #[cfg(unix)]
-            assert_eq!(actual, BINARY);
+            assert_eq!(_actual, BINARY);
         }
         other => panic!("expected Mismatch, got {other:?}"),
     }
