@@ -11,6 +11,13 @@ use windows_sys::Win32::System::Threading::{
     TerminateProcess,
 };
 
+pub fn map_signal_error(error: io::Error) -> ProcessError {
+    match error.raw_os_error() {
+        Some(windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER) | Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND) => ProcessError::NotRunning,
+        _ => ProcessError::Io(error),
+    }
+}
+
 #[derive(Debug)]
 pub struct WindowsProcessHandle {
     pub(crate) handle: OwnedHandle,
@@ -18,7 +25,7 @@ pub struct WindowsProcessHandle {
 
 #[async_trait::async_trait]
 impl ProcessControl for WindowsProcessHandle {
-    fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
+    fn bind(metadata: ProcessMetadata) -> Result<Self, ProcessError> {
         let raw = unsafe {
             OpenProcess(
                 PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
@@ -29,7 +36,7 @@ impl ProcessControl for WindowsProcessHandle {
 
         if raw.is_null() {
             let error = unsafe { GetLastError() };
-            return Err(io::Error::from_raw_os_error(error as i32));
+            return Err(map_signal_error(io::Error::from_raw_os_error(error as i32)));
         }
 
         Ok(Self {
@@ -37,16 +44,16 @@ impl ProcessControl for WindowsProcessHandle {
         })
     }
 
-    fn kill(&self) -> Result<bool, ProcessError> {
+    fn kill(&self) -> Result<(), ProcessError> {
         let raw = self.handle.as_raw_handle();
         let ok = unsafe { TerminateProcess(raw, 1) };
         if ok == 0 {
-            return Err(io::Error::last_os_error().into());
+            return Err(map_signal_error(io::Error::last_os_error()));
         }
-        Ok(true)
+        Ok(())
     }
 
-    fn terminate(&self) -> Result<bool, ProcessError> {
+    fn terminate(&self) -> Result<(), ProcessError> {
         self.kill()
     }
 
@@ -77,7 +84,7 @@ impl ProcessControl for WindowsProcessHandle {
         .map_err(io::Error::other)?
     }
 
-    fn check_permissions(&self) -> Result<bool, ProcessError> {
-        Ok(true)
+    fn check_permissions(&self) -> Result<(), ProcessError> {
+        Ok(())
     }
 }

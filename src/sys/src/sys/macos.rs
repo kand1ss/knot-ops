@@ -4,6 +4,13 @@ use crate::traits::ProcessControl;
 use std::io;
 use std::time::Duration;
 
+pub fn map_signal_error(error: io::Error) -> ProcessError {
+    match error.raw_os_error() {
+        Some(libc::ESRCH) => ProcessError::NotRunning,
+        _ => ProcessError::Io(error),
+    }
+}
+
 #[derive(Debug)]
 pub struct MacosProcessHandle {
     pub(crate) fingerprint: ProcessMetadata,
@@ -37,26 +44,26 @@ fn send_signal(pid: u32, signal: libc::c_int) -> io::Result<()> {
 
 #[async_trait::async_trait]
 impl ProcessControl for MacosProcessHandle {
-    fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
+    fn bind(metadata: ProcessMetadata) -> Result<Self, ProcessError> {
         Ok(Self {
             fingerprint: metadata.clone(),
         })
     }
 
-    fn kill(&self) -> Result<bool, ProcessError> {
+    fn kill(&self) -> Result<(), ProcessError> {
         match self.ensure_pid_not_reused()? {
-            true => send_signal(self.fingerprint.pid, libc::SIGKILL).map_err(ProcessError::Io)?,
+            true => send_signal(self.fingerprint.pid, libc::SIGKILL).map_err(map_signal_error)?,
             false => return Err(ProcessError::Reused),
         }
-        Ok(true)
+        Ok(())
     }
 
-    fn terminate(&self) -> Result<bool, ProcessError> {
+    fn terminate(&self) -> Result<(), ProcessError> {
         match self.ensure_pid_not_reused()? {
-            true => send_signal(self.fingerprint.pid, libc::SIGTERM).map_err(ProcessError::Io)?,
+            true => send_signal(self.fingerprint.pid, libc::SIGTERM).map_err(map_signal_error)?,
             false => return Err(ProcessError::Reused),
         }
-        Ok(true)
+        Ok(())
     }
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
@@ -87,11 +94,11 @@ impl ProcessControl for MacosProcessHandle {
         }
     }
 
-    fn check_permissions(&self) -> Result<bool, ProcessError> {
+    fn check_permissions(&self) -> Result<(), ProcessError> {
         match self.ensure_pid_not_reused()? {
             true => send_signal(self.fingerprint.pid, 0).map_err(ProcessError::Io)?,
             false => return Err(ProcessError::Reused),
         }
-        Ok(true)
+        Ok(())
     }
 }

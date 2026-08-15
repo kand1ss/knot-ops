@@ -10,7 +10,14 @@ use tokio::io::unix::AsyncFd;
 
 type ProcessRef = AsyncFd<OwnedFd>;
 
-pub fn send_signal(pid_fd: &AsyncFd<OwnedFd>, signal: libc::c_int) -> io::Result<()> {
+pub fn map_signal_error(error: io::Error) -> ProcessError {
+    match error.raw_os_error() {
+        Some(libc::ESRCH) => ProcessError::NotRunning,
+        _ => ProcessError::Io(error),
+    }
+}
+
+pub fn send_signal(pid_fd: &AsyncFd<OwnedFd>, signal: libc::c_int) -> Result<(), ProcessError> {
     let result = unsafe {
         libc::syscall(
             libc::SYS_pidfd_send_signal,
@@ -22,7 +29,7 @@ pub fn send_signal(pid_fd: &AsyncFd<OwnedFd>, signal: libc::c_int) -> io::Result
     };
 
     if result == -1 {
-        return Err(io::Error::last_os_error());
+        return Err(map_signal_error(io::Error::last_os_error()));
     }
 
     Ok(())
@@ -30,17 +37,17 @@ pub fn send_signal(pid_fd: &AsyncFd<OwnedFd>, signal: libc::c_int) -> io::Result
 
 #[derive(Debug)]
 pub struct LinuxProcessHandle {
-    pub(crate) process_ref: ProcessRef
+    pub(crate) process_ref: ProcessRef,
 }
 
 #[async_trait::async_trait]
 impl ProcessControl for LinuxProcessHandle {
-    fn bind(metadata: ProcessMetadata) -> io::Result<Self> {
+    fn bind(metadata: ProcessMetadata) -> Result<Self, ProcessError> {
         let pid = metadata.pid;
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
 
         if fd < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(map_signal_error(io::Error::last_os_error()));
         }
 
         let fd = unsafe { OwnedFd::from_raw_fd(fd as libc::c_int) };
@@ -49,23 +56,23 @@ impl ProcessControl for LinuxProcessHandle {
         })
     }
 
-    fn kill(&self) -> Result<bool, ProcessError> {
+    fn kill(&self) -> Result<(), ProcessError> {
         send_signal(&self.process_ref, libc::SIGKILL)?;
-        Ok(true)
+        Ok(())
     }
 
-    fn terminate(&self) -> Result<bool, ProcessError> {
+    fn terminate(&self) -> Result<(), ProcessError> {
         send_signal(&self.process_ref, libc::SIGTERM)?;
-        Ok(true)
+        Ok(())
     }
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         if timeout.is_zero() {
-            match self.process_ref.try_io(Interest::READABLE, |_| Ok(())) {
+            return match self.process_ref.try_io(Interest::READABLE, |_| Ok(())) {
                 Ok(_) => {
-                    return Ok(true);
+                    Ok(true)
                 }
-                Err(_) => return Ok(false),
+                Err(_) => Ok(false),
             }
         }
 
@@ -87,8 +94,8 @@ impl ProcessControl for LinuxProcessHandle {
             .unwrap_or(Ok(false))
     }
 
-    fn check_permissions(&self) -> Result<bool, ProcessError> {
+    fn check_permissions(&self) -> Result<(), ProcessError> {
         send_signal(&self.process_ref, 0)?;
-        Ok(true)
+        Ok(())
     }
 }
