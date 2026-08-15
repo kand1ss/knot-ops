@@ -1,9 +1,9 @@
 use knot_client::ClientBuilder;
-use knot_client::process::{Process, ProcessControl};
 use knot_client::states::ConnectState;
 use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 #[cfg(unix)]
 use knot_core::consts::KNOT_SOCKET_FILE;
+use knot_sys::Process;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 use std::path::PathBuf;
@@ -11,6 +11,8 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 use tokio::time::sleep;
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Returns a system executable that can be kept alive long enough for the test.
 ///
@@ -93,8 +95,9 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
 
     let (daemon_path, args, expected_name) = fixture_process();
 
-    let process =
-        Process::spawn_with_args(&daemon_path, &args).expect("failed to spawn fixture process");
+    let process = Process::spawn_with_args(&daemon_path, &args)
+        .await
+        .expect("failed to spawn fixture process");
 
     let pid = process.pid();
     wait_until_process_running(pid).await;
@@ -133,7 +136,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
         other => {
             // Do not leak the fixture if the state machine unexpectedly
             // returns another state.
-            let _ = process.kill();
+            let _ = process.kill(DEFAULT_TIMEOUT).await;
 
             panic!("expected ConnectState::Hung, got {other:?}");
         }
@@ -144,6 +147,7 @@ async fn connect_returns_hung_for_running_process_with_invalid_ipc() {
     // KillHandle must terminate the real process and return a StaleHandle.
     let stale_handle = handle
         .kill()
+        .await
         .expect("kill should terminate the real process");
 
     wait_until_process_exits(pid).await;
