@@ -17,9 +17,16 @@ pub struct MacosProcessHandle {
 }
 
 impl MacosProcessHandle {
-    fn ensure_pid_not_reused(&self) -> io::Result<bool> {
-        let metadata = ProcessMetadata::extract(self.fingerprint.pid)?;
-        Ok(metadata == self.fingerprint)
+    fn ensure_pid_not_reused(&self) -> Result<(), ProcessError> {
+        match ProcessMetadata::extract(self.fingerprint.pid) {
+            Ok(metadata) if metadata == self.fingerprint => Ok(()),
+
+            Ok(_) => Err(ProcessError::Reused),
+
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Err(ProcessError::NotRunning),
+
+            Err(error) => Err(ProcessError::Io(error)),
+        }
     }
 
     fn check_identity(&self) -> Result<bool, ProcessError> {
@@ -51,18 +58,18 @@ impl ProcessControl for MacosProcessHandle {
     }
 
     fn kill(&self) -> Result<(), ProcessError> {
-        match self.ensure_pid_not_reused()? {
-            true => send_signal(self.fingerprint.pid, libc::SIGKILL).map_err(map_signal_error)?,
-            false => return Err(ProcessError::Reused),
-        }
+        self.ensure_pid_not_reused()?;
+
+        send_signal(self.fingerprint.pid, libc::SIGKILL).map_err(map_signal_error)?;
+
         Ok(())
     }
 
     fn terminate(&self) -> Result<(), ProcessError> {
-        match self.ensure_pid_not_reused()? {
-            true => send_signal(self.fingerprint.pid, libc::SIGTERM).map_err(map_signal_error)?,
-            false => return Err(ProcessError::Reused),
-        }
+        self.ensure_pid_not_reused()?;
+
+        send_signal(self.fingerprint.pid, libc::SIGTERM).map_err(map_signal_error)?;
+
         Ok(())
     }
 
@@ -95,10 +102,8 @@ impl ProcessControl for MacosProcessHandle {
     }
 
     fn check_permissions(&self) -> Result<(), ProcessError> {
-        match self.ensure_pid_not_reused()? {
-            true => send_signal(self.fingerprint.pid, 0).map_err(ProcessError::Io)?,
-            false => return Err(ProcessError::Reused),
-        }
+        self.ensure_pid_not_reused()?;
+        send_signal(self.fingerprint.pid, 0).map_err(map_signal_error)?;
         Ok(())
     }
 }
