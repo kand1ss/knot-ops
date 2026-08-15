@@ -296,8 +296,6 @@ async fn bind_succeeds_when_name_matches_case_insensitively() {
     wait_until_process_exits(pid).await;
 }
 
-
-
 #[cfg(unix)]
 #[tokio::test]
 async fn terminate_times_out_when_process_ignores_sigterm() {
@@ -313,7 +311,10 @@ async fn terminate_times_out_when_process_ignores_sigterm() {
 
     let elapsed = start.elapsed();
 
-    assert!(!result, "terminate() must return false when SIGTERM is ignored");
+    assert!(
+        !result,
+        "terminate() must return false when SIGTERM is ignored"
+    );
 
     let slack = Duration::from_millis(50);
     assert!(
@@ -325,7 +326,10 @@ async fn terminate_times_out_when_process_ignores_sigterm() {
         "terminate() took suspiciously long: elapsed={elapsed:?}"
     );
 
-    process.kill(timeout).await.expect("kill should succeed as cleanup");
+    process
+        .kill(timeout)
+        .await
+        .expect("kill should succeed as cleanup");
     wait_until_process_exits(process.pid()).await;
 }
 

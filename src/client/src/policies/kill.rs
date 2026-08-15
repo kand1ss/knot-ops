@@ -17,6 +17,9 @@ impl Default for KillPolicy {
 
 impl KillPolicy {
     pub fn new(graceful_timeout: Duration, force_timeout: Duration) -> Self {
-        Self { graceful_timeout, force_timeout }
+        Self {
+            graceful_timeout,
+            force_timeout,
+        }
     }
 }

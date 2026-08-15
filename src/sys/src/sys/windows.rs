@@ -13,7 +13,8 @@ use windows_sys::Win32::System::Threading::{
 
 pub fn map_signal_error(error: io::Error) -> ProcessError {
     match error.raw_os_error() {
-        Some(windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER) | Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND) => ProcessError::NotRunning,
+        Some(windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER)
+        | Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND) => ProcessError::NotRunning,
         _ => ProcessError::Io(error),
     }
 }

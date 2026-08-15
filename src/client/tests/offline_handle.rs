@@ -44,7 +44,12 @@ async fn test_launch_timeout_when_socket_never_appears() {
     let handle = create_handle(&temp_dir, fixture_binary());
 
     let result = handle.launch().await;
-    assert!(matches!(result, Err(ClientError::Daemon(DaemonLifecycleError::LaunchFailed { .. }))));
+    assert!(matches!(
+        result,
+        Err(ClientError::Daemon(
+            DaemonLifecycleError::LaunchFailed { .. }
+        ))
+    ));
 }
 
 #[tokio::test]

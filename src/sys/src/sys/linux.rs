@@ -82,9 +82,7 @@ impl ProcessControl for LinuxProcessHandle {
 
     async fn wait(&self, timeout: Duration) -> Result<bool, ProcessError> {
         if timeout.is_zero() {
-            return self
-                .poll_readable_now()
-                .map_err(map_signal_error);
+            return self.poll_readable_now().map_err(map_signal_error);
         }
 
         let wait_for_exit = async {
