@@ -1,7 +1,7 @@
-use crate::process::{Process, ProcessError};
 use crate::{errors::ClientError, handles::*, policies::*, states::ConnectState};
 use knot_core::consts::{KNOT_DAEMON_LOCK_FILE, KNOT_SOCKET_FILE};
 use knot_core::paths::{KNOT_DAEMON_BINARY_NAME, daemon_binary_path, daemon_runtime_dir};
+use knot_sys::{Process, ProcessError};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, instrument, trace, warn};
@@ -142,7 +142,7 @@ impl ClientBuilder {
 
                 Ok(ConnectState::Hung(KillHandle {
                     runtime_dir,
-                    process: Box::new(process),
+                    process,
                     daemon_path: self.daemon_path,
                     policy: Arc::clone(&policy),
                 }))
@@ -153,6 +153,20 @@ impl ClientBuilder {
                     pid = daemon_pid,
                     expected = %expected_name,
                     "process does not exist; treating as stale"
+                );
+
+                Ok(ConnectState::Stale(StaleHandle {
+                    runtime_dir,
+                    daemon_path: self.daemon_path,
+                    policy: Arc::clone(&policy),
+                }))
+            }
+
+            Err(ProcessError::Reused) => {
+                warn!(
+                    pid = daemon_pid,
+                    expected = %expected_name,
+                    "process exists but is not a knot daemon; treating as stale"
                 );
 
                 Ok(ConnectState::Stale(StaleHandle {
@@ -176,6 +190,17 @@ impl ClientBuilder {
                     daemon_path: self.daemon_path,
                     policy: Arc::clone(&policy),
                 }))
+            }
+
+            Err(ProcessError::Io(e)) => {
+                warn!(
+                    pid = daemon_pid,
+                    expected = %expected_name,
+                    "failed to bind to process: {}",
+                    e
+                );
+
+                Err(ClientError::Io(e))
             }
         }
     }

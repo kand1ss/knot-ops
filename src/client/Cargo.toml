@@ -12,6 +12,7 @@ tokio = { version = "1.52.3", features = ["fs", "io-util", "process", "rt-multi-
 knot-core = { path = "../core" }
 knot-proto = { path = "../proto" }
 knot-grpc = { path = "../grpc" }
+knot-sys = { path = "../sys" }
 tonic = { version = "0.14.6", features = ["channel"] }
 tracing = "0.1.44"
 sysinfo = "0.39.3"
@@ -22,10 +23,11 @@ thiserror = "2.0.18"
 windows-sys = "0.61.2"
 
 [target.'cfg(unix)'.dependencies]
+libc = "0.2.189"
 nix = { version = "0.31.3", features = ["signal"] }
 
 [[bin]]
-name = "process-fixture"
+name = "client-fixture"
 path = "tests/fixtures/process.rs"
 
 [dev-dependencies]
@@ -36,6 +38,3 @@ tokio = { version = "1.52.3", features = [
     "rt-multi-thread",
 ] }
 tempfile = "3.27.0"
-
-[target.'cfg(unix)'.dev-dependencies]
-libc = "0.2.189"

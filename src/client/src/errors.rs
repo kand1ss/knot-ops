@@ -1,6 +1,17 @@
 use knot_core::errors::PathResolutionError;
+use knot_sys::ProcessError;
 use std::path::PathBuf;
 use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("failed to send signal to process")]
+pub enum SignalError {
+    #[error("process error while sending signal: {0:?}")]
+    ProcessError(#[from] ProcessError),
+
+    #[error("process not responding to signal")]
+    NotResponding,
+}
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -126,8 +137,8 @@ impl WorkspaceError {
 
 #[derive(Debug, Error)]
 pub enum DaemonLifecycleError {
-    #[error("the knot background daemon is not running")]
-    NotRunning(PathBuf),
+    #[error("the knot daemon process encountered an error")]
+    ProcessError(#[from] ProcessError),
 
     #[error("failed to start the knot background daemon")]
     LaunchFailed {
@@ -140,10 +151,7 @@ pub enum DaemonLifecycleError {
 impl DaemonLifecycleError {
     pub fn context(&self) -> Option<String> {
         match self {
-            Self::NotRunning(path) => Some(format!(
-                "expected an active socket file at '{}', but it wasn't found",
-                path.display()
-            )),
+            Self::ProcessError(e) => Some(e.to_string()),
             Self::LaunchFailed {
                 binary_path,
                 message,
@@ -157,7 +165,7 @@ impl DaemonLifecycleError {
 
     pub fn solution(&self) -> Option<&'static str> {
         match self {
-            Self::NotRunning(_) => Some("start the daemon by running 'knot up'."),
+            Self::ProcessError(_) => Some("check the daemon logs for more details."),
             Self::LaunchFailed { .. } => {
                 Some("ensure the knot executable is present in your PATH or explicitly configured.")
             }

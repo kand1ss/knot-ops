@@ -1,8 +1,11 @@
+mod kill;
 mod timeout;
 
+pub use kill::*;
 pub use timeout::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct PolicyConfig {
-    pub(crate) timeout: TimeoutPolicy,
+    pub timeout: TimeoutPolicy,
+    pub kill: KillPolicy,
 }
