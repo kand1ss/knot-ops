@@ -5,7 +5,7 @@ use crate::metadata::ProcessMetadata;
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::time::Duration;
-use windows_sys::Win32::Foundation::GetLastError;
+use windows_sys::Win32::Foundation::{ERROR_INVALID_PARAMETER, ERROR_NOT_FOUND, GetLastError};
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
     TerminateProcess,
@@ -13,8 +13,9 @@ use windows_sys::Win32::System::Threading::{
 
 pub fn map_signal_error(error: io::Error) -> ProcessError {
     match error.raw_os_error() {
-        Some(windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER)
-        | Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND) => ProcessError::NotRunning,
+        Some(code) if code == ERROR_INVALID_PARAMETER as i32 || code == ERROR_NOT_FOUND as i32 => {
+            ProcessError::NotRunning
+        }
         _ => ProcessError::Io(error),
     }
 }
