@@ -10,15 +10,17 @@ use tracing::{info, instrument, trace, warn};
 
 use crate::errors::ProcessError;
 use crate::metadata::ProcessMetadata;
-use crate::traits::ProcessControl;
 use crate::sys;
+use crate::traits::ProcessControl;
 
 #[cfg(target_os = "linux")]
-pub type Process = PlatformProcess<sys::linux::LinuxProcessHandle>;
+pub type PlatformHandle = sys::linux::LinuxProcessHandle;
 #[cfg(windows)]
-pub type Process = PlatformProcess<sys::windows::WindowsProcessHandle>;
+pub type PlatformHandle = sys::windows::WindowsProcessHandle;
 #[cfg(target_os = "macos")]
-pub type Process = PlatformProcess<sys::macos::MacosProcessHandle>;
+pub type PlatformHandle = sys::macos::MacosProcessHandle;
+
+pub type Process = PlatformProcess<PlatformHandle>;
 
 #[derive(Debug)]
 pub struct PlatformProcess<T: ProcessControl> {
@@ -60,6 +62,10 @@ impl<T: ProcessControl> PlatformProcess<T> {
         Ok(metadata)
     }
 
+    pub fn new(handle: T, metadata: ProcessMetadata) -> Self {
+        Self { handle, metadata }
+    }
+
     #[instrument(
         skip_all,
         name = "process_bind",
@@ -72,11 +78,11 @@ impl<T: ProcessControl> PlatformProcess<T> {
         let metadata = Self::spawn_extract_metadata(pid).await?;
         Self::compare(&expected_name, &metadata.name).await?;
 
-        let handle = T::bind(metadata.clone()).map_err(ProcessError::Io)?;
+        let handle = T::bind(metadata.clone())?;
         let metadata_after = Self::spawn_extract_metadata(pid).await?;
 
         if metadata == metadata_after {
-            Ok(Self { handle, metadata })
+            Ok(Self::new(handle, metadata_after))
         } else {
             Err(ProcessError::Mismatch {
                 expected: expected_name,
