@@ -1,7 +1,7 @@
 use std::io;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct ProcessMetadata {
     pub pid: u32,
     pub name: String,
