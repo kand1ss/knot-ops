@@ -91,6 +91,29 @@ impl<T: ProcessControl> PlatformProcess<T> {
         }
     }
 
+    async fn bind_after_spawn(pid: u32, expected_name: String) -> Result<Self, ProcessError> {
+        const MAX_ATTEMPTS: u32 = 20;
+        const RETRY_DELAY: Duration = Duration::from_millis(5);
+
+        let mut last_err = None;
+
+        for attempt in 0..MAX_ATTEMPTS {
+            match Self::bind(pid, expected_name.clone()).await {
+                Ok(process) => return Ok(process),
+                Err(e @ ProcessError::Mismatch { .. }) | Err(e @ ProcessError::NotRunning) => {
+                    last_err = Some(e);
+                    if attempt + 1 < MAX_ATTEMPTS {
+                        tokio::time::sleep(RETRY_DELAY).await;
+                        continue;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(last_err.expect("loop always sets last_err before exhausting attempts"))
+    }
+
     pub async fn spawn(binary: &Path) -> Result<Self, ProcessError> {
         let args: [String; 0] = [];
         Self::spawn_with_args(binary, &args).await
@@ -123,7 +146,7 @@ impl<T: ProcessControl> PlatformProcess<T> {
         match child.id() {
             Some(id) => {
                 info!("process successfully spawned with PID: {}", id);
-                Ok(Self::bind(id, binary_name.to_string_lossy().to_string()).await?)
+                Ok(Self::bind_after_spawn(id, binary_name.to_string_lossy().to_string()).await?)
             }
             None => {
                 warn!("daemon process exited immediately after spawning.");
