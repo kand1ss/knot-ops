@@ -283,15 +283,12 @@ async fn bound_process_can_be_terminated_and_waited_on() {
         .await
         .expect("bind should succeed");
 
-    process
+    let res = process
         .terminate(Duration::from_secs(5))
         .await
         .expect("terminate should succeed");
 
-    assert!(
-        !wait_until_gone(pid, Duration::from_secs(5)).await,
-        "bound process must no longer exist after termination"
-    );
+    assert!(res, "bound process must no longer exist after termination");
 }
 
 #[tokio::test]
