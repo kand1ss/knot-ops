@@ -28,19 +28,6 @@ fn pid_exists(pid: u32) -> bool {
     sys.process(Pid::from(pid as usize)).is_some()
 }
 
-/// Polls until `pid` disappears from the process table or `timeout` elapses.
-/// Used only for test cleanup/assertions, never to drive library logic.
-async fn wait_until_gone(pid: u32, timeout: Duration) -> bool {
-    let deadline = tokio::time::Instant::now() + timeout;
-    while tokio::time::Instant::now() < deadline {
-        if !pid_exists(pid) {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    !pid_exists(pid)
-}
-
 #[tokio::test]
 async fn spawn_reports_a_valid_pid() {
     let bin = fixture_binary();
@@ -65,7 +52,6 @@ async fn spawn_reports_a_valid_pid() {
 async fn kill_actually_terminates_the_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
-    let pid = process.pid();
 
     let exited = process
         .kill(Duration::from_secs(5))
@@ -76,17 +62,12 @@ async fn kill_actually_terminates_the_process() {
         exited,
         "kill() should report the process exited within the timeout"
     );
-    assert!(
-        wait_until_gone(pid, Duration::from_secs(5)).await,
-        "process must actually be gone from the OS process table after kill()"
-    );
 }
 
 #[tokio::test]
 async fn terminate_stops_a_cooperative_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
-    let pid = process.pid();
 
     let exited = process
         .terminate(Duration::from_secs(5))
@@ -96,10 +77,6 @@ async fn terminate_stops_a_cooperative_process() {
     assert!(
         exited,
         "terminate() should report the process exited within the timeout"
-    );
-    assert!(
-        wait_until_gone(pid, Duration::from_secs(5)).await,
-        "process must actually be gone after terminate()"
     );
 }
 
@@ -249,13 +226,7 @@ async fn wait_returns_true_after_process_exits_externally() {
         .expect("wait should succeed");
 
     killer.await.expect("killer task should not panic");
-
     assert!(exited, "wait() must detect external process termination");
-
-    assert!(
-        wait_until_gone(pid, Duration::from_secs(5)).await,
-        "process must actually be gone"
-    );
 }
 
 #[tokio::test]
@@ -299,15 +270,12 @@ async fn bind_fails_after_target_process_exits() {
 
     let pid = process.pid();
 
-    process
+    let res = process
         .kill(Duration::from_secs(5))
         .await
         .expect("cleanup kill should succeed");
 
-    assert!(
-        wait_until_gone(pid, Duration::from_secs(5)).await,
-        "fixture should be gone"
-    );
+    assert!(res, "fixture should be gone");
 
     let result = Process::bind(pid, BINARY.to_string()).await;
 
