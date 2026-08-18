@@ -5,11 +5,8 @@ use crate::metadata::ProcessMetadata;
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::time::Duration;
-use windows_sys::Win32::Foundation::{ERROR_INVALID_PARAMETER, ERROR_NOT_FOUND, GetLastError};
-use windows_sys::Win32::System::Threading::{
-    OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
-    TerminateProcess,
-};
+use windows_sys::Win32::Foundation::{GetLastError, ERROR_INVALID_PARAMETER, ERROR_NOT_FOUND, STILL_ACTIVE};
+use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE};
 
 pub fn map_signal_error(error: io::Error) -> ProcessError {
     match error.raw_os_error() {
@@ -23,6 +20,22 @@ pub fn map_signal_error(error: io::Error) -> ProcessError {
 #[derive(Debug)]
 pub struct WindowsProcessHandle {
     pub(crate) handle: OwnedHandle,
+}
+
+impl WindowsProcessHandle {
+    fn is_process_exited(&self) -> io::Result<bool> {
+        let mut exit_code = 0u32;
+
+        let result = unsafe {
+            GetExitCodeProcess(self.handle.as_raw_handle(), &mut exit_code)
+        };
+
+        if result == 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(exit_code != STILL_ACTIVE as u32)
+    }
 }
 
 #[async_trait::async_trait]
@@ -48,11 +61,21 @@ impl ProcessControl for WindowsProcessHandle {
 
     fn kill(&self) -> Result<(), ProcessError> {
         let raw = self.handle.as_raw_handle();
-        let ok = unsafe { TerminateProcess(raw, 1) };
-        if ok == 0 {
-            return Err(map_signal_error(io::Error::last_os_error()));
+
+        let result = unsafe {
+            TerminateProcess(raw, 1)
+        };
+        if result != 0 {
+            return Ok(());
         }
-        Ok(())
+
+        let error = io::Error::last_os_error();
+
+        if self.is_process_exited().map_err(ProcessError::Io)? {
+            return Ok(());
+        }
+
+        Err(ProcessError::Io(error))
     }
 
     fn terminate(&self) -> Result<(), ProcessError> {
