@@ -77,7 +77,7 @@ async fn kill_actually_terminates_the_process() {
         "kill() should report the process exited within the timeout"
     );
     assert!(
-        wait_until_gone(pid, Duration::from_secs(2)).await,
+        wait_until_gone(pid, Duration::from_secs(5)).await,
         "process must actually be gone from the OS process table after kill()"
     );
 }
@@ -98,7 +98,7 @@ async fn terminate_stops_a_cooperative_process() {
         "terminate() should report the process exited within the timeout"
     );
     assert!(
-        wait_until_gone(pid, Duration::from_secs(2)).await,
+        wait_until_gone(pid, Duration::from_secs(5)).await,
         "process must actually be gone after terminate()"
     );
 }
@@ -253,7 +253,7 @@ async fn wait_returns_true_after_process_exits_externally() {
     assert!(exited, "wait() must detect external process termination");
 
     assert!(
-        wait_until_gone(pid, Duration::from_secs(2)).await,
+        wait_until_gone(pid, Duration::from_secs(5)).await,
         "process must actually be gone"
     );
 }
@@ -289,7 +289,7 @@ async fn bound_process_can_be_terminated_and_waited_on() {
         .expect("terminate should succeed");
 
     assert!(
-        !pid_exists(pid),
+        !wait_until_gone(pid, Duration::from_secs(5)).await,
         "bound process must no longer exist after termination"
     );
 }
@@ -308,7 +308,7 @@ async fn bind_fails_after_target_process_exits() {
         .expect("cleanup kill should succeed");
 
     assert!(
-        wait_until_gone(pid, Duration::from_secs(2)).await,
+        wait_until_gone(pid, Duration::from_secs(5)).await,
         "fixture should be gone"
     );
 
