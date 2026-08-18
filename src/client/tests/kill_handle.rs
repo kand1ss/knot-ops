@@ -289,7 +289,7 @@ async fn bind_succeeds_when_name_matches_case_insensitively() {
     #[cfg(unix)]
     let bound = Process::bind(pid, BINARY.to_uppercase().to_string()).await;
     #[cfg(windows)]
-    let bound = Process::bind(pid, "PING".to_string()).await;
+    let bound = Process::bind(pid, BINARY.to_uppercase().to_string()).await;
 
     assert!(bound.is_ok(), "case-insensitive match must succeed");
 
