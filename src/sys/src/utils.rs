@@ -1,8 +1,19 @@
 #[cfg(windows)]
 fn normalize_process_name(name: &str) -> &str {
-    name.strip_suffix(".exe")
-        .or_else(|| name.strip_suffix(".EXE"))
-        .unwrap_or(name)
+    const SUFFIX: &str = ".exe";
+
+    if name.len() <= SUFFIX.len() {
+        return name;
+    }
+
+    let suffix_start = name.len() - SUFFIX.len();
+    let (base, suffix) = name.split_at(suffix_start);
+
+    if suffix.eq_ignore_ascii_case(SUFFIX) {
+        base
+    } else {
+        name
+    }
 }
 
 #[cfg(not(windows))]
