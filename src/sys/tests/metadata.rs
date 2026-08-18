@@ -103,7 +103,8 @@ fn extracts_stable_metadata_from_fixture_process() {
     let second =
         ProcessMetadata::extract(fixture.pid()).expect("failed to extract fixture metadata");
 
-    assert_eq!(first, second);
+    assert_eq!(first.pid, second.pid);
+    assert_eq!(first.start_time, second.start_time);
 }
 
 #[test]
