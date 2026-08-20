@@ -39,6 +39,17 @@ fn pid_exists(pid: u32) -> bool {
     sys.process(Pid::from(pid as usize)).is_some()
 }
 
+/// Reads the OS-reported start_time for `pid`, if the process currently exists.
+fn pid_start_time(pid: u32) -> Option<u64> {
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[Pid::from(pid as usize)]),
+        false,
+        ProcessRefreshKind::nothing(),
+    );
+    sys.process(Pid::from(pid as usize)).map(|p| p.start_time())
+}
+
 #[tokio::test]
 #[serial(process_lifecycle)]
 async fn spawn_reports_a_valid_pid() {
@@ -290,8 +301,11 @@ async fn bound_process_can_be_terminated_and_waited_on() {
 #[serial(process_lifecycle)]
 async fn bind_fails_after_target_process_exits() {
     let bin = fixture_binary();
+
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
     let pid = process.pid();
+    let original_start_time =
+        pid_start_time(pid).expect("process must be observable immediately after spawn");
 
     let res = process
         .kill(Duration::from_secs(5))
@@ -300,11 +314,37 @@ async fn bind_fails_after_target_process_exits() {
     assert!(res, "fixture should be gone");
 
     let result = Process::bind(pid, BINARY.to_string()).await;
-    assert!(
-        matches!(
-            result,
-            Err(ProcessError::NotRunning) | Err(ProcessError::Mismatch { .. })
-        ),
-        "expected NotRunning or Mismatch (PID reuse), got {result:?}"
-    );
+
+    match result {
+        Err(ProcessError::NotRunning) => {
+            // Expected common case: PID is free, nothing occupies it.
+        }
+        Err(ProcessError::Mismatch { .. }) => {
+            // PID was reused by a process with a *different* name.
+            // Still proves our original process is gone.
+        }
+        Ok(bound) => {
+            // PID was reused by an unrelated process that *also* happens
+            // to be named "process-fixture" (spawned by another test
+            // running concurrently under this same tarpaulin/CI run).
+            // This is not a bug in the code under test — but we must
+            // prove it's genuinely a different process, not our original
+            // one somehow surviving the kill.
+            let reused_start_time = pid_start_time(pid);
+
+            assert_ne!(
+                reused_start_time,
+                Some(original_start_time),
+                "bind() succeeded with the *same* start_time as the killed process — \
+                 this means kill() did not actually terminate the original process \
+                 (pid={pid}, start_time={original_start_time})"
+            );
+
+            // Don't leak the unrelated process we just accidentally bound to.
+            let _ = bound.kill(Duration::from_secs(5)).await;
+        }
+        Err(other) => {
+            panic!("expected NotRunning, Mismatch, or Ok(reused pid), got {other:?}");
+        }
+    }
 }
