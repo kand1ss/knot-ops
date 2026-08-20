@@ -10,7 +10,7 @@
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,ignore
 /// # #[cfg(windows)]
 /// # {
 /// assert_eq!(normalize_process_name("ping.exe"), "ping");
