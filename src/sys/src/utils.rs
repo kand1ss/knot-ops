@@ -1,3 +1,24 @@
+/// Normalizes a process name for comparison on Windows.
+///
+/// Windows process names are commonly reported with the `.exe` executable
+/// suffix, while callers may provide the executable name without it. This
+/// function removes a trailing `.exe` suffix, case-insensitively, so both
+/// representations can be compared consistently.
+///
+/// Only a complete trailing `.exe` suffix is removed. Partial or embedded
+/// occurrences are preserved.
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(windows)]
+/// # {
+/// assert_eq!(normalize_process_name("ping.exe"), "ping");
+/// assert_eq!(normalize_process_name("PING.EXE"), "PING");
+/// assert_eq!(normalize_process_name("ping.Exe"), "ping");
+/// assert_eq!(normalize_process_name("myapp.exec"), "myapp.exec");
+/// # }
+/// ```
 #[cfg(windows)]
 fn normalize_process_name(name: &str) -> &str {
     const SUFFIX: &str = ".exe";
@@ -16,11 +37,53 @@ fn normalize_process_name(name: &str) -> &str {
     }
 }
 
+/// Returns whether two process names refer to the same executable name.
+///
+/// Process-name comparison is case-insensitive on all supported platforms.
+///
+/// On Windows, a trailing `.exe` suffix is ignored, allowing names such as
+/// `ping` and `ping.exe` to match. The suffix normalization is not applied on
+/// other platforms, where `.exe` has no special significance.
+///
+/// # Examples
+///
+/// ```
+/// assert!(process_names_match("sleep", "sleep"));
+/// assert!(process_names_match("Sleep", "sleep"));
+/// assert!(!process_names_match("sleep", "ping"));
+/// ```
+///
+/// On Windows:
+///
+/// ```text
+/// "ping.exe" == "ping"
+/// "PING.EXE" == "ping"
+/// ```
+///
+/// On non-Windows platforms:
+///
+/// ```text
+/// "myapp.exe" != "myapp"
+/// ```
+#[cfg(windows)]
+fn normalize_process_name(name: &str) -> &str {
+    // ...
+}
+
 #[cfg(not(windows))]
 fn normalize_process_name(name: &str) -> &str {
     name
 }
 
+/// Returns whether two process names match according to the platform-specific
+/// process-name comparison rules.
+///
+/// Comparison is case-insensitive on every supported platform. On Windows,
+/// the optional `.exe` suffix is ignored.
+///
+/// This function should be used instead of comparing process names directly
+/// when validating that an operating-system process corresponds to an
+/// expected executable name.
 pub fn process_names_match(actual: &str, expected: &str) -> bool {
     normalize_process_name(actual).eq_ignore_ascii_case(normalize_process_name(expected))
 }
