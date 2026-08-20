@@ -37,39 +37,6 @@ fn normalize_process_name(name: &str) -> &str {
     }
 }
 
-/// Returns whether two process names refer to the same executable name.
-///
-/// Process-name comparison is case-insensitive on all supported platforms.
-///
-/// On Windows, a trailing `.exe` suffix is ignored, allowing names such as
-/// `ping` and `ping.exe` to match. The suffix normalization is not applied on
-/// other platforms, where `.exe` has no special significance.
-///
-/// # Examples
-///
-/// ```
-/// assert!(process_names_match("sleep", "sleep"));
-/// assert!(process_names_match("Sleep", "sleep"));
-/// assert!(!process_names_match("sleep", "ping"));
-/// ```
-///
-/// On Windows:
-///
-/// ```text
-/// "ping.exe" == "ping"
-/// "PING.EXE" == "ping"
-/// ```
-///
-/// On non-Windows platforms:
-///
-/// ```text
-/// "myapp.exe" != "myapp"
-/// ```
-#[cfg(windows)]
-fn normalize_process_name(name: &str) -> &str {
-    // ...
-}
-
 #[cfg(not(windows))]
 fn normalize_process_name(name: &str) -> &str {
     name
