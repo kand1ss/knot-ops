@@ -4,6 +4,7 @@ use std::time::Duration;
 use knot_sys::{Process, ProcessError};
 use serial_test::serial;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use tokio::time::{sleep, timeout};
 
 const BINARY: &str = "process-fixture";
 
@@ -37,6 +38,47 @@ fn pid_exists(pid: u32) -> bool {
         ProcessRefreshKind::nothing(),
     );
     sys.process(Pid::from(pid as usize)).is_some()
+}
+
+/// Waits for the *specific* process identified by (pid, start_time) to
+/// exit. Checking start_time alongside pid is required: once the original
+/// process is reaped, the OS can immediately reassign `pid` to an
+/// unrelated process (e.g. another test's fixture), and a bare
+/// `sysinfo::process(pid)` lookup cannot tell the two apart.
+async fn wait_until_process_exits(pid: u32, expected_start_time: u64) {
+    timeout(Duration::from_secs(15), async move {
+        loop {
+            let is_original_process_still_alive = tokio::task::spawn_blocking(move || {
+                use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+                let sys_pid = Pid::from(pid as usize);
+                let mut system = System::new();
+
+                system.refresh_processes_specifics(
+                    ProcessesToUpdate::Some(&[sys_pid]),
+                    false,
+                    ProcessRefreshKind::nothing(),
+                );
+
+                match system.process(sys_pid) {
+                    // Same PID reporting a *different* start_time means the
+                    // original process is gone and the PID was recycled.
+                    Some(process) => process.start_time() == expected_start_time,
+                    None => false,
+                }
+            })
+            .await
+            .expect("process inspection task panicked");
+
+            if !is_original_process_still_alive {
+                return;
+            }
+
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("process did not terminate within timeout");
 }
 
 /// Reads the OS-reported start_time for `pid`, if the process currently exists.
@@ -312,6 +354,7 @@ async fn bind_fails_after_target_process_exits() {
         .await
         .expect("cleanup kill should succeed");
     assert!(res, "fixture should be gone");
+    wait_until_process_exits(pid, original_start_time).await;
 
     let result = Process::bind(pid, BINARY.to_string()).await;
 
