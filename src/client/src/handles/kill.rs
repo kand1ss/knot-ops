@@ -24,16 +24,37 @@ pub struct KillHandle<T: ProcessControl> {
 }
 
 impl<T: ProcessControl> KillHandle<T> {
-    /// Forcefully terminates the non-responsive process and purges orphaned environment artifacts.
+    /// Terminates the managed process and transitions the handle into the
+    /// stale state for subsequent environment cleanup.
     ///
-    /// This method uses the system process subsystem to locate the target PID and issues a direct
-    /// `SIGKILL` (or OS equivalent) signal to guarantee exit. Once the process is removed,
-    /// it wraps the environment details into an interim handle to wipe out stale socket files or locks.
+    /// The method first attempts graceful termination using the timeout
+    /// configured by [`KillPolicy::graceful_timeout`]. If the timeout is zero,
+    /// graceful termination is skipped.
+    ///
+    /// If the process does not terminate within the graceful timeout, a
+    /// forceful termination is requested using the platform-specific process
+    /// control implementation. The method then waits for the process to exit
+    /// for up to [`KillPolicy::force_timeout`].
+    ///
+    /// A process that is already not running is treated as successfully
+    /// terminated.
+    ///
+    /// If termination succeeds, this method does not perform environment
+    /// cleanup itself. Instead, it consumes the current handle and returns a
+    /// [`StaleHandle`] containing the information required for the subsequent
+    /// cleanup of the process environment.
     ///
     /// # Errors
     ///
-    /// Returns a [`ClientError`] if the system fails to scrub the remaining infrastructure files
-    /// during the transition into the offline state.
+    /// Returns [`SignalError::NotResponding`] if the process does not exit
+    /// within the configured forceful termination timeout.
+    ///
+    /// Returns [`SignalError::ProcessError`] if process control fails, for
+    /// example because of a process identity mismatch, PID reuse, or an
+    /// underlying operating-system error.
+    ///
+    /// A process that has already exited is treated as a successful
+    /// termination and does not produce an error.
     #[instrument(skip(self), fields(pid = self.process.pid(), dir = %self.runtime_dir.display()))]
     pub async fn kill(self) -> Result<StaleHandle, SignalError> {
         let grace_timeout = self.policy.kill.graceful_timeout;
