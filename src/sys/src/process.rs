@@ -130,32 +130,38 @@ impl<T: ProcessControl> PlatformProcess<T> {
         args: &[impl AsRef<OsStr>],
     ) -> Result<Self, ProcessError> {
         trace!("spawning process...");
-        let child = Command::new(binary)
+
+        let binary_name = binary
+            .file_name()
+            .ok_or_else(|| {
+                io::Error::other(format!(
+                    "failed to get file name: {}",
+                    binary.to_string_lossy()
+                ))
+            })?
+            .to_string_lossy()
+            .to_string();
+
+        let mut child = Command::new(binary)
             .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()?;
 
-        let binary_name = binary.file_name().ok_or_else(|| {
-            io::Error::other(format!(
-                "failed to get file name of binary: {}",
-                binary.to_string_lossy()
-            ))
-        })?;
-        match child.id() {
-            Some(id) => {
-                info!("process successfully spawned with PID: {}", id);
-                Ok(Self::bind_after_spawn(id, binary_name.to_string_lossy().to_string()).await?)
+        let id = child
+            .id()
+            .ok_or_else(|| io::Error::other("Failed to get child PID"))?;
+        info!("process successfully spawned with PID: {}", id);
+
+        tokio::spawn(async move {
+            match child.wait().await {
+                Ok(status) => trace!("process {} exited with status: {}", id, status),
+                Err(e) => warn!("failed to wait for process {}: {}", id, e),
             }
-            None => {
-                warn!("daemon process exited immediately after spawning.");
-                Err(io::Error::other(format!(
-                    "daemon process at '{}' exited immediately and yielded no PID. It might have crashed on startup.",
-                    binary.to_string_lossy()
-                )).into())
-            }
-        }
+        });
+
+        Self::bind_after_spawn(id, binary_name).await
     }
 
     pub async fn kill(&self, timeout: Duration) -> Result<bool, ProcessError> {
