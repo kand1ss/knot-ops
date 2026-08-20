@@ -72,7 +72,7 @@ async fn wait_until_process_exits(pid: u32, expected_start_time: u64) {
                         );
 
                         process.start_time() == expected_start_time
-                    },
+                    }
                     None => false,
                 }
             })
