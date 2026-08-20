@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package knot.commands.v1;
+
+// Severity assigned to a service log line.
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_TRACE = 1;
+  LOG_LEVEL_DEBUG = 2;
+  LOG_LEVEL_INFO = 3;
+  LOG_LEVEL_WARN = 4;
+  LOG_LEVEL_ERROR = 5;
+}
+
+// Selects service logs to return or follow.
+message LogsRequest {
+  // Workspace containing the requested services.
+  string workspace_id = 1;
+  // Optional service name; omitted to select all workspace services.
+  optional string name = 2;
+  // Keeps the stream open for new log lines after the initial tail.
+  bool follow = 3;
+  // Maximum number of historical lines to return before following.
+  uint32 tail = 4;
+}
+
+// A single log line emitted by a service runtime.
+message LogsResponse {
+  // Service that emitted the line.
+  string service = 1;
+  // Unmodified log message content.
+  string message = 2;
+  // Runtime-provided or inferred severity.
+  LogLevel level = 3;
+  // Timestamp of the log line, expressed as Unix milliseconds.
+  uint64 timestamp_ms = 4;
+}

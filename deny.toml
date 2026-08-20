@@ -17,6 +17,14 @@ multiple-versions = "warn"
 
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
+
+# TEMPORARY:
+# h2 0.4.16 fixes RUSTSEC-2026-0258 but currently breaks the
+# concurrent HTTP/2 multiplexing integration test.
+# Remove this exception when the upstream regression is fixed.
+ignore = [
+  "RUSTSEC-2026-0258",
+]
+
 unmaintained = "all"
-ignore = ["RUSTSEC-2025-0141"]
 

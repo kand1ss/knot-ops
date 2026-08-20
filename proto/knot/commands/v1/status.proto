@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package knot.commands.v1;
+
+import "knot/data/v1/info.proto";
+
+// Requests the latest daemon-known status for services in a workspace.
+message StatusRequest {
+  // Workspace containing the requested services.
+  string workspace_id = 1;
+  // Optional service names; an empty list selects all workspace services.
+  repeated string services = 2;
+}
+
+// Status information for the selected services.
+message StatusResponse {
+  // One entry for each service selected by the request.
+  repeated knot.data.v1.ServiceInfo services = 1;
+}

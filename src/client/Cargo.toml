@@ -8,20 +8,34 @@ repository.workspace = true
 
 [dependencies]
 async-trait = "0.1.89"
-tokio = { version = "1.52.3", features = ["fs", "io-util", "process"] }
-knot-transport = { path = "../transport" }
+tokio = { version = "1.52.3", features = ["fs", "io-util", "process", "rt-multi-thread"] }
 knot-core = { path = "../core" }
-knot-protocol = { path = "../protocol" }
+knot-proto = { path = "../proto" }
+knot-grpc = { path = "../grpc" }
+knot-sys = { path = "../sys" }
+tonic = { version = "0.14.6", features = ["channel"] }
 tracing = "0.1.44"
-directories = "6.0.0"
 sysinfo = "0.39.3"
+tokio-stream = "0.1.18"
+thiserror = "2.0.18"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = "0.61.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.189"
+nix = { version = "0.31.3", features = ["signal"] }
+
+[[bin]]
+name = "client-fixture"
+path = "tests/fixtures/process.rs"
 
 [dev-dependencies]
 tokio = { version = "1.52.3", features = [
-  "rt",
-  "macros",
-  "time",
-  "rt-multi-thread",
+    "rt",
+    "macros",
+    "time",
+    "rt-multi-thread",
 ] }
-serial_test = "3.5.0"
 tempfile = "3.27.0"
+serial_test = "3.5.0"

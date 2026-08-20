@@ -1,12 +1,6 @@
 
 [workspace]
-members = [
-  "src/core",
-  "src/client",
-  "src/transport",
-  "src/protocol",
-  "src/terminal",
-]
+members = ["src/core", "src/client", "src/terminal", "src/proto", "src/grpc", "src/sys"]
 resolver = "2"
 
 [workspace.package]

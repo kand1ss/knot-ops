@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package knot.commands.v1;
+
+import "knot/data/v1/workspace.proto";
+
+// Lightweight pre-command check that identifies a workspace and its current
+// configuration before workspace-scoped work begins.
+message HandshakeRequest {
+  // Stable local workspace identity.
+  knot.data.v1.WorkspaceMetadata metadata = 1;
+  // Current service configuration observed by the client.
+  knot.data.v1.WorkspaceManifest manifest = 2;
+}
+
+// Result of comparing the submitted workspace with daemon state.
+message HandshakeResponse {
+  // Whether the workspace is registered and synchronized.
+  knot.data.v1.WorkspaceState state = 1;
+  // Explanation when the workspace is not in sync.
+  DriftReason reason = 2;
+}
+
+// Reason the daemon considers a workspace not synchronized.
+enum DriftReason {
+  DRIFT_REASON_UNSPECIFIED = 0;
+  DRIFT_REASON_NEW_WORKSPACE = 1;
+  DRIFT_REASON_CONFIG_CHANGED = 2;
+}

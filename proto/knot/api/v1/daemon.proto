@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package knot.api.v1;
+
+import "knot/command/v1/command.proto";
+import "knot/commands/v1/down.proto";
+import "knot/commands/v1/handshake.proto";
+import "knot/commands/v1/logs.proto";
+import "knot/commands/v1/status.proto";
+import "knot/commands/v1/sync.proto";
+import "knot/commands/v1/up.proto";
+
+// Local daemon API for workspace synchronization and service orchestration.
+service DaemonService {
+  // Checks workspace registration and configuration freshness before a command.
+  rpc Handshake(knot.commands.v1.HandshakeRequest) returns (knot.commands.v1.HandshakeResponse);
+  // Reconciles workspace configuration and streams task progress.
+  rpc Sync(knot.commands.v1.SyncRequest) returns (stream knot.commands.v1.SyncResponse);
+
+  // Starts services and streams the execution plan and task progress.
+  rpc Up(knot.commands.v1.UpRequest) returns (stream knot.commands.v1.UpResponse);
+  // Stops services and streams the execution plan and task progress.
+  rpc Down(knot.commands.v1.DownRequest) returns (stream knot.commands.v1.DownResponse);
+  // Returns the daemon-known state of selected services.
+  rpc Status(knot.commands.v1.StatusRequest) returns (knot.commands.v1.StatusResponse);
+  // Returns historical logs and optionally streams future service logs.
+  rpc Logs(knot.commands.v1.LogsRequest) returns (stream knot.commands.v1.LogsResponse);
+
+  // Requests graceful cancellation of a running streamed command.
+  rpc CancelCommand(knot.command.v1.CancelCommandRequest) returns (knot.command.v1.CancelCommandResponse);
+}

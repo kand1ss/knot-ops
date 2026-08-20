@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package knot.data.v1;
+
+import "knot/config/v1/service.proto";
+
+// Service definitions currently declared by a workspace.
+message WorkspaceManifest {
+  // Complete set of services submitted for synchronization or handshake.
+  repeated knot.config.v1.ServiceSpec services = 1;
+}
+
+// Stable identity and local location of a workspace.
+message WorkspaceMetadata {
+  // Immutable identifier created when the workspace is initialized.
+  string workspace_id = 1;
+  // Path to the workspace root on the client host.
+  string root_path = 2;
+}
+
+// Synchronization state of a workspace as recorded by the daemon.
+enum WorkspaceState {
+  WORKSPACE_STATE_UNSPECIFIED = 0;
+  WORKSPACE_STATE_IN_SYNC = 1;
+  WORKSPACE_STATE_OUT_OF_SYNC = 2;
+  WORKSPACE_STATE_UNREGISTERED = 3;
+}

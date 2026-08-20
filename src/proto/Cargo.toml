@@ -1,0 +1,17 @@
+[package]
+name = "knot-proto"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+prost = "0.14.4"
+tonic = "0.14.6"
+tonic-prost = "0.14.6"
+
+[build-dependencies]
+protox = "0.9.1"
+tonic-build = "0.14.6"
+tonic-prost-build = "0.14.6"
