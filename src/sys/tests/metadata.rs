@@ -1,4 +1,5 @@
 use knot_sys::metadata::ProcessMetadata;
+use serial_test::serial;
 use std::io;
 use std::path::PathBuf;
 use std::process;
@@ -44,6 +45,7 @@ impl Drop for Fixture {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn extracts_current_process_metadata() {
     let pid = process::id();
 
@@ -56,6 +58,7 @@ fn extracts_current_process_metadata() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn returns_not_found_for_nonexistent_process() {
     // PID 0 has special OS semantics, so don't use it.
     // Use a value very unlikely to be allocated.
@@ -69,6 +72,7 @@ fn returns_not_found_for_nonexistent_process() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn extracts_stable_metadata_for_same_process() {
     let pid = process::id();
 
@@ -80,6 +84,7 @@ fn extracts_stable_metadata_for_same_process() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn extracts_metadata_from_fixture_process() {
     let fixture = Fixture::spawn();
 
@@ -92,6 +97,7 @@ fn extracts_metadata_from_fixture_process() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn extracts_stable_metadata_from_fixture_process() {
     let fixture = Fixture::spawn();
 
@@ -108,6 +114,7 @@ fn extracts_stable_metadata_from_fixture_process() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn extracted_pid_matches_requested_pid() {
     let pid = process::id();
 
@@ -117,6 +124,7 @@ fn extracted_pid_matches_requested_pid() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn extracts_process_identity_metadata() {
     let pid = process::id();
 
@@ -131,6 +139,7 @@ fn extracts_process_identity_metadata() {
 }
 
 #[test]
+#[serial(process_lifecycle)]
 fn metadata_becomes_unavailable_after_fixture_exits() {
     let mut fixture = Fixture::spawn();
     let pid = fixture.pid();

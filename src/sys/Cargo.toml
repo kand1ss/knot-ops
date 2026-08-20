@@ -25,3 +25,4 @@ libc = "0.2.189"
 
 [dev-dependencies]
 tokio = { version = "1.52.3", features = ["macros"] }
+serial_test = "3.5.0"

@@ -2,9 +2,20 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use knot_sys::{Process, ProcessError};
+use serial_test::serial;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 const BINARY: &str = "process-fixture";
+
+/// Multiplies timing-sensitive assertions to give slack under coverage
+/// instrumentation (tarpaulin) or contended/parallel CI runners.
+/// Set `CI_TIMING_SLACK=5` (or higher) in the tarpaulin CI profile.
+fn ci_slack_multiplier() -> u32 {
+    std::env::var("CI_TIMING_SLACK")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
+}
 
 /// Resolve the process-fixture binary produced by Cargo.
 ///
@@ -29,6 +40,7 @@ fn pid_exists(pid: u32) -> bool {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn spawn_reports_a_valid_pid() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin)
@@ -49,6 +61,7 @@ async fn spawn_reports_a_valid_pid() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn kill_actually_terminates_the_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -65,6 +78,7 @@ async fn kill_actually_terminates_the_process() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn terminate_stops_a_cooperative_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -81,6 +95,7 @@ async fn terminate_stops_a_cooperative_process() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn bind_rejects_a_name_mismatch() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -101,12 +116,14 @@ async fn bind_rejects_a_name_mismatch() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn bind_fails_for_a_pid_that_does_not_exist() {
     let result = Process::bind(u32::MAX, "anything".to_string()).await;
     assert!(matches!(result, Err(ProcessError::NotRunning)))
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn spawn_fails_for_a_nonexistent_binary() {
     let result = Process::spawn(Path::new("/definitely/does/not/exist/on/this/machine")).await;
     assert!(
@@ -116,6 +133,7 @@ async fn spawn_fails_for_a_nonexistent_binary() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn bind_returns_not_running_for_nonexistent_process() {
     let result = Process::bind(u32::MAX, "process-that-does-not-exist".into()).await;
     assert!(
@@ -126,6 +144,7 @@ async fn bind_returns_not_running_for_nonexistent_process() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn bind_succeeds_for_a_matching_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -149,6 +168,7 @@ async fn bind_succeeds_for_a_matching_process() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn wait_returns_false_when_process_is_still_running() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -180,6 +200,7 @@ async fn wait_returns_false_when_process_is_still_running() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn wait_zero_timeout_returns_immediately_for_running_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -196,7 +217,7 @@ async fn wait_zero_timeout_returns_immediately_for_running_process() {
     assert!(!exited, "a running process must not be reported as exited");
 
     assert!(
-        elapsed < Duration::from_millis(100),
+        elapsed < Duration::from_millis(100) * ci_slack_multiplier(),
         "zero-timeout wait took too long: {:?}",
         elapsed
     );
@@ -208,6 +229,7 @@ async fn wait_zero_timeout_returns_immediately_for_running_process() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn wait_returns_true_after_process_exits_externally() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -230,6 +252,7 @@ async fn wait_returns_true_after_process_exits_externally() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn terminate_then_wait_completes_process() {
     let bin = fixture_binary();
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
@@ -243,6 +266,7 @@ async fn terminate_then_wait_completes_process() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn bound_process_can_be_terminated_and_waited_on() {
     let bin = fixture_binary();
 
@@ -263,24 +287,24 @@ async fn bound_process_can_be_terminated_and_waited_on() {
 }
 
 #[tokio::test]
+#[serial(process_lifecycle)]
 async fn bind_fails_after_target_process_exits() {
     let bin = fixture_binary();
-
     let process = Process::spawn(&bin).await.expect("spawn should succeed");
-
     let pid = process.pid();
 
     let res = process
         .kill(Duration::from_secs(5))
         .await
         .expect("cleanup kill should succeed");
-
     assert!(res, "fixture should be gone");
 
     let result = Process::bind(pid, BINARY.to_string()).await;
-
     assert!(
-        matches!(result, Err(ProcessError::NotRunning)),
-        "expected NotRunning, got {result:?}"
+        matches!(
+            result,
+            Err(ProcessError::NotRunning) | Err(ProcessError::Mismatch { .. })
+        ),
+        "expected NotRunning or Mismatch (PID reuse), got {result:?}"
     );
 }
