@@ -46,7 +46,7 @@ fn pid_exists(pid: u32) -> bool {
 /// unrelated process (e.g. another test's fixture), and a bare
 /// `sysinfo::process(pid)` lookup cannot tell the two apart.
 async fn wait_until_process_exits(pid: u32, expected_start_time: u64) {
-    timeout(Duration::from_secs(15), async move {
+    timeout(Duration::from_secs(5) * ci_slack_multiplier(), async move {
         loop {
             let is_original_process_still_alive = tokio::task::spawn_blocking(move || {
                 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
@@ -63,7 +63,16 @@ async fn wait_until_process_exits(pid: u32, expected_start_time: u64) {
                 match system.process(sys_pid) {
                     // Same PID reporting a *different* start_time means the
                     // original process is gone and the PID was recycled.
-                    Some(process) => process.start_time() == expected_start_time,
+                    Some(process) => {
+                        eprintln!(
+                            "PID {pid}: name={:?}, status={:?}, start_time={}",
+                            process.name(),
+                            process.status(),
+                            process.start_time(),
+                        );
+
+                        process.start_time() == expected_start_time
+                    },
                     None => false,
                 }
             })
@@ -350,7 +359,7 @@ async fn bind_fails_after_target_process_exits() {
         pid_start_time(pid).expect("process must be observable immediately after spawn");
 
     let res = process
-        .kill(Duration::from_secs(5))
+        .kill(Duration::from_secs(5) * ci_slack_multiplier())
         .await
         .expect("cleanup kill should succeed");
     assert!(res, "fixture should be gone");
