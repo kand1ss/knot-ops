@@ -1,6 +1,7 @@
 version: v2
 modules:
-  - path: proto/
+  - path: proto
+    name: buf.build/kand1ss/knot-ops
 lint:
   use:
     - STANDARD
