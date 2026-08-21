@@ -1,0 +1,6 @@
+allow-branch = ["main", "release/*"]
+
+shared-version = true
+dependent-version = "upgrade"
+
+publish = false

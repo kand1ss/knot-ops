@@ -2,25 +2,29 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.gitignore'
+      - 'LICENSE'
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.gitignore'
+      - 'LICENSE'
 
 env:
   CARGO_TERM_COLOR: always
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint:
+  rust-lint:
     name: Format
     runs-on: ubuntu-latest
     steps:
@@ -34,9 +38,9 @@ jobs:
       - name: Check Format
         run: cargo fmt --all -- --check
 
-  check:
-    name: ${{ matrix.os }}
-    needs: lint
+  rust-clippy:
+    name: Clippy (${{ matrix.os }})
+    needs: rust-lint
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,17 +49,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-      
-      - name: Run Clippy
-        run: cargo clippy --all-targets --all-features --workspace -- -D warnings
-
+  rust-test:
+    name: Test (${{ matrix.os }})
+    needs: rust-lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Run Tests
         run: cargo test --all-features --workspace

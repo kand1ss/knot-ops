@@ -5,7 +5,7 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
-      - 'deny.toml'
+      - '../../.cargo/deny.toml'
       - '.github/workflows/deny.yml'
 
 jobs:

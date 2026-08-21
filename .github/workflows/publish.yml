@@ -8,8 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
+  build-rust:
+    name: Rust / ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,7 +32,6 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             asset_name: knot-windows-x86_64
-
     steps:
       - uses: actions/checkout@v7
 
@@ -50,19 +49,13 @@ jobs:
         uses: taiki-e/install-action@cross
 
       - name: Build
-        run: |
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
-          else
-            cargo build --release --target ${{ matrix.target }}
-          fi
         shell: bash
+        run: make build-rust TARGET=${{ matrix.target }} CROSS=${{ matrix.use_cross && '1' || '0' }}
 
       - name: Prepare Assets
         shell: bash
         run: |
           BIN_PATH="target/${{ matrix.target }}/release/knot"
-          
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             BIN_EXE="${BIN_PATH}.exe"
             7z a "${{ matrix.asset_name }}.zip" "./$BIN_EXE"
@@ -81,7 +74,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [ build-rust ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -96,18 +89,15 @@ jobs:
         id: changelog
         shell: bash
         run: |
-            VERSION="${GITHUB_REF_NAME#v}"
-            NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md)
-            
-            NOTES=$(echo "$NOTES" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-
-            if [ -z "$NOTES" ]; then
-                NOTES="Release $VERSION"
-            fi
-
-            echo "notes<<EOF" >> $GITHUB_OUTPUT
-            echo "$NOTES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md)
+          NOTES=$(echo "$NOTES" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $VERSION"
+          fi
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -117,7 +107,11 @@ jobs:
           generate_release_notes: true
 
       - name: Install cargo-release
-        uses: taiki-e/install-action@cargo-release
+        if: "!contains(github.ref_name, '-')"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-release
+
       - name: Publish to crates.io
         if: "!contains(github.ref_name, '-')"
-        run: cargo release publish --workspace --token ${{ secrets.CARGO_TOKEN }} --execute --no-confirm
+        run: make publish-rust CARGO_TOKEN=${{ secrets.CARGO_TOKEN }}
