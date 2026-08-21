@@ -6,12 +6,14 @@ on:
       - main
     paths:
       - 'proto/**'
+      - 'buf.yaml'
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     branches:
       - main
     paths:
       - 'proto/**'
+      - 'buf.yaml'
   delete:
 
 permissions:
