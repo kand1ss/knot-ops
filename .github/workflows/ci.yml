@@ -20,7 +20,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  lint:
+  rust-lint:
     name: Format
     runs-on: ubuntu-latest
     steps:
@@ -34,9 +34,9 @@ jobs:
       - name: Check Format
         run: cargo fmt --all -- --check
 
-  check:
+  rust-check:
     name: ${{ matrix.os }}
-    needs: lint
+    needs: rust-lint
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
