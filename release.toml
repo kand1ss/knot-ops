@@ -1,24 +1,6 @@
 allow-branch = ["main", "release/*"]
 
-sign-commit = true
-sign-tag = true
-
-consolidate-commits = true
 shared-version = true
 dependent-version = "upgrade"
 
-tag = true
-tag-name = "v{{version}}"
-tag-message = "Release Knot v{{version}}"
-
-push = true
-push-remote = "origin"
-
 publish = false
-
-pre-release-commit-message = "chore: pre-release checks and updates"
-pre-release-hook = [
-  "bash",
-  "-c",
-  "./scripts/check.sh && ./scripts/bump_docs.sh",
-]
