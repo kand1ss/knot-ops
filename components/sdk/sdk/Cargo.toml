@@ -1,5 +1,5 @@
 [package]
-name = "knot-client"
+name = "knot-sdk"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

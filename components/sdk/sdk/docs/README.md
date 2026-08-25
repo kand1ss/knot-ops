@@ -199,7 +199,7 @@ pub enum ClientError {
 The following example illustrates connecting to the daemon and navigating state handles to streaming execution events:
 
 ```rust
-use knot_client::{KnotClient, states::ConnectState, states::DaemonSession};
+use knot_sdk::{KnotClient, states::ConnectState, states::DaemonSession};
 use knot_proto::commands::v1::UpRequest;
 use knot_proto::data::v1::{WorkspaceManifest, WorkspaceMetadata};
 use tokio_stream::StreamExt;

@@ -1,5 +1,5 @@
-use knot_client::ClientBuilder;
-use knot_client::states::ConnectState;
+use knot_sdk::ClientBuilder;
+use knot_sdk::states::ConnectState;
 use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 #[cfg(unix)]
 use knot_core::consts::KNOT_SOCKET_FILE;

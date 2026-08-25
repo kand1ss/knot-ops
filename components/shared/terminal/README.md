@@ -23,7 +23,7 @@ It supports both interactive terminals with fancy live progress bars (using dyna
 
 ## Usage Examples
 
-Add the dependency to your `Cargo.toml`:
+Add the dependency to your `../../Cargo.toml`:
 ```toml
 [dependencies]
 knot-terminal = { path = "path/to/src/terminal" }

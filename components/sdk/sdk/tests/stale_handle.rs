@@ -1,5 +1,5 @@
-use knot_client::handles::StaleHandle;
-use knot_client::policies::PolicyConfig;
+use knot_sdk::handles::StaleHandle;
+use knot_sdk::policies::PolicyConfig;
 
 use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 

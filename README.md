@@ -1,11 +1,11 @@
-# ⚡ knot - _Service_ orchestrator
+# ⚡ knot - Service orchestrator
 
 > **One runtime. Every development service.**
 >
 > A local runtime for managing development services, regardless of how they are executed.
 
-![CI](https://github.com/kand1ss/knot-ops/actions/workflows/ci.yml/badge.svg)
-![CD](https://github.com/kand1ss/knot-ops/actions/workflows/cd.yml/badge.svg)
+![CI](https://github.com/kand1ss/knot-ops/actions/workflows/checks.yml/badge.svg)
+![CD](https://github.com/kand1ss/knot-ops/actions/workflows/publish.yml/badge.svg)
 [![codecov](https://codecov.io/github/kand1ss/knot-ops/graph/badge.svg?token=KHVGOUH2O4)](https://codecov.io/github/kand1ss/knot-ops)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
