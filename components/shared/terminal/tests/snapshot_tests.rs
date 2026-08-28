@@ -36,7 +36,7 @@ fn snapshot_name(base: &str, mode: TestMode) -> String {
 
 pub fn sanitized_output(term: &InMemoryTerm) -> String {
     let raw = term.contents();
-    let re_bracket_time = Regex::new(r"\[\s*\d+\s*\.\s*\d+\s*s\s*\]").unwrap();
+    let re_bracket_time = Regex::new(r"\[\s*\d+\s*\.\s*\d+\s*s\s*]").unwrap();
     let re_spinner = Regex::new(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]").unwrap();
     let step1 = re_bracket_time.replace_all(&raw, "[TIME]");
     let step2 = re_spinner.replace_all(&step1, "*");

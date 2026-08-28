@@ -528,7 +528,7 @@ mod tests {
                     .unwrap()
                     .join("\n"),
             };
-            let re_bracket_time = Regex::new(r"\[\d+\.\d+\s?s\]").unwrap();
+            let re_bracket_time = Regex::new(r"\[\d+\.\d+\s?s]").unwrap();
             let re_spinner = Regex::new(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]").unwrap();
             let step1 = re_bracket_time.replace_all(&raw, "[TIME]");
             let step2 = re_spinner.replace_all(&step1, "*");
