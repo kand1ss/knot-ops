@@ -602,7 +602,6 @@ dependencies = [
  "prost",
  "protox",
  "tonic",
- "tonic-build",
  "tonic-prost",
  "tonic-prost-build",
 ]
@@ -647,7 +646,6 @@ dependencies = [
 name = "knot-terminal"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "console",
  "indicatif",
  "insta",
