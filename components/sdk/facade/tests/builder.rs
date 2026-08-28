@@ -1,8 +1,8 @@
-use knot_sdk::ClientBuilder;
-use knot_sdk::states::ConnectState;
 use knot_core::consts::KNOT_DAEMON_LOCK_FILE;
 #[cfg(unix)]
 use knot_core::consts::KNOT_SOCKET_FILE;
+use knot_sdk::ClientBuilder;
+use knot_sdk::states::ConnectState;
 use knot_sys::Process;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
