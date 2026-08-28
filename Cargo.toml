@@ -2,7 +2,7 @@
 [workspace]
 members = [
     "components/sdk/core",
-    "components/sdk/sdk",
+    "components/sdk/facade",
     "components/shared/terminal",
     "components/sdk/proto",
     "components/sdk/grpc",
