@@ -22,7 +22,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not exists");
     let workspace_dir = PathBuf::from(manifest_dir)
         .parent()
-        .ok_or("manifest dir has no parent (expected src/proto -> src)")?
+        .ok_or("manifest dir has no parent")?
+        .parent()
+        .ok_or("manifest dir has no parent")?
         .parent()
         .ok_or("manifest dir grandparent missing (expected src -> workspace root)")?
         .to_path_buf();

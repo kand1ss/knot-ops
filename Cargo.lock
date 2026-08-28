@@ -566,28 +566,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "knot-client"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "knot-core",
- "knot-grpc",
- "knot-proto",
- "knot-sys",
- "libc",
- "nix",
- "serial_test",
- "sysinfo",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tonic",
- "tracing",
- "windows-sys",
-]
-
-[[package]]
 name = "knot-core"
 version = "0.1.0"
 dependencies = [
@@ -624,9 +602,30 @@ dependencies = [
  "prost",
  "protox",
  "tonic",
- "tonic-build",
  "tonic-prost",
  "tonic-prost-build",
+]
+
+[[package]]
+name = "knot-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "knot-core",
+ "knot-grpc",
+ "knot-proto",
+ "knot-sys",
+ "libc",
+ "nix",
+ "serial_test",
+ "sysinfo",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tracing",
+ "windows-sys",
 ]
 
 [[package]]
@@ -647,7 +646,6 @@ dependencies = [
 name = "knot-terminal"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "console",
  "indicatif",
  "insta",

@@ -1,5 +1,5 @@
-use knot_client::handles::KillHandle;
-use knot_client::policies::PolicyConfig;
+use knot_sdk::handles::KillHandle;
+use knot_sdk::policies::PolicyConfig;
 use knot_sys::{Process, ProcessError};
 
 use std::path::{Path, PathBuf};

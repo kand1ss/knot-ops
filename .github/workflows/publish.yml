@@ -53,28 +53,74 @@ jobs:
         run: make build-rust TARGET=${{ matrix.target }} CROSS=${{ matrix.use_cross && '1' || '0' }}
 
       - name: Prepare Assets
-        shell: bash
-        run: |
-          BIN_PATH="target/${{ matrix.target }}/release/knot"
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            BIN_EXE="${BIN_PATH}.exe"
-            7z a "${{ matrix.asset_name }}.zip" "./$BIN_EXE"
-            echo "ASSET_PATH=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
-          else
-            strip "$BIN_PATH"
-            tar -czf "${{ matrix.asset_name }}.tar.gz" -C "$(dirname "$BIN_PATH")" "$(basename "$BIN_PATH")"
-            echo "ASSET_PATH=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
-          fi
+        id: prepare
+        uses: ./.github/actions/prepare-assets
+        with:
+          asset_name: ${{ matrix.asset_name }}
+          bin_name: knot
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ env.ASSET_PATH }}
+          path: ${{ steps.prepare.outputs.asset_path }}
           if-no-files-found: error
 
+  build-go:
+    name: Go / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: components/knotd
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            asset_name: knotd-linux-x86_64
+          - name: Linux ARM64
+            os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            asset_name: knotd-linux-aarch64
+          - name: macOS ARM64
+            os: macos-latest
+            goos: macos
+            goarch: arm64
+            asset_name: knotd-macos-aarch64
+          - name: Windows x86_64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            asset_name: knotd-windows-x86_64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: make build-go GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
+
+      - name: Prepare Assets
+        id: prepare
+        uses: ./.github/actions/prepare-assets
+        with:
+          asset_name: ${{ matrix.asset_name }}
+          bin_name: knotd
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ steps.prepare.outputs.asset_path }}
+          if-no-files-found: error
+
+
   publish:
-    needs: [ build-rust ]
+    needs: [ build-rust, build-go ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -1,7 +1,7 @@
-use knot_client::errors::{ClientError, DaemonLifecycleError};
-use knot_client::handles::OfflineHandle;
-use knot_client::policies::PolicyConfig;
 use knot_core::consts::KNOT_SOCKET_FILE;
+use knot_sdk::errors::{ClientError, DaemonLifecycleError};
+use knot_sdk::handles::OfflineHandle;
+use knot_sdk::policies::PolicyConfig;
 
 use std::path::PathBuf;
 use std::sync::Arc;

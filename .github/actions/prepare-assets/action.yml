@@ -1,0 +1,32 @@
+name: 'Prepare release asset'
+description: 'Packages the built binary from bin/ into a platform-appropriate archive'
+
+inputs:
+  asset_name:
+    description: 'Base name for the output archive (without extension)'
+    required: true
+  bin_name:
+    description: 'Binary name inside bin/ (without extension)'
+    required: true
+
+outputs:
+  asset_path:
+    description: 'Path to the packaged asset, relative to workspace root'
+    value: ${{ steps.package.outputs.asset_path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: package
+      shell: bash
+      run: |
+        BIN_PATH="bin/${{ inputs.bin_name }}"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          BIN_EXE="${BIN_PATH}.exe"
+          7z a "${{ inputs.asset_name }}.zip" "./$BIN_EXE"
+          echo "asset_path=${{ inputs.asset_name }}.zip" >> "$GITHUB_OUTPUT"
+        else
+          strip "$BIN_PATH" 2>/dev/null || true
+          tar -czf "${{ inputs.asset_name }}.tar.gz" -C "$(dirname "$BIN_PATH")" "$(basename "$BIN_PATH")"
+          echo "asset_path=${{ inputs.asset_name }}.tar.gz" >> "$GITHUB_OUTPUT"
+        fi

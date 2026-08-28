@@ -6,16 +6,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  audit:
+  rust-audit:
+    name: Rust Audit
     runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
       pull-requests: write
-    
     steps:
       - uses: actions/checkout@v7
-      
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  go-audit:
+    name: Go Vulnerability Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1.1.0
+        with:
+          go-version-file: 'components/knotd/go.mod'
+          work-dir: 'components/knotd'
