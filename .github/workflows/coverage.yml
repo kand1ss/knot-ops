@@ -5,29 +5,90 @@ on:
     branches:
       - main
   pull_request:
-    paths:
-      - '**/src/**'
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '.github/workflows/**'
-      - '**/tests/**'
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
 
 jobs:
-  coverage:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/*.rs'
+              - 'proto/**'
+              - 'Makefile'
+              - '.github/workflows/coverage.yml'
+            go:
+              - '**/go.mod'
+              - '**/go.sum'
+              - '**/*.go'
+              - 'proto/**'
+              - 'Makefile'
+              - '.github/workflows/coverage.yml'
+
+  rust-coverage:
+    name: Rust Coverage
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.2
 
       - name: Install tarpaulin
         uses: taiki-e/install-action@cargo-tarpaulin
 
-      - name: Run coverage
+      - name: Run Rust coverage
         run: cargo tarpaulin --workspace --all-features --out Xml --output-dir ./
 
-      - name: Upload to Codecov
+      - name: Upload Rust coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cobertura.xml
+          flags: rust
+          fail_ci_if_error: false
+
+  go-coverage:
+    name: Go Coverage
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: components/knotd
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'components/knotd/go.mod'
+          cache: true
+          cache-dependency-path: 'components/knotd/go.sum'
+
+      - name: Run Go coverage
+        run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload Go coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: components/knotd/coverage.out
+          flags: go
+          fail_ci_if_error: false
