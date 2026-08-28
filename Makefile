@@ -49,6 +49,11 @@ build-rust:
 	else \
 		cargo build --release --target $(TARGET); \
 	fi
+	@mkdir -p $(BIN_DIR)
+	@SRC="target/$(TARGET)/release/knot"; \
+	[ -f "$$SRC.exe" ] && SRC="$$SRC.exe"; \
+	cp "$$SRC" "$(BIN_DIR)/$$(basename "$$SRC")"; \
+	echo "Copied $$SRC -> $(BIN_DIR)/$$(basename "$$SRC")"
 
 check-rust:
 	cargo check --workspace --all-targets --all-features

@@ -53,24 +53,17 @@ jobs:
         run: make build-rust TARGET=${{ matrix.target }} CROSS=${{ matrix.use_cross && '1' || '0' }}
 
       - name: Prepare Assets
-        shell: bash
-        run: |
-          BIN_PATH="target/${{ matrix.target }}/release/knot"
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            BIN_EXE="${BIN_PATH}.exe"
-            7z a "${{ matrix.asset_name }}.zip" "./$BIN_EXE"
-            echo "ASSET_PATH=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
-          else
-            strip "$BIN_PATH"
-            tar -czf "${{ matrix.asset_name }}.tar.gz" -C "$(dirname "$BIN_PATH")" "$(basename "$BIN_PATH")"
-            echo "ASSET_PATH=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
-          fi
+        id: prepare
+        uses: ./.github/actions/prepare-assets
+        with:
+          asset_name: ${{ matrix.asset_name }}
+          bin_name: knot
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ env.ASSET_PATH }}
+          path: ${{ steps.prepare.outputs.asset_path }}
           if-no-files-found: error
 
   build-go:
@@ -110,16 +103,19 @@ jobs:
           go-version-file: go.mod
       - name: Build
         run: make build-go GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
+
       - name: Prepare Assets
-        shell: bash
-        run: |
-          BIN_PATH="dist/knot-${{ matrix.goos }}-${{ matrix.goarch }}"
-          tar -czf "${{ matrix.asset_name }}.tar.gz" -C "$(dirname "$BIN_PATH")" "$(basename "$BIN_PATH")"
-          echo "ASSET_PATH=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v7
+        id: prepare
+        uses: ./.github/actions/prepare-assets
+        with:
+          asset_name: ${{ matrix.asset_name }}
+          bin_name: knotd
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ env.ASSET_PATH }}
+          path: ${{ steps.prepare.outputs.asset_path }}
           if-no-files-found: error
 
 
