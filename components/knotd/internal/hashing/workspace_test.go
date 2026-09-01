@@ -20,9 +20,9 @@ func TestCanonicalManifestHash_Consistency(t *testing.T) {
 	manifest1 := makeManifest(baseService("api"), baseService("worker"))
 	manifest2 := makeManifest(baseService("api"), baseService("worker"))
 
-	hash1 := CanonicalManifestHash(manifest1)
-	hash2 := CanonicalManifestHash(manifest1) // Repeated call on the exact same instance
-	hash3 := CanonicalManifestHash(manifest2) // Call on an identical manifest
+	hash1, _ := CanonicalManifestHash(manifest1)
+	hash2, _ := CanonicalManifestHash(manifest1) // Repeated call on the exact same instance
+	hash3, _ := CanonicalManifestHash(manifest2) // Call on an identical manifest
 
 	if hash1 != hash2 {
 		t.Errorf("repeated call returned a different hash: %s != %s", hash1, hash2)
@@ -42,8 +42,8 @@ func TestCanonicalManifestHash_WorkspaceAggregation(t *testing.T) {
 		manifestOrder1 := makeManifest(svcA, svcB)
 		manifestOrder2 := makeManifest(svcB, svcA)
 
-		hash1 := CanonicalManifestHash(manifestOrder1)
-		hash2 := CanonicalManifestHash(manifestOrder2)
+		hash1, _ := CanonicalManifestHash(manifestOrder1)
+		hash2, _ := CanonicalManifestHash(manifestOrder2)
 
 		if hash1 != hash2 {
 			t.Errorf("declaration order changed workspace hash: %s != %s", hash1, hash2)
@@ -57,8 +57,8 @@ func TestCanonicalManifestHash_WorkspaceAggregation(t *testing.T) {
 		svcBModified.Command = "node server.js"
 		manifestModified := makeManifest(svcA, svcBModified)
 
-		hash1 := CanonicalManifestHash(manifestOriginal)
-		hash2 := CanonicalManifestHash(manifestModified)
+		hash1, _ := CanonicalManifestHash(manifestOriginal)
+		hash2, _ := CanonicalManifestHash(manifestModified)
 
 		if hash1 == hash2 {
 			t.Error("modifying inner service field did not change workspace hash")
@@ -72,8 +72,8 @@ func TestCanonicalManifestHash_WorkspaceAggregation(t *testing.T) {
 		svcARenamed.Name = "auth-v2"
 		manifest2 := makeManifest(svcARenamed, svcB)
 
-		hash1 := CanonicalManifestHash(manifest1)
-		hash2 := CanonicalManifestHash(manifest2)
+		hash1, _ := CanonicalManifestHash(manifest1)
+		hash2, _ := CanonicalManifestHash(manifest2)
 
 		if hash1 == hash2 {
 			t.Error("changing service name did not change workspace hash")

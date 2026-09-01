@@ -37,9 +37,9 @@ func TestServiceHash_Consistency(t *testing.T) {
 	svc1 := baseService("api")
 	svc2 := copyService(svc1)
 
-	hash1 := ServiceHash(svc1)
-	hash2 := ServiceHash(svc1) // Repeated call on the exact same instance
-	hash3 := ServiceHash(svc2) // Call on an identical instance
+	hash1, _ := ServiceHash(svc1)
+	hash2, _ := ServiceHash(svc1) // Repeated call on the exact same instance
+	hash3, _ := ServiceHash(svc2) // Call on an identical instance
 
 	if hash1 != hash2 {
 		t.Errorf("repeated call returned a different hash: %x != %x", hash1, hash2)
@@ -52,7 +52,7 @@ func TestServiceHash_Consistency(t *testing.T) {
 // 2. Field mutation: Changing any field must result in a different hash.
 func TestServiceHash_FieldMutation(t *testing.T) {
 	base := baseService("api")
-	baseHash := ServiceHash(base)
+	baseHash, _ := ServiceHash(base)
 
 	tests := []struct {
 		name   string
@@ -101,7 +101,7 @@ func TestServiceHash_FieldMutation(t *testing.T) {
 			modified := copyService(base)
 			tt.modify(&modified)
 
-			newHash := ServiceHash(modified)
+			newHash, _ := ServiceHash(modified)
 			if newHash == baseHash {
 				t.Errorf("modifying field (%s) did not change service hash", tt.name)
 			}
