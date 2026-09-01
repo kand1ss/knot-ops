@@ -9,19 +9,3 @@ type ServiceSpec struct {
 	Depends   []values.ServiceName
 	Env       map[string]string
 }
-
-type ServiceStatus int
-
-const (
-	StatusStopped ServiceStatus = iota
-	StatusStarting
-	StatusRunning
-	StatusWaiting
-	StatusFailed
-)
-
-type ServiceState struct {
-	spec   ServiceSpec
-	status ServiceStatus
-	PID    uint32
-}
