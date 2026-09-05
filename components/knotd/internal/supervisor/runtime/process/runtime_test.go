@@ -16,29 +16,19 @@ import (
 )
 
 func TestHelperProcess(t *testing.T) {
-	var mode string
 	for _, arg := range os.Args {
 		switch arg {
-		case "MODE_EXIT_42", "MODE_IGNORE_TERM", "MODE_SLEEP":
-			mode = arg
+		case "MODE_EXIT_42":
+			os.Exit(42)
+
+		case "MODE_IGNORE_TERM":
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGTERM)
+			select {}
+
+		case "MODE_SLEEP":
+			time.Sleep(10 * time.Minute)
 		}
-	}
-
-	if mode == "" {
-		return
-	}
-
-	switch mode {
-	case "MODE_EXIT_42":
-		os.Exit(42)
-
-	case "MODE_IGNORE_TERM":
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGTERM)
-		select {}
-
-	case "MODE_SLEEP":
-		time.Sleep(10 * time.Minute)
 	}
 }
 
