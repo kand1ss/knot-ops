@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -16,31 +19,78 @@ import (
 )
 
 func TestHelperProcess(t *testing.T) {
+	var mode, readyFile string
+
 	for _, arg := range os.Args {
-		switch arg {
-		case "MODE_EXIT_42":
-			os.Exit(42)
-
-		case "MODE_IGNORE_TERM":
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGTERM)
-			select {}
-
-		case "MODE_SLEEP":
-			time.Sleep(10 * time.Minute)
+		switch {
+		case arg == "MODE_EXIT_42", arg == "MODE_IGNORE_TERM", arg == "MODE_SLEEP":
+			mode = arg
+		case strings.HasPrefix(arg, "READY_FILE="):
+			readyFile = strings.TrimPrefix(arg, "READY_FILE=")
 		}
+	}
+
+	switch mode {
+	case "MODE_EXIT_42":
+		os.Exit(42)
+
+	case "MODE_IGNORE_TERM":
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM)
+
+		// Only announce readiness AFTER Notify has taken effect. Without this,
+		// the parent has no way to know when the handler is actually installed,
+		// so a SIGTERM sent too early hits the default disposition (terminate)
+		// instead of being intercepted — which is exactly why the escalation
+		// path was flaky: the "graceful" signal was killing the process outright.
+		if readyFile != "" {
+			if err := os.WriteFile(readyFile, []byte("ready"), 0o644); err != nil {
+				panic(fmt.Sprintf("failed to write ready file: %v", err))
+			}
+		}
+		select {}
+
+	case "MODE_SLEEP":
+		time.Sleep(10 * time.Minute)
 	}
 }
 
 func helperSpec(mode string) domain.ServiceSpec {
+	return helperSpecWithArgs(mode)
+}
+
+// helperSpecWithReady builds a spec for MODE_IGNORE_TERM that writes readyFile
+// once the child has registered its SIGTERM handler. Callers MUST wait on that
+// file before sending any signal — see waitForHelperReady.
+func helperSpecWithReady(mode, readyFile string) domain.ServiceSpec {
+	return helperSpecWithArgs(mode, "READY_FILE="+readyFile)
+}
+
+func helperSpecWithArgs(mode string, extraArgs ...string) domain.ServiceSpec {
 	execPath, err := os.Executable()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get os.Executable: %v", err))
 	}
 
+	args := append([]string{mode}, extraArgs...)
 	return domain.ServiceSpec{
 		Name:    "test-service",
-		Command: fmt.Sprintf("exec %q -test.run=^TestHelperProcess$ -- %s", execPath, mode),
+		Command: fmt.Sprintf("%q -test.run=^TestHelperProcess$ -- %s", execPath, strings.Join(args, " ")),
+	}
+}
+
+// waitForHelperReady blocks until the helper process has confirmed (via
+// readyFile) that its signal handler is installed, or fails the test.
+// This replaces a fixed time.Sleep, which is a race by construction: no
+// sleep duration is provably sufficient under CI scheduling jitter, GOMAXPROCS
+// contention, or -race instrumentation overhead.
+func waitForHelperReady(t *testing.T, readyFile string) {
+	t.Helper()
+	if !waitUntil(2*time.Second, 5*time.Millisecond, func() bool {
+		_, statErr := os.Stat(readyFile)
+		return statErr == nil
+	}) {
+		t.Fatalf("timed out waiting for helper process to install its SIGTERM handler (ready file: %s)", readyFile)
 	}
 }
 
@@ -173,16 +223,21 @@ func TestProcessRuntime_Stop_Graceful(t *testing.T) {
 func TestProcessRuntime_Stop_EscalateToForceKill(t *testing.T) {
 	t.Parallel()
 
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support trapping/ignoring SIGTERM signals")
+	}
+
 	rt := process.NewProcessRuntime()
 	ctx := context.Background()
 
-	spec := helperSpec("MODE_IGNORE_TERM")
+	readyFile := filepath.Join(t.TempDir(), "ready")
+	spec := helperSpecWithReady("MODE_IGNORE_TERM", readyFile)
 	handle, err := rt.Start(ctx, spec)
 	if err != nil {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	waitForHelperReady(t, readyFile)
 
 	start := time.Now()
 	gracePeriod := 100 * time.Millisecond
@@ -206,9 +261,14 @@ func TestProcessRuntime_Stop_EscalateToForceKill(t *testing.T) {
 func TestProcessRuntime_Stop_ParentContextCanceled(t *testing.T) {
 	t.Parallel()
 
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support graceful SIGTERM grace periods")
+	}
+
 	rt := process.NewProcessRuntime()
 
-	spec := helperSpec("MODE_IGNORE_TERM")
+	readyFile := filepath.Join(t.TempDir(), "ready")
+	spec := helperSpecWithReady("MODE_IGNORE_TERM", readyFile)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	handle, err := rt.Start(ctx, spec)
@@ -216,7 +276,7 @@ func TestProcessRuntime_Stop_ParentContextCanceled(t *testing.T) {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	waitForHelperReady(t, readyFile)
 
 	errCh := make(chan error, 1)
 	go func() {

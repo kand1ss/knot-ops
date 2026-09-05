@@ -41,5 +41,15 @@ func killForceful(proc *os.Process) error {
 }
 
 func isProcessDone(err error) bool {
-	return errors.Is(err, os.ErrProcessDone)
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return true
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errors.Is(errno, syscall.ERROR_ACCESS_DENIED)
+	}
+	return false
 }
