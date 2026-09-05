@@ -27,6 +27,14 @@ message ServiceInfo {
 
   // Optional runtime and user-facing service details.
   optional ServiceMetadata metadata = 6;
+
+  // True when the running instance was started from a ServiceSpec whose
+  // hash no longer matches the currently declared manifest (workspace
+  // config changed since this service was last (re)started). Orthogonal
+  // to `status`: a service can be RUNNING and drifted simultaneously —
+  // conflating the two into one enum value would make "healthy but stale"
+  // indistinguishable from "healthy and current" to the client.
+  bool config_drifted = 7;
 }
 
 // Additional details about a service that do not determine its lifecycle state.
