@@ -19,7 +19,7 @@ import (
 // the same service. Folding the name into the hash would be redundant with
 // that key, not additive — the map key already answers "which service",
 // this hash answers "did its content change".
-func ServiceHash(svc domain.ServiceSpec) ([32]byte, error) {
+func ServiceHash(svc domain.ServiceSpec) (Hash, error) {
 	h := sha256.New()
 
 	writeString := func(s string) error {
