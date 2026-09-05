@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"testing"
@@ -40,7 +41,7 @@ func helperSpec(mode string) domain.ServiceSpec {
 
 	return domain.ServiceSpec{
 		Name:    "test-service",
-		Command: fmt.Sprintf("exec %q -test.run=^TestHelperProcess$ -- %s", execPath, mode),
+		Command: fmt.Sprintf("%q -test.run=^TestHelperProcess$ -- %s", execPath, mode),
 	}
 }
 
@@ -173,6 +174,10 @@ func TestProcessRuntime_Stop_Graceful(t *testing.T) {
 func TestProcessRuntime_Stop_EscalateToForceKill(t *testing.T) {
 	t.Parallel()
 
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support trapping/ignoring SIGTERM signals")
+	}
+
 	rt := process.NewProcessRuntime()
 	ctx := context.Background()
 
@@ -205,6 +210,10 @@ func TestProcessRuntime_Stop_EscalateToForceKill(t *testing.T) {
 
 func TestProcessRuntime_Stop_ParentContextCanceled(t *testing.T) {
 	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support graceful SIGTERM grace periods")
+	}
 
 	rt := process.NewProcessRuntime()
 
