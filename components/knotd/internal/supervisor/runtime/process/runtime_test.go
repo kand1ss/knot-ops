@@ -3,13 +3,56 @@ package process_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime/process"
 )
+
+func TestHelperProcess(t *testing.T) {
+	var mode string
+	for _, arg := range os.Args {
+		switch arg {
+		case "MODE_EXIT_42", "MODE_IGNORE_TERM", "MODE_SLEEP":
+			mode = arg
+		}
+	}
+
+	if mode == "" {
+		return
+	}
+
+	switch mode {
+	case "MODE_EXIT_42":
+		os.Exit(42)
+
+	case "MODE_IGNORE_TERM":
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM)
+		select {}
+
+	case "MODE_SLEEP":
+		time.Sleep(10 * time.Minute)
+	}
+}
+
+func helperSpec(mode string) domain.ServiceSpec {
+	execPath, err := os.Executable()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get os.Executable: %v", err))
+	}
+
+	return domain.ServiceSpec{
+		Name:    "test-service",
+		Command: fmt.Sprintf("exec %q -test.run=^TestHelperProcess$ -- %s", execPath, mode),
+	}
+}
 
 func newSpec(cmd string) domain.ServiceSpec {
 	return domain.ServiceSpec{
@@ -43,7 +86,7 @@ func TestProcessRuntime_Start_Validation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		spec := newSpec("sh -c 'exit 0'")
+		spec := helperSpec("MODE_SLEEP")
 		handle, err := rt.Start(ctx, spec)
 
 		if err == nil {
@@ -61,7 +104,7 @@ func TestProcessRuntime_Lifecycle_InspectAndExit(t *testing.T) {
 	rt := process.NewProcessRuntime()
 	ctx := t.Context()
 
-	spec := newSpec("sh -c 'exit 42'")
+	spec := helperSpec("MODE_EXIT_42")
 	handle, err := rt.Start(ctx, spec)
 	if err != nil {
 		t.Fatalf("failed to start process: %v", err)
@@ -71,7 +114,7 @@ func TestProcessRuntime_Lifecycle_InspectAndExit(t *testing.T) {
 		t.Errorf("expected valid PID in ID(), got: %q", handle.ID())
 	}
 
-	success := waitUntil(1*time.Second, 10*time.Millisecond, func() bool {
+	success := waitUntil(2*time.Second, 10*time.Millisecond, func() bool {
 		st, err := handle.Inspect(ctx)
 		if err != nil {
 			t.Errorf("Inspect returned error: %v", err)
@@ -112,7 +155,7 @@ func TestProcessRuntime_Stop_Graceful(t *testing.T) {
 	rt := process.NewProcessRuntime()
 	ctx := context.Background()
 
-	spec := newSpec("sleep 10")
+	spec := helperSpec("MODE_SLEEP")
 	handle, err := rt.Start(ctx, spec)
 	if err != nil {
 		t.Fatalf("failed to start process: %v", err)
@@ -143,7 +186,7 @@ func TestProcessRuntime_Stop_EscalateToForceKill(t *testing.T) {
 	rt := process.NewProcessRuntime()
 	ctx := context.Background()
 
-	spec := newSpec("sh -c 'trap \"\" TERM; while true; do sleep 0.1; done'")
+	spec := helperSpec("MODE_IGNORE_TERM")
 	handle, err := rt.Start(ctx, spec)
 	if err != nil {
 		t.Fatalf("failed to start process: %v", err)
@@ -175,7 +218,7 @@ func TestProcessRuntime_Stop_ParentContextCanceled(t *testing.T) {
 
 	rt := process.NewProcessRuntime()
 
-	spec := newSpec("sh -c 'trap \"\" TERM; while true; do sleep 0.1; done'")
+	spec := helperSpec("MODE_IGNORE_TERM")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	handle, err := rt.Start(ctx, spec)
@@ -190,7 +233,7 @@ func TestProcessRuntime_Stop_ParentContextCanceled(t *testing.T) {
 		errCh <- handle.Stop(ctx, 5*time.Second)
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	cancel()
 
 	select {
@@ -211,7 +254,7 @@ func TestProcessRuntime_Stop_IdempotencyAndConcurrency(t *testing.T) {
 	rt := process.NewProcessRuntime()
 	ctx := context.Background()
 
-	spec := newSpec("sleep 5")
+	spec := helperSpec("MODE_SLEEP")
 	handle, err := rt.Start(ctx, spec)
 	if err != nil {
 		t.Fatalf("failed to start process: %v", err)
