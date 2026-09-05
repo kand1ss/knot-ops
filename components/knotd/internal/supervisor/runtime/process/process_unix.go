@@ -50,7 +50,9 @@ func isProcessDone(err error) bool {
 	}
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
-		return errors.Is(errno, syscall.ESRCH)
+		// ESRCH: No such process (Linux/POSIX)
+		// EPERM: Operation not permitted
+		return errors.Is(errno, syscall.ESRCH) || errors.Is(errno, syscall.EPERM)
 	}
 	return false
 }
