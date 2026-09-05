@@ -11,7 +11,6 @@ import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
 )
 
-// assertRecordEqual делает глубокую сравнительную проверку двух структур Record
 func assertRecordEqual(t *testing.T, expected, got Record) {
 	t.Helper()
 
@@ -50,7 +49,7 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 		id := values.NewWorkspaceId()
 
 		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{
-			Name:      values.ServiceName("web"),
+			Name:      "web",
 			Command:   "go run main.go",
 			Directory: "/app",
 			Env:       map[string]string{"PORT": "8080"},
@@ -91,14 +90,14 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 		r := NewInMemoryWorkspaceRegistry()
 		id := values.NewWorkspaceId()
 
-		initialManifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: values.ServiceName("v1")})
+		initialManifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "v1"})
 		initialRecord, _ := BuildWorkspaceRecord(initialManifest)
 
-		updatedManifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: values.ServiceName("v2")})
+		updatedManifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "v2"})
 		updatedRecord, _ := BuildWorkspaceRecord(updatedManifest)
 
 		r.Commit(id, initialRecord)
-		r.Commit(id, updatedRecord) // Перезапись существующего ключа
+		r.Commit(id, updatedRecord)
 
 		got, ok := r.Get(id)
 		if !ok {
@@ -113,7 +112,7 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 		r := NewInMemoryWorkspaceRegistry()
 		var zeroID values.WorkspaceId
 
-		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: values.ServiceName("zero-svc")})
+		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "zero-svc"})
 		record, _ := BuildWorkspaceRecord(manifest)
 
 		r.Commit(zeroID, record)
@@ -136,7 +135,7 @@ func TestInMemoryWorkspaceRegistry_RaceAndConcurrency(t *testing.T) {
 		const goroutines = 20
 		const opsPerGoroutine = 100
 
-		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: values.ServiceName("concurrent-svc")})
+		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "concurrent-svc"})
 		record, _ := BuildWorkspaceRecord(manifest)
 
 		var wg sync.WaitGroup
@@ -171,7 +170,7 @@ func TestInMemoryWorkspaceRegistry_RaceAndConcurrency(t *testing.T) {
 		r := NewInMemoryWorkspaceRegistry()
 		targetID := values.NewWorkspaceId()
 
-		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: values.ServiceName("target-svc")})
+		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "target-svc"})
 		record, _ := BuildWorkspaceRecord(manifest)
 
 		const goroutines = 50
@@ -212,7 +211,7 @@ func TestInMemoryWorkspaceRegistry_Isolation(t *testing.T) {
 	r := NewInMemoryWorkspaceRegistry()
 	ids := make([]values.WorkspaceId, 10)
 
-	manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: values.ServiceName("iso-svc")})
+	manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "iso-svc"})
 	record, _ := BuildWorkspaceRecord(manifest)
 
 	for i := range ids {
