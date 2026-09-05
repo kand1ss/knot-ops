@@ -4,6 +4,10 @@ type WorkspaceManifest struct {
 	services []ServiceSpec
 }
 
+func NewWorkspaceManifest(services ...ServiceSpec) WorkspaceManifest {
+	return WorkspaceManifest{services: services}
+}
+
 func (w *WorkspaceManifest) Append(service ServiceSpec) {
 	for _, existingService := range w.services {
 		if existingService.Name == service.Name {
