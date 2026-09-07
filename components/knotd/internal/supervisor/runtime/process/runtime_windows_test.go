@@ -4,13 +4,48 @@ package process_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime/process"
 )
+
+// helperSpecWithPID builds a spec that writes the payload's own PID to
+// pidFile as soon as it starts, independent of whatever PID the runtime
+// itself is tracking (cmd.exe / sh). Use with waitForHelperPID to get the
+// real payload PID for out-of-band liveness checks after Stop().
+func helperSpecWithPID(mode, pidFile string) domain.ServiceSpec {
+	return helperSpecWithArgs(mode, "PID_FILE="+pidFile)
+}
+
+// waitForHelperPID blocks until the helper process has reported its own PID
+// via pidFile, and returns it. Fails the test on timeout or malformed content.
+func waitForHelperPID(t *testing.T, pidFile string) int {
+	t.Helper()
+
+	var content []byte
+	if !waitUntil(2*time.Second, 5*time.Millisecond, func() bool {
+		data, statErr := os.ReadFile(pidFile)
+		if statErr != nil || len(data) == 0 {
+			return false
+		}
+		content = data
+		return true
+	}) {
+		t.Fatalf("timed out waiting for helper process to report its pid (pid file: %s)", pidFile)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+	if err != nil {
+		t.Fatalf("helper process wrote malformed pid %q: %v", content, err)
+	}
+	return pid
+}
 
 func TestProcessRuntime_Stop_DoesNotOrphanRealPayload(t *testing.T) {
 	t.Parallel()
