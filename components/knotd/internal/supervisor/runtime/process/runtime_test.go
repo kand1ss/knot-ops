@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,7 +20,7 @@ import (
 )
 
 func TestHelperProcess(t *testing.T) {
-	var mode, readyFile string
+	var mode, readyFile, pidFile string
 
 	for _, arg := range os.Args {
 		switch {
@@ -27,6 +28,18 @@ func TestHelperProcess(t *testing.T) {
 			mode = arg
 		case strings.HasPrefix(arg, "READY_FILE="):
 			readyFile = strings.TrimPrefix(arg, "READY_FILE=")
+		case strings.HasPrefix(arg, "PID_FILE="):
+			pidFile = strings.TrimPrefix(arg, "PID_FILE=")
+		}
+	}
+
+	// Report our own PID before doing anything else. This is how a test can
+	// tell "the wrapper's PID" (cmd.exe / sh, tracked by the runtime) apart
+	// from "the PID that actually ran the payload" — the two are only
+	// guaranteed identical on unix, and only after the exec-prefix fix.
+	if pidFile != "" {
+		if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+			panic(fmt.Sprintf("failed to write pid file: %v", err))
 		}
 	}
 
@@ -66,6 +79,14 @@ func helperSpecWithReady(mode, readyFile string) domain.ServiceSpec {
 	return helperSpecWithArgs(mode, "READY_FILE="+readyFile)
 }
 
+// helperSpecWithPID builds a spec that writes the payload's own PID to
+// pidFile as soon as it starts, independent of whatever PID the runtime
+// itself is tracking (cmd.exe / sh). Use with waitForHelperPID to get the
+// real payload PID for out-of-band liveness checks after Stop().
+func helperSpecWithPID(mode, pidFile string) domain.ServiceSpec {
+	return helperSpecWithArgs(mode, "PID_FILE="+pidFile)
+}
+
 func helperSpecWithArgs(mode string, extraArgs ...string) domain.ServiceSpec {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -92,6 +113,30 @@ func waitForHelperReady(t *testing.T, readyFile string) {
 	}) {
 		t.Fatalf("timed out waiting for helper process to install its SIGTERM handler (ready file: %s)", readyFile)
 	}
+}
+
+// waitForHelperPID blocks until the helper process has reported its own PID
+// via pidFile, and returns it. Fails the test on timeout or malformed content.
+func waitForHelperPID(t *testing.T, pidFile string) int {
+	t.Helper()
+
+	var content []byte
+	if !waitUntil(2*time.Second, 5*time.Millisecond, func() bool {
+		data, statErr := os.ReadFile(pidFile)
+		if statErr != nil || len(data) == 0 {
+			return false
+		}
+		content = data
+		return true
+	}) {
+		t.Fatalf("timed out waiting for helper process to report its pid (pid file: %s)", pidFile)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+	if err != nil {
+		t.Fatalf("helper process wrote malformed pid %q: %v", content, err)
+	}
+	return pid
 }
 
 func newSpec(cmd string) domain.ServiceSpec {
