@@ -18,6 +18,14 @@ var ErrEmptyCommand = errors.New("process runtime: service command is empty")
 
 const forceKillTimeout = 5 * time.Second
 
+// processContainer is an opaque, platform-specific handle for whatever
+// mechanism a platform uses to bound a service's whole process tree, not
+// just the single PID exec.Cmd tracks. On unix it's unused (process-group
+// signaling needs no extra state). On Windows it wraps a Job Object handle
+// (see process_windows.go) — TerminateJobObject kills the entire tree in
+// one call regardless of how deep "cmd /C" spawned it.
+type processContainer any
+
 // instance is both the RunHandle and the sole owner of *exec.Cmd. It reaps
 // the child exactly once via a background goroutine started in Start — the
 // moment of death is observed directly through Wait(), never inferred by
@@ -27,6 +35,7 @@ type instance struct {
 	pid       int
 	startedAt time.Time
 	proc      *os.Process
+	container processContainer
 
 	mu       sync.Mutex
 	exited   bool
@@ -69,7 +78,7 @@ func (i *instance) Stop(ctx context.Context, grace time.Duration) error {
 	}
 
 	if grace > 0 {
-		if err := terminateGraceful(i.proc); err != nil && !isProcessDone(err) {
+		if err := terminateGraceful(i.proc, i.container); err != nil && !isProcessDone(err) {
 			return fmt.Errorf("process runtime: graceful terminate failed for pid %d: %w", i.pid, err)
 		}
 
@@ -90,7 +99,7 @@ func (i *instance) Stop(ctx context.Context, grace time.Duration) error {
 		}
 	}
 
-	if err := killForceful(i.proc); err != nil && !isProcessDone(err) {
+	if err := killForceful(i.proc, i.container); err != nil && !isProcessDone(err) {
 		return fmt.Errorf("process runtime: force kill failed for pid %d: %w", i.pid, err)
 	}
 
@@ -150,15 +159,31 @@ func (r *Runtime) Start(ctx context.Context, service domain.ServiceSpec) (runtim
 		return nil, fmt.Errorf("process runtime: failed to start service %q: %w", service.Name, err)
 	}
 
+	// Bind the process to whatever tree-scoped containment the platform
+	// offers (Job Object on Windows; a no-op on unix, where process-group
+	// signaling already covers the whole tree). If this fails, Stop() would
+	// silently degrade to "kill only the tracked PID" for this instance —
+	// the exact defect this mechanism exists to close — so treat it as a
+	// start failure rather than limping on with a service we can't
+	// guarantee we can fully tear down later.
+	container, err := attachToContainer(cmd)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		return nil, fmt.Errorf("process runtime: failed to contain service %q: %w", service.Name, err)
+	}
+
 	inst := &instance{
 		pid:       cmd.Process.Pid,
 		startedAt: time.Now(),
 		proc:      cmd.Process,
+		container: container,
 		done:      make(chan struct{}),
 	}
 
 	go func() {
 		err := cmd.Wait()
+		releaseContainer(inst.container)
 		inst.markExited(err)
 	}()
 
