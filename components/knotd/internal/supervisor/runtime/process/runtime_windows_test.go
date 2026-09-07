@@ -12,19 +12,6 @@ import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime/process"
 )
 
-// TestProcessRuntime_Stop_DoesNotOrphanRealPayload documents a known defect:
-// buildCommand on Windows runs the service through "cmd /C <command>", so
-// cmd.Process.Pid (what the runtime tracks and what terminateGraceful /
-// killForceful call proc.Kill() on) is cmd.exe's PID — not the payload's.
-// TerminateProcess against cmd.exe does not tear down its child process
-// tree, so the real payload keeps running, untracked, after Stop() reports
-// success.
-//
-// This test is EXPECTED TO FAIL against the current process_windows.go.
-// It exists to pin the defect down with a reproducible assertion instead of
-// leaving it as a comment, and to turn green once the wrapper-vs-payload
-// identity problem is fixed (e.g. via a Job Object that kills the whole
-// tree, or by resolving and signaling the actual child PID directly).
 func TestProcessRuntime_Stop_DoesNotOrphanRealPayload(t *testing.T) {
 	t.Parallel()
 

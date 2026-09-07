@@ -43,17 +43,28 @@ func buildCommand(service domain.ServiceSpec) *exec.Cmd {
 	return cmd
 }
 
+// attachToContainer is a no-op on unix: process-group signaling (see
+// terminateGraceful/killForceful below) already covers the whole tree
+// spawned under the shell, so there's no extra containment to set up.
+func attachToContainer(_ *exec.Cmd) (processContainer, error) {
+	return nil, nil
+}
+
+// releaseContainer is a no-op on unix — there's no container-side handle
+// to release; the process group itself needs no explicit cleanup.
+func releaseContainer(_ processContainer) {}
+
 // terminateGraceful signals the whole process group, not just the direct
 // child. Even with buildCommand's "exec" guaranteeing sh and the payload
 // share one PID, a payload that itself spawns children into this group
 // (rather than merely being sh-in-place-of) can still leave stragglers
 // behind — group-signal is defense in depth, not a workaround for the
 // PID-identity issue (that's handled in buildCommand now).
-func terminateGraceful(proc *os.Process) error {
+func terminateGraceful(proc *os.Process, _ processContainer) error {
 	return syscall.Kill(-proc.Pid, syscall.SIGTERM)
 }
 
-func killForceful(proc *os.Process) error {
+func killForceful(proc *os.Process, _ processContainer) error {
 	return syscall.Kill(-proc.Pid, syscall.SIGKILL)
 }
 
