@@ -12,7 +12,21 @@ import (
 )
 
 func buildCommand(service domain.ServiceSpec) *exec.Cmd {
-	cmd := exec.Command("sh", "-c", service.Command)
+	// "exec" forces sh to replace its own process image (execve) with the
+	// payload instead of relying on shell-implementation-defined behavior
+	// for whether a single simple command gets exec'd in place or forked.
+	// Without this, cmd.Process.Pid (and therefore cmd.Wait()'s reaping)
+	// tracks sh itself on shells/versions that fork rather than exec — so a
+	// group-wide SIGTERM kills the (unprotected) shell instantly, Wait()
+	// reports "exited", and the real payload silently survives as an
+	// untracked orphan. exec collapses shell and payload into one PID,
+	// making that ambiguity impossible.
+	//
+	// Trade-off: only the final exec'd command in service.Command actually
+	// runs — "exec a && b" never reaches b, since the process image is
+	// replaced before "&&" is evaluated. Fine for a single command + args;
+	// do not use compound shell scripts in ServiceSpec.Command.
+	cmd := exec.Command("sh", "-c", "exec "+service.Command)
 	cmd.Dir = service.Directory
 	cmd.Env = mergeEnv(os.Environ(), service.Env)
 
@@ -30,9 +44,11 @@ func buildCommand(service domain.ServiceSpec) *exec.Cmd {
 }
 
 // terminateGraceful signals the whole process group, not just the direct
-// child. service.Command runs through "sh -c", so the direct child is the
-// shell — signalling only its PID leaves the real payload process running
-// as an orphan after the shell exits.
+// child. Even with buildCommand's "exec" guaranteeing sh and the payload
+// share one PID, a payload that itself spawns children into this group
+// (rather than merely being sh-in-place-of) can still leave stragglers
+// behind — group-signal is defense in depth, not a workaround for the
+// PID-identity issue (that's handled in buildCommand now).
 func terminateGraceful(proc *os.Process) error {
 	return syscall.Kill(-proc.Pid, syscall.SIGTERM)
 }
