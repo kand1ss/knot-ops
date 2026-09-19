@@ -19,6 +19,10 @@ func NewWorkspaceManifest(services ...ServiceSpec) WorkspaceManifest {
 }
 
 func (w *WorkspaceManifest) Append(service ServiceSpec) {
+	if w.services == nil {
+		w.services = make(map[values.ServiceName]ServiceSpec)
+	}
+
 	w.services[service.Name] = service
 }
 
