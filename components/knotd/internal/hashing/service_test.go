@@ -108,3 +108,97 @@ func TestServiceHash_FieldMutation(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceHash_NoCollisions(t *testing.T) {
+	svcA := domain.ServiceSpec{
+		Command:   "run\x00directory=/tmp",
+		Directory: "/srv",
+	}
+
+	svcB := domain.ServiceSpec{
+		Command:   "run",
+		Directory: "/tmp\x00directory=/srv",
+	}
+
+	hashA, errA := ServiceHash(svcA)
+	if errA != nil {
+		t.Fatalf("failed to calculate hash for A: %v", errA)
+	}
+
+	hashB, errB := ServiceHash(svcB)
+	if errB != nil {
+		t.Fatalf("failed to calculate hash for B: %v", errB)
+	}
+
+	if hashA == hashB {
+		t.Fatalf("hash collision detected: distinct services produced identical hash %x", hashA)
+	}
+}
+
+func TestServiceHash_EnvNoCollisions(t *testing.T) {
+	tests := []struct {
+		name string
+		svcA domain.ServiceSpec
+		svcB domain.ServiceSpec
+	}{
+		{
+			name: "injection of zero byte and fake env key into value",
+			svcA: domain.ServiceSpec{
+				Env: map[string]string{
+					"FOO": "bar\x00env.BAZ=qux",
+				},
+			},
+			svcB: domain.ServiceSpec{
+				Env: map[string]string{
+					"FOO": "bar",
+					"BAZ": "qux",
+				},
+			},
+		},
+		{
+			name: "attempt to mimic length-prefix format inside value",
+			svcA: domain.ServiceSpec{
+				Env: map[string]string{
+					"FOO": "bar:7:env:BAZ:3:qux",
+				},
+			},
+			svcB: domain.ServiceSpec{
+				Env: map[string]string{
+					"FOO": "bar",
+					"BAZ": "qux",
+				},
+			},
+		},
+		{
+			name: "overlapping key-value boundaries with colon delimiter",
+			svcA: domain.ServiceSpec{
+				Env: map[string]string{
+					"A:B": "C",
+				},
+			},
+			svcB: domain.ServiceSpec{
+				Env: map[string]string{
+					"A": "B:C",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hashA, errA := ServiceHash(tt.svcA)
+			if errA != nil {
+				t.Fatalf("unexpected error hashing svcA: %v", errA)
+			}
+
+			hashB, errB := ServiceHash(tt.svcB)
+			if errB != nil {
+				t.Fatalf("unexpected error hashing svcB: %v", errB)
+			}
+
+			if hashA == hashB {
+				t.Errorf("collision detected in %q: distinct services produced identical hash %x", tt.name, hashA)
+			}
+		})
+	}
+}
