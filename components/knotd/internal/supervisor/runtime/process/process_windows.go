@@ -15,20 +15,22 @@ import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
 )
 
-func buildCommand(service domain.ServiceSpec) *exec.Cmd {
-	cmd := exec.Command("cmd", "/C", service.Command)
+func buildCommand(service domain.ServiceSpec) (*exec.Cmd, error) {
+	cmd := exec.Command("cmd.exe")
 	cmd.Dir = service.Directory
 	cmd.Env = mergeEnv(os.Environ(), service.Env)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CmdLine:       `cmd.exe /S /C "` + service.Command + `"`,
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
 	}
 
+	cmd.Args = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
 
-	return cmd
+	return cmd, nil
 }
 
 // windowsJob wraps the Job Object a service's process tree is assigned to.
