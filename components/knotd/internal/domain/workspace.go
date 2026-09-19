@@ -1,20 +1,25 @@
 package domain
 
+import "github.com/kand1ss/knot-ops/components/knotd/internal/values"
+
 type WorkspaceManifest struct {
-	services []ServiceSpec
+	services map[values.ServiceName]ServiceSpec
 }
 
 func NewWorkspaceManifest(services ...ServiceSpec) WorkspaceManifest {
-	return WorkspaceManifest{services: services}
+	manifest := WorkspaceManifest{
+		services: make(map[values.ServiceName]ServiceSpec, len(services)),
+	}
+
+	for _, service := range services {
+		manifest.Append(service)
+	}
+
+	return manifest
 }
 
 func (w *WorkspaceManifest) Append(service ServiceSpec) {
-	for _, existingService := range w.services {
-		if existingService.Name == service.Name {
-			return
-		}
-	}
-	w.services = append(w.services, service)
+	w.services[service.Name] = service
 }
 
 func (w *WorkspaceManifest) Get(name string) (ServiceSpec, bool) {
@@ -27,5 +32,9 @@ func (w *WorkspaceManifest) Get(name string) (ServiceSpec, bool) {
 }
 
 func (w *WorkspaceManifest) Services() []ServiceSpec {
-	return w.services
+	values := make([]ServiceSpec, 0, len(w.services))
+	for _, v := range w.services {
+		values = append(values, v)
+	}
+	return values
 }
