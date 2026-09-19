@@ -8,11 +8,7 @@ import (
 
 // Helper function to build WorkspaceManifest with given services.2*
 func makeManifest(services ...domain.ServiceSpec) domain.WorkspaceManifest {
-	var m domain.WorkspaceManifest
-	for _, s := range services {
-		m.Append(s)
-	}
-	return m
+	return domain.NewWorkspaceManifest(services...)
 }
 
 // 1. Consistency: Repeated calls on the same manifest or identical manifests return the same hash.
