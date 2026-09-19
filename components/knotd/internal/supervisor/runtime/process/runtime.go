@@ -153,7 +153,10 @@ func (r *Runtime) Start(ctx context.Context, service domain.ServiceSpec) (runtim
 		return nil, fmt.Errorf("process runtime: start aborted for service %q: %w", service.Name, err)
 	}
 
-	cmd := buildCommand(service)
+	cmd, err := buildCommand(service)
+	if err != nil {
+		return nil, fmt.Errorf("process runtime: failed to build command for service %q: %w", service.Name, err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("process runtime: failed to start service %q: %w", service.Name, err)

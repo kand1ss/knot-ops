@@ -4,14 +4,16 @@ package process
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	shellquote "github.com/kballard/go-shellquote"
 )
 
-func buildCommand(service domain.ServiceSpec) *exec.Cmd {
+func buildCommand(service domain.ServiceSpec) (*exec.Cmd, error) {
 	// "exec" forces sh to replace its own process image (execve) with the
 	// payload instead of relying on shell-implementation-defined behavior
 	// for whether a single simple command gets exec'd in place or forked.
@@ -26,7 +28,12 @@ func buildCommand(service domain.ServiceSpec) *exec.Cmd {
 	// runs — "exec a && b" never reaches b, since the process image is
 	// replaced before "&&" is evaluated. Fine for a single command + args;
 	// do not use compound shell scripts in ServiceSpec.Command.
-	cmd := exec.Command("sh", "-c", "exec "+service.Command)
+	args, err := shellquote.Split(service.Command)
+	if err != nil {
+		return nil, fmt.Errorf("invalid command line: %w", err)
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = service.Directory
 	cmd.Env = mergeEnv(os.Environ(), service.Env)
 
@@ -40,7 +47,7 @@ func buildCommand(service domain.ServiceSpec) *exec.Cmd {
 	cmd.Stderr = nil
 	cmd.Stdin = nil
 
-	return cmd
+	return cmd, nil
 }
 
 // attachToContainer is a no-op on unix: process-group signaling (see
