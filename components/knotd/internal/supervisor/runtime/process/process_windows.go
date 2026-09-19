@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -15,14 +16,28 @@ import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
 )
 
+// buildCommand prepares an exec.Cmd configured to run a service command on Windows.
+//
+// It sets SysProcAttr.CmdLine to `cmd.exe /S /C "<command>"` and clears cmd.Args to
+// bypass Go's default CommandLineToArgvW escaping, preventing quote-parsing errors
+// in cmd.exe.
+//
+// It also includes windows.CREATE_SUSPENDED in CreationFlags to pause execution
+// immediately after creation. This guarantees that attachToContainer can assign
+// the process to a Job Object before any child processes can be spawned, closing
+// the process-leak race condition.
 func buildCommand(service domain.ServiceSpec) (*exec.Cmd, error) {
+	if strings.TrimSpace(service.Command) == "" {
+		return nil, fmt.Errorf("command cannot be empty or whitespace-only")
+	}
+
 	cmd := exec.Command("cmd.exe")
 	cmd.Dir = service.Directory
 	cmd.Env = mergeEnv(os.Environ(), service.Env)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CmdLine:       `cmd.exe /S /C "` + service.Command + `"`,
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED,
 	}
 
 	cmd.Args = nil
@@ -96,6 +111,49 @@ func attachToContainer(cmd *exec.Cmd) (processContainer, error) {
 	}
 
 	return &windowsJob{handle: job}, nil
+}
+
+// resumeProcess resumes the execution of a suspended process identified by its PID.
+//
+// It takes a snapshot of all active system threads using the Windows Toolhelp32 API
+// (CreateToolhelp32Snapshot), locates the thread belonging to targetPID, opens a handle
+// to it with THREAD_SUSPEND_RESUME permissions, and invokes ResumeThread.
+//
+// This function should be called immediately after attachToContainer successfully
+// assigns the suspended cmd.exe process to a Job Object. Unpausing the process
+// guarantees that all future child processes spawned by cmd.exe will automatically
+// inherit the Job Object containment boundaries.
+func resumeProcess(pid int) error {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPTHREAD, 0)
+	if err != nil {
+		return fmt.Errorf("CreateToolhelp32Snapshot: %w", err)
+	}
+	defer windows.CloseHandle(snapshot)
+
+	var te windows.ThreadEntry32
+	te.Size = uint32(unsafe.Sizeof(te))
+
+	if err := windows.Thread32First(snapshot, &te); err != nil {
+		return fmt.Errorf("Thread32First: %w", err)
+	}
+
+	targetPID := uint32(pid)
+	for {
+		if te.OwnerProcessID == targetPID {
+			hThread, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, te.ThreadID)
+			if err == nil {
+				_, errResume := windows.ResumeThread(hThread)
+				_ = windows.CloseHandle(hThread)
+				if errResume == nil {
+					return nil
+				}
+			}
+		}
+		if err := windows.Thread32Next(snapshot, &te); err != nil {
+			break
+		}
+	}
+	return fmt.Errorf("failed to resume main thread for pid %d", pid)
 }
 
 // releaseContainer closes our handle to the Job Object once the tracked

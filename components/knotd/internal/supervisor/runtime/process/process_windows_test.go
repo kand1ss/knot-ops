@@ -1,14 +1,19 @@
+//go:build windows
+
 package process
 
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
 )
 
-func TestBuildCommand_WindowsQuotedPathRegression(t *testing.T) {
+func TestBuildCommand_Windows_QuotedPathAndSuspendedRegression(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	dirWithSpaces := filepath.Join(tmpDir, "path with spaces")
@@ -31,6 +36,7 @@ if "%~1"=="hello world" (
 	svcCommand := `"` + scriptPath + `" "hello world"`
 
 	svc := domain.ServiceSpec{
+		Name:      "test-service",
 		Command:   svcCommand,
 		Directory: tmpDir,
 	}
@@ -46,14 +52,36 @@ if "%~1"=="hello world" (
 	}
 
 	if len(cmd.Args) != 0 {
-		t.Errorf("expected cmd.Args to be empty, got: %v", cmd.Args)
+		t.Errorf("expected cmd.Args to be empty for raw CmdLine execution, got: %v", cmd.Args)
 	}
 
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("command failed to execute (exit code 1 regression): %v", err)
+	expectedFlags := uint32(syscall.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED)
+	if cmd.SysProcAttr.CreationFlags != expectedFlags {
+		t.Errorf("creation flags mismatch: got %x, want %x", cmd.SysProcAttr.CreationFlags, expectedFlags)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed starting suspended process: %v", err)
+	}
+
+	defer func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+
+	if _, err := os.Stat(pidFile); !os.IsNotExist(err) {
+		t.Fatalf("PID_FILE was created before resuming thread - process was not properly suspended")
+	}
+
+	if err := resumeProcess(cmd.Process.Pid); err != nil {
+		t.Fatalf("failed to resume process: %v", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("command failed after resume (exit code 1 regression): %v", err)
 	}
 
 	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
-		t.Errorf("PID_FILE was not created, script did not run properly")
+		t.Errorf("PID_FILE was not created, script did not run properly after resume")
 	}
 }

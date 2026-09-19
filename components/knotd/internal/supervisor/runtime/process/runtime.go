@@ -162,6 +162,11 @@ func (r *Runtime) Start(ctx context.Context, service domain.ServiceSpec) (runtim
 		return nil, fmt.Errorf("process runtime: failed to start service %q: %w", service.Name, err)
 	}
 
+	cleanup := func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}
+
 	// Bind the process to whatever tree-scoped containment the platform
 	// offers (Job Object on Windows; a no-op on unix, where process-group
 	// signaling already covers the whole tree). If this fails, Stop() would
@@ -171,9 +176,14 @@ func (r *Runtime) Start(ctx context.Context, service domain.ServiceSpec) (runtim
 	// guarantee we can fully tear down later.
 	container, err := attachToContainer(cmd)
 	if err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		cleanup()
 		return nil, fmt.Errorf("process runtime: failed to contain service %q: %w", service.Name, err)
+	}
+
+	if err := resumeProcess(cmd.Process.Pid); err != nil {
+		releaseContainer(container)
+		cleanup()
+		return nil, fmt.Errorf("process runtime: failed to resume service %q: %w", service.Name, err)
 	}
 
 	inst := &instance{
