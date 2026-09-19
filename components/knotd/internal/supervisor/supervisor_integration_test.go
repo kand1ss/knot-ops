@@ -1,5 +1,3 @@
-//go:build integration
-
 package supervisor_test
 
 import (
@@ -58,6 +56,14 @@ func startRealProcess(command string, args ...string) (*realOSProcessHandle, err
 	return h, nil
 }
 
+func wrapStartRealProcess(t *testing.T, command string, args ...string) *realOSProcessHandle {
+	h, err := startRealProcess(command, args...)
+	if err != nil {
+		t.Fatalf("Error when starting process: %s", err)
+	}
+	return h
+}
+
 func (h *realOSProcessHandle) ID() string { return h.id }
 
 func (h *realOSProcessHandle) Stop(_ context.Context, _ time.Duration) error {
@@ -97,7 +103,10 @@ func TestIntegration_Supervisor_DetectsRealProcessExit(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	sup := supervisor.NewSupervisor(reg, 20*time.Millisecond)
+	sup, err := supervisor.NewSupervisor(reg, 20*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Error when creating supervisor: %s", err)
+	}
 	ctx := t.Context()
 
 	go sup.Run(ctx)
@@ -145,7 +154,10 @@ func TestIntegration_Supervisor_KeepsRunningProcessUntilKilled(t *testing.T) {
 	}
 	_ = reg.Register(sh)
 
-	sup := supervisor.NewSupervisor(reg, 20*time.Millisecond)
+	sup, err := supervisor.NewSupervisor(reg, 20*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Error when creating supervisor: %s", err)
+	}
 	ctx := t.Context()
 
 	go sup.Run(ctx)
@@ -183,10 +195,10 @@ func TestIntegration_Supervisor_MultipleParallelProcesses(t *testing.T) {
 	wsID := values.NewWorkspaceId()
 	reg := runstate.NewInMemoryRuntimeRegistry()
 
-	h1, _ := startRealProcess("sh", "-c", "exit 1")
-	h2, _ := startRealProcess("sleep", "10")
+	h1 := wrapStartRealProcess(t, "sh", "-c", "exit 1")
+	h2 := wrapStartRealProcess(t, "sleep", "10")
 	defer func() { _ = h2.Stop(context.Background(), 0) }()
-	h3, _ := startRealProcess("sh", "-c", "exit 0")
+	h3 := wrapStartRealProcess(t, "sh", "-c", "exit 0")
 
 	_ = reg.Register(registry.ServiceHandle{Workspace: wsID, Service: "p1-fail", Handle: h1})
 	_ = reg.Register(registry.ServiceHandle{Workspace: wsID, Service: "p2-alive", Handle: h2})
@@ -194,7 +206,10 @@ func TestIntegration_Supervisor_MultipleParallelProcesses(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	sup := supervisor.NewSupervisor(reg, 15*time.Millisecond)
+	sup, err := supervisor.NewSupervisor(reg, 15*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Error when creating supervisor: %s", err)
+	}
 	ctx := t.Context()
 
 	go sup.Run(ctx)
@@ -231,7 +246,10 @@ func TestIntegration_Supervisor_DynamicProcessAddition_DetectsExit(t *testing.T)
 	wsID := values.NewWorkspaceId()
 	reg := runstate.NewInMemoryRuntimeRegistry()
 
-	sup := supervisor.NewSupervisor(reg, 15*time.Millisecond)
+	sup, err := supervisor.NewSupervisor(reg, 15*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Error when creating supervisor: %s", err)
+	}
 	ctx := t.Context()
 
 	go sup.Run(ctx)
@@ -279,7 +297,10 @@ func TestIntegration_Supervisor_DynamicProcessAddition_MonitorsAndReactsToTermin
 	wsID := values.NewWorkspaceId()
 	reg := runstate.NewInMemoryRuntimeRegistry()
 
-	sup := supervisor.NewSupervisor(reg, 15*time.Millisecond)
+	sup, err := supervisor.NewSupervisor(reg, 15*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Error when creating supervisor: %s", err)
+	}
 	ctx := t.Context()
 
 	go sup.Run(ctx)
@@ -325,7 +346,10 @@ func TestIntegration_Supervisor_ConcurrentDynamicRegistrations(t *testing.T) {
 	wsID := values.NewWorkspaceId()
 	reg := runstate.NewInMemoryRuntimeRegistry()
 
-	sup := supervisor.NewSupervisor(reg, 10*time.Millisecond)
+	sup, err := supervisor.NewSupervisor(reg, 10*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Error when creating supervisor: %s", err)
+	}
 	ctx := t.Context()
 
 	go sup.Run(ctx)

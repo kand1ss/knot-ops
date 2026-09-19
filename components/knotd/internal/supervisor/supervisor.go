@@ -2,11 +2,14 @@ package supervisor
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/registry"
 )
+
+var ErrNegativeValue = fmt.Errorf("negative value is provided but not supported")
 
 // Supervisor periodically inspects every handle currently tracked in
 // RuntimeRegistry and reacts to processes that have died. It does not
@@ -20,12 +23,16 @@ type Supervisor struct {
 	events          chan Event
 }
 
-func NewSupervisor(runtimes registry.RuntimeRegistry, inspectInterval time.Duration) *Supervisor {
+func NewSupervisor(runtimes registry.RuntimeRegistry, inspectInterval time.Duration) (*Supervisor, error) {
+	if inspectInterval <= 0 {
+		return nil, ErrNegativeValue
+	}
+
 	return &Supervisor{
 		runtimes:        runtimes,
 		inspectInterval: inspectInterval,
 		events:          make(chan Event, 64),
-	}
+	}, nil
 }
 
 // Events returns the read side of the event stream. Consumers (e.g. the
