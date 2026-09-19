@@ -41,7 +41,7 @@ func Combine(pairs []NamedHash) Hash {
 
 	h := sha256.New()
 	for _, p := range sorted {
-		_, err := fmt.Fprintf(h, "name=%s\x00hash=%s\x00", p.Name, p.Hash)
+		_, err := fmt.Fprintf(h, "name=%d:%s\x00hash=%s\x00", len(p.Name), p.Name, p.Hash)
 		if err != nil {
 			panic(err)
 		}

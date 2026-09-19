@@ -11,14 +11,12 @@ import (
 )
 
 // ServiceHash produces a deterministic content hash for a single service
-// definition. Field-terminated with \x00, same canonicalization discipline
-// as before — no field-boundary ambiguity from naive concatenation.
+// definition using length-prefixed key-value pairs to prevent field-boundary
+// hash collision ambiguities.
 //
 // Deliberately does NOT include svc.Name: the name is the *key* callers use
 // to look up and compare this hash against a previous manifest's hash for
-// the same service. Folding the name into the hash would be redundant with
-// that key, not additive — the map key already answers "which service",
-// this hash answers "did its content change".
+// the same service.
 func ServiceHash(svc domain.ServiceSpec) (Hash, error) {
 	h := sha256.New()
 
@@ -29,18 +27,22 @@ func ServiceHash(svc domain.ServiceSpec) (Hash, error) {
 		return nil
 	}
 
-	if err := writeString(fmt.Sprintf("command=%s\x00", svc.Command)); err != nil {
+	writeField := func(key, val string) error {
+		return writeString(fmt.Sprintf("%d:%s:%d:%s", len(key), key, len(val), val))
+	}
+
+	if err := writeField("command", svc.Command); err != nil {
 		return [32]byte{}, fmt.Errorf("failed hashing command: %w", err)
 	}
 
-	if err := writeString(fmt.Sprintf("directory=%s\x00", svc.Directory)); err != nil {
+	if err := writeField("directory", svc.Directory); err != nil {
 		return [32]byte{}, fmt.Errorf("failed hashing directory: %w", err)
 	}
 
 	depends := append([]values.ServiceName(nil), svc.Depends...)
 	sort.Slice(depends, func(i, j int) bool { return depends[i] < depends[j] })
 	for _, dep := range depends {
-		if err := writeString(fmt.Sprintf("depends=%s\x00", dep)); err != nil {
+		if err := writeField("depends", string(dep)); err != nil {
 			return [32]byte{}, fmt.Errorf("failed hashing depend %q: %w", dep, err)
 		}
 	}
@@ -51,7 +53,7 @@ func ServiceHash(svc domain.ServiceSpec) (Hash, error) {
 	}
 	sort.Strings(envKeys)
 	for _, k := range envKeys {
-		if err := writeString(fmt.Sprintf("env.%s=%s\x00", k, svc.Env[k])); err != nil {
+		if err := writeField("env:"+k, svc.Env[k]); err != nil {
 			return [32]byte{}, fmt.Errorf("failed hashing env key %q: %w", k, err)
 		}
 	}
