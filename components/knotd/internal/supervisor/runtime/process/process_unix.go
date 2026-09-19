@@ -7,30 +7,33 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
 	shellquote "github.com/kballard/go-shellquote"
 )
 
+// buildCommand prepares an *exec.Cmd to run a service on Unix systems.
+//
+// It parses service.Command via shellquote.Split to execute the binary directly,
+// bypassing `sh -c` to ensure exact PID tracking, eliminate shell-wrapper orphan
+// processes, and prevent shell injection risks.
+//
+// It also sets SysProcAttr.Setpgid = true to isolate the service in its own process
+// group, protecting it from terminal signals (SIGINT/SIGTERM) sent to the parent daemon.
 func buildCommand(service domain.ServiceSpec) (*exec.Cmd, error) {
-	// "exec" forces sh to replace its own process image (execve) with the
-	// payload instead of relying on shell-implementation-defined behavior
-	// for whether a single simple command gets exec'd in place or forked.
-	// Without this, cmd.Process.Pid (and therefore cmd.Wait()'s reaping)
-	// tracks sh itself on shells/versions that fork rather than exec — so a
-	// group-wide SIGTERM kills the (unprotected) shell instantly, Wait()
-	// reports "exited", and the real payload silently survives as an
-	// untracked orphan. exec collapses shell and payload into one PID,
-	// making that ambiguity impossible.
-	//
-	// Trade-off: only the final exec'd command in service.Command actually
-	// runs — "exec a && b" never reaches b, since the process image is
-	// replaced before "&&" is evaluated. Fine for a single command + args;
-	// do not use compound shell scripts in ServiceSpec.Command.
+	if strings.TrimSpace(service.Command) == "" {
+		return nil, fmt.Errorf("command cannot be empty or whitespace-only")
+	}
+
 	args, err := shellquote.Split(service.Command)
 	if err != nil {
 		return nil, fmt.Errorf("invalid command line: %w", err)
+	}
+
+	if len(args) == 0 {
+		return nil, fmt.Errorf("command line resolved to empty arguments")
 	}
 
 	cmd := exec.Command(args[0], args[1:]...)
@@ -55,6 +58,10 @@ func buildCommand(service domain.ServiceSpec) (*exec.Cmd, error) {
 // spawned under the shell, so there's no extra containment to set up.
 func attachToContainer(_ *exec.Cmd) (processContainer, error) {
 	return nil, nil
+}
+
+func resumeProcess(_ int) error {
+	return nil
 }
 
 // releaseContainer is a no-op on unix — there's no container-side handle
