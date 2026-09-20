@@ -6,8 +6,8 @@ import (
 	"io"
 	"sort"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 // ServiceHash produces a deterministic content hash for a single service

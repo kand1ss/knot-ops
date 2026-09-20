@@ -3,8 +3,8 @@ package hashing
 import (
 	"testing"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 // Helper function to create a base ServiceSpec for testing.

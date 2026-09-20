@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/values"
+import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 
 type ServiceSpec struct {
 	Name      values.ServiceName

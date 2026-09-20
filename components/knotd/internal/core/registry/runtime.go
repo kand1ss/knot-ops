@@ -1,9 +1,9 @@
 package registry
 
 import (
-	"github.com/kand1ss/knot-ops/components/knotd/internal/hashing"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/registry/runstate"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry/runstate"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 // RuntimeRegistry tracks live RunHandle instances per workspace/service.

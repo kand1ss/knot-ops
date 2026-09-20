@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 )
 
 type Status struct {

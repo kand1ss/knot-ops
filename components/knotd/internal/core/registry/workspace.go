@@ -1,8 +1,8 @@
 package registry
 
 import (
-	"github.com/kand1ss/knot-ops/components/knotd/internal/registry/workspace"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry/workspace"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 type WorkspaceRegistry interface {
