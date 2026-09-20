@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 func TestComputeDiff(t *testing.T) {

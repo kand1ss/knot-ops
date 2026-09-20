@@ -1,6 +1,6 @@
 package sync
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/values"
+import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 
 type Diff struct {
 	Added   []values.ServiceName

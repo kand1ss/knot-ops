@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/registry"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry"
 )
 
 var ErrNegativeValue = fmt.Errorf("negative value is provided but not supported")

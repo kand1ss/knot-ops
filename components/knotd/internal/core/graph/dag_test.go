@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 func equalUnordered[T comparable](a, b []T) bool {

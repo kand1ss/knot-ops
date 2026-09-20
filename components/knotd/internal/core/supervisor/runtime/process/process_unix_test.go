@@ -5,7 +5,7 @@ package process
 import (
 	"testing"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 )
 
 func TestBuildCommand_Unix_EmptyArgsRegression(t *testing.T) {

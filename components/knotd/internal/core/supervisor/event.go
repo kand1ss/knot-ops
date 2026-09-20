@@ -1,6 +1,6 @@
 package supervisor
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/registry/runstate"
+import "github.com/kand1ss/knot-ops/components/knotd/internal/core/registry/runstate"
 
 type EventKind int
 

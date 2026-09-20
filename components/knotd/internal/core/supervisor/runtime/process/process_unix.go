@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 	shellquote "github.com/kballard/go-shellquote"
 )
 
