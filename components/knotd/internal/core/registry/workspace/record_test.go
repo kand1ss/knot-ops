@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/hashing"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 func TestBuildWorkspaceRecord(t *testing.T) {

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/hashing"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 // mockRunHandle implements runtime.RunHandle for testing purposes.

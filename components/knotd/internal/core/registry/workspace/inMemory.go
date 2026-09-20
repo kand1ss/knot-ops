@@ -3,7 +3,7 @@ package workspace
 import (
 	"sync"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 type InMemoryWorkspaceRegistry struct {

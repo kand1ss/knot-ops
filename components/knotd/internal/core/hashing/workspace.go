@@ -1,7 +1,7 @@
 package hashing
 
 import (
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 )
 
 // CanonicalManifestHash builds the whole-workspace hash from per-service

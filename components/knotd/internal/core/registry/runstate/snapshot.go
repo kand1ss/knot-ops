@@ -1,7 +1,9 @@
 package runstate
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/hashing"
-import "github.com/kand1ss/knot-ops/components/knotd/internal/values"
+import (
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
 
 type RuntimeSnapshot struct {
 	Workspace values.WorkspaceId
