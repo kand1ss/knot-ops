@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/registry"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/registry/runstate"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry/runstate"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 type realOSProcessHandle struct {

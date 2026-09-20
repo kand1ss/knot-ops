@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime"
 )
 
 var ErrEmptyCommand = errors.New("process runtime: service command is empty")

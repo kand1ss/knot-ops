@@ -3,8 +3,8 @@ package graph
 import (
 	"errors"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/values"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 var ErrCycleDetected = errors.New("cycle detected in dependency graph")
