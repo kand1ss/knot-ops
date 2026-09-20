@@ -2,6 +2,19 @@ package domain
 
 import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 
+type WorkspaceMetadata struct {
+	workspaceId   values.WorkspaceId
+	workspacePath string
+}
+
+type WorkspaceState int
+
+const (
+	WorkspaceStateInSync = iota
+	WorkspaceStateOutOfSync
+	WorkspaceStateUnregistered
+)
+
 type WorkspaceManifest struct {
 	services map[values.ServiceName]ServiceSpec
 }
