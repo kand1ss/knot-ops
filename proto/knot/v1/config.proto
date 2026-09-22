@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package knot.config.v1;
+package knot.v1;
 
 // Declarative configuration for one service in a workspace manifest.
 message ServiceSpec {
@@ -14,4 +14,10 @@ message ServiceSpec {
   repeated string depends = 4;
   // Environment variables supplied to the service process.
   map<string, string> env = 5;
+}
+
+// Service definitions currently declared by a workspace.
+message WorkspaceManifest {
+  // Complete set of services submitted for synchronization or handshake.
+  repeated ServiceSpec services = 1;
 }

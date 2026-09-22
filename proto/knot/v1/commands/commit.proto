@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package knot.v1.commands;
+
+import "knot/v1/config.proto";
+
+// Requests commit the manifest observed by the client.
+message CommitRequest {
+  // Immutable identifier created when the workspace is initialized.
+  string workspace_id = 1;
+  // Current service configuration that becomes the synchronization input.
+  knot.v1.WorkspaceManifest manifest = 2;
+}
+
+// Final result for a commit command.
+message CommitResponse {
+  // Services present in the submitted manifest but absent from daemon state.
+  repeated string services_added = 1;
+  // Services removed from daemon state because they are absent from the manifest.
+  repeated string services_removed = 2;
+  // Services whose definitions changed since the previous commit.
+  repeated string services_changed = 3;
+}

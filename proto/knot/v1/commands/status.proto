@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package knot.commands.v1;
+package knot.v1.commands;
 
-import "knot/data/v1/info.proto";
+import "knot/v1/data/info.proto";
 
 // Requests the latest daemon-known status for services in a workspace.
 message StatusRequest {
@@ -15,5 +15,5 @@ message StatusRequest {
 // Status information for the selected services.
 message StatusResponse {
   // One entry for each service selected by the request.
-  repeated knot.data.v1.ServiceInfo services = 1;
+  repeated knot.v1.data.ServiceInfo services = 1;
 }
