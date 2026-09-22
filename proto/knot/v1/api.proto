@@ -2,14 +2,14 @@ syntax = "proto3";
 
 package knot.v1;
 
-import "knot/v1/execution/execution.proto";
 import "knot/v1/commands/commit.proto";
-import "knot/v1/commands/sync.proto";
 import "knot/v1/commands/down.proto";
 import "knot/v1/commands/handshake.proto";
 import "knot/v1/commands/logs.proto";
 import "knot/v1/commands/status.proto";
+import "knot/v1/commands/sync.proto";
 import "knot/v1/commands/up.proto";
+import "knot/v1/execution/execution.proto";
 
 // Local daemon API for workspace synchronization and service orchestration.
 service DaemonService {
