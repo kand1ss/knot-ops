@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package knot.v1;
+package knot.v1.config;
 
 // Declarative configuration for one service in a workspace manifest.
 message ServiceSpec {

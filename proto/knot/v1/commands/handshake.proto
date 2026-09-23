@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/config.proto";
+import "knot/v1/config/config.proto";
 
 // Lightweight pre-command check that identifies a workspace and its current
 // configuration before workspace-scoped work begins.
@@ -10,7 +10,7 @@ message HandshakeRequest {
   // Immutable identifier created when the workspace is initialized.
   string workspace_id = 1;
   // Current service configuration observed by the client.
-  knot.v1.WorkspaceManifest manifest = 2;
+  knot.v1.config.WorkspaceManifest manifest = 2;
 }
 
 // Result of comparing the submitted workspace with daemon state.

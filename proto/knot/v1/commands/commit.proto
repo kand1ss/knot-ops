@@ -2,14 +2,14 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/config.proto";
+import "knot/v1/config/config.proto";
 
 // Requests commit the manifest observed by the client.
 message CommitRequest {
   // Immutable identifier created when the workspace is initialized.
   string workspace_id = 1;
   // Current service configuration that becomes the synchronization input.
-  knot.v1.WorkspaceManifest manifest = 2;
+  knot.v1.config.WorkspaceManifest manifest = 2;
 }
 
 // Final result for a commit command.
