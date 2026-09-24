@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/command/command.proto";
+import "knot/v1/execution/execution.proto";
 
 // Stops all services in a workspace or the requested subset.
 message DownRequest {
@@ -15,13 +15,13 @@ message DownRequest {
 // Server-streamed progress and terminal state for a Down command.
 message DownResponse {
   oneof event {
-    knot.v1.command.ExecutionPlan plan = 1;
+    knot.v1.execution.ExecutionPlan plan = 1;
 
-    knot.v1.command.TaskStarting task_starting = 2;
-    knot.v1.command.TaskSuccess task_success = 3;
-    knot.v1.command.TaskFailed task_failed = 4;
-    knot.v1.command.TaskSkipped task_skipped = 5;
-    knot.v1.command.TaskCancelled task_cancelled = 6;
+    knot.v1.execution.TaskStarting task_starting = 2;
+    knot.v1.execution.TaskSuccess task_success = 3;
+    knot.v1.execution.TaskFailed task_failed = 4;
+    knot.v1.execution.TaskSkipped task_skipped = 5;
+    knot.v1.execution.TaskCancelled task_cancelled = 6;
 
     DownDone down_done = 7;
     DownCancelled down_cancelled = 8;

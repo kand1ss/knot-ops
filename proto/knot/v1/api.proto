@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package knot.v1;
 
-import "knot/v1/command/command.proto";
+import "knot/v1/execution/execution.proto";
 import "knot/v1/commands/commit.proto";
 import "knot/v1/commands/down.proto";
 import "knot/v1/commands/handshake.proto";
@@ -24,8 +24,8 @@ service DaemonService {
   // Returns the daemon-known state of selected services.
   rpc Status(knot.v1.commands.StatusRequest) returns (knot.v1.commands.StatusResponse);
   // Returns historical logs and optionally streams future service logs.
-  rpc Logs(knot.v1.commands.LogsRequest) returns (knot.v1.commands.LogsResponse);
+  rpc Logs(knot.v1.commands.LogsRequest) returns (stream knot.v1.commands.LogsResponse);
 
   // Requests graceful cancellation of a running streamed command.
-  rpc CancelExecution(knot.v1.command.CancelExecutionRequest) returns (knot.v1.command.CancelExecutionResponse);
+  rpc CancelExecution(knot.v1.execution.CancelExecutionRequest) returns (knot.v1.execution.CancelExecutionResponse);
 }

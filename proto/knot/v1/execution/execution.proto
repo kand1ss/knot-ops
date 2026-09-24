@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package knot.v1.command;
+package knot.v1.execution;
 
 // The first event emitted by a long-running execution. It describes all work
 // before execution starts so clients can render stable progress UI.
@@ -78,7 +78,7 @@ message CancelExecutionRequest {
 // Immediate acknowledgement of a cancellation request. Rollback and final
 // command state continue on the original command event stream.
 message CancelExecutionResponse {
-  // True when an active execution matching command_id was found.
+  // True when an active execution matching execution_id was found.
   bool cancelled = 1;
   // Result code explaining the cancellation state.
   Code code = 2;
