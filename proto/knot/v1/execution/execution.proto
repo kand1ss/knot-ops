@@ -1,10 +1,20 @@
 syntax = "proto3";
 
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:proto/knot/v1/command/command.proto
+>>>>>>> 4b176e0 (refactor: rename `Command` model to `Execution`)
 <<<<<<<< HEAD:proto/knot/v1/execution/execution.proto
 package knot.v1.execution;
 ========
 package knot.v1.command;
 >>>>>>>> d2d7b53 (refactor(api): refactor api to be more logic and consistent):proto/knot/v1/command/command.proto
+<<<<<<< HEAD
+=======
+========
+package knot.v1.execution;
+>>>>>>>> 4b176e0 (refactor: rename `Command` model to `Execution`):proto/knot/v1/execution/execution.proto
+>>>>>>> 4b176e0 (refactor: rename `Command` model to `Execution`)
 
 // The first event emitted by a long-running execution. It describes all work
 // before execution starts so clients can render stable progress UI.
@@ -82,11 +92,21 @@ message CancelExecutionRequest {
 // Immediate acknowledgement of a cancellation request. Rollback and final
 // command state continue on the original command event stream.
 message CancelExecutionResponse {
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:proto/knot/v1/command/command.proto
+>>>>>>> 4b176e0 (refactor: rename `Command` model to `Execution`)
 <<<<<<<< HEAD:proto/knot/v1/execution/execution.proto
   // True when an active execution matching execution_id was found.
 ========
   // True when an active execution matching command_id was found.
 >>>>>>>> d2d7b53 (refactor(api): refactor api to be more logic and consistent):proto/knot/v1/command/command.proto
+<<<<<<< HEAD
+=======
+========
+  // True when an active execution matching execution_id was found.
+>>>>>>>> 4b176e0 (refactor: rename `Command` model to `Execution`):proto/knot/v1/execution/execution.proto
+>>>>>>> 4b176e0 (refactor: rename `Command` model to `Execution`)
   bool cancelled = 1;
   // Result code explaining the cancellation state.
   Code code = 2;
