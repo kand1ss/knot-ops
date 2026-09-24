@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package knot.v1.commands;
+
+// Request to reconcile the runtime state of a workspace with its committed state.
+message SyncRequest {
+  // Identifier of the target workspace to synchronize.
+  string workspace_id = 1;
+}
+
+// Event or summary describing changes applied during state reconciliation.
+message SyncResponse {
+  // Names of newly started services that were introduced in the committed state.
+  repeated string services_added = 1;
+  // Names of services that were stopped and removed because they are absent from the committed state.
+  repeated string services_removed = 2;
+  // Names of services whose runtime state or configuration was reloaded in-place.
+  repeated string services_changed = 3;
+}
