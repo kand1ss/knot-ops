@@ -3,6 +3,7 @@ syntax = "proto3";
 package knot.v1;
 
 import "knot/v1/commands/commit.proto";
+import "knot/v1/commands/sync.proto";
 import "knot/v1/commands/down.proto";
 import "knot/v1/commands/handshake.proto";
 import "knot/v1/commands/logs.proto";
