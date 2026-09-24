@@ -17,8 +17,6 @@ message HandshakeRequest {
 message HandshakeResponse {
   // Whether the workspace is commited and synchronized.
   ManifestSyncState state = 1;
-  // Explanation when the workspace is not in sync.
-  DriftReason reason = 2;
 
   // Synchronization state of a workspace as recorded by the daemon.
   enum ManifestSyncState {
@@ -26,13 +24,5 @@ message HandshakeResponse {
     MANIFEST_SYNC_STATE_IN_SYNC = 1;
     MANIFEST_SYNC_STATE_OUT_OF_SYNC = 2;
     MANIFEST_SYNC_STATE_UNREGISTERED = 3;
-  }
-
-  // Reason the daemon considers a workspace not synchronized.
-  enum DriftReason {
-    DRIFT_REASON_UNSPECIFIED = 0;
-    DRIFT_REASON_NONE = 1;
-    DRIFT_REASON_NEW_WORKSPACE = 2;
-    DRIFT_REASON_CONFIG_CHANGED = 3;
   }
 }
