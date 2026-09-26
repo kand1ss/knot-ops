@@ -32,7 +32,7 @@ Extract a shared **command** layer (`proto/knot/v1/command.proto`)
 used by any command with this shape:
 
 - `CommandPlan` — sent as the first event of any such command's stream.
-  Contains a daemon-generated `command_id` and `TaskGroup`s (each with an
+  Contains a daemon-generated `execution_id` and `TaskGroup`s (each with an
   optional header for visual grouping and a list of `TaskPlan`s).
 - Common task-level events — `TaskStarting`, `TaskFailed`, `TaskSkipped`,
   `TaskCancelled` — shared across `UpEvent`, `DownEvent`, and future
@@ -51,7 +51,7 @@ stream that the CLI is already listening to. This avoids merging two event
 streams in the UI and keeps a single source of truth for execution state.
 
 On the daemon side, each execution is tracked in a session registry keyed
-by `command_id`, using `context.Context` (Go) for cancellation signaling
+by `execution_id`, using `context.Context` (Go) for cancellation signaling
 — `ctx.Done()` can be observed from multiple points (the main task loop,
 in-flight health checks) without the "channel consumed once" problem a raw
 channel would have.
@@ -60,7 +60,7 @@ channel would have.
 
 **Per-command cancellation (`CancelUp`, `CancelDown`, ...)** — rejected
 because it does not scale to new commands and fragments the session
-registry by command type for no benefit; `command_id` is unique
+registry by command type for no benefit; `execution_id` is unique
 regardless of which command produced it.
 
 **Streaming response for `CancelCommand`** — considered, but rejected:
@@ -73,7 +73,7 @@ logical operation, introducing potential ordering ambiguity.
 (relying on `context.Done()` when the client disconnects) — insufficient
 on its own: a clean Ctrl+C should trigger *graceful* rollback (stop started
 services, report `UpCancelled`), not just an abrupt stream termination. An
-explicit `command_id` and RPC give the daemon a clear signal to begin
+explicit `execution_id` and RPC give the daemon a clear signal to begin
 rollback rather than just observing a dropped connection.
 
 ## Consequences

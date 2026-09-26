@@ -36,6 +36,6 @@ assignees: kand1ss
 ### 📝 Use Case / Example
 **Provide an example of how this would be used:**
 ```bash
-# Example of a new CLI command
+# Example of a new CLI execution
 my-app service reload --all
 ```
