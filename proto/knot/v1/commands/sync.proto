@@ -2,18 +2,45 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
+import "knot/v1/execution/execution.proto";
+
 // Request to reconcile the runtime state of a workspace with its committed state.
 message SyncRequest {
   // Identifier of the target workspace to synchronize.
   string workspace_id = 1;
 }
 
-// Event or summary describing changes applied during state reconciliation.
+// Server-streamed progress and terminal state for an Sync command.
 message SyncResponse {
-  // Names of newly started services that were introduced in the committed state.
-  repeated string services_added = 1;
-  // Names of services that were stopped and removed because they are absent from the committed state.
-  repeated string services_removed = 2;
-  // Names of services whose runtime state or configuration was reloaded in-place.
-  repeated string services_changed = 3;
+  oneof event {
+    knot.v1.execution.ExecutionPlan plan = 1;
+
+    knot.v1.execution.TaskStarting task_starting = 2;
+    knot.v1.execution.TaskSuccess task_success = 3;
+    knot.v1.execution.TaskFailed task_failed = 4;
+    knot.v1.execution.TaskSkipped task_skipped = 5;
+    knot.v1.execution.TaskCancelled task_cancelled = 6;
+
+    SyncDone up_done = 7;
+    SyncCancelled up_cancelled = 8;
+  }
+}
+
+// Terminal summary for a completed Sync command.
+message SyncDone {
+  // Number of services successfully started.
+  uint32 started = 1;
+  // Number of services successfully stopped.
+  uint32 stopped = 2;
+  // Number of services that failed to start/stop.
+  uint32 failed = 3;
+}
+
+message SyncCancelled {
+  // Cancellation reason supplied by the requester or daemon.
+  string reason = 1;
+  // Number of services started before cancellation.
+  uint32 started = 2;
+  // Number of services stopped during rollback.
+  uint32 stopped = 3;
 }
