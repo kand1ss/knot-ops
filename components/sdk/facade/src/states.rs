@@ -4,7 +4,7 @@ use knot_sys::process::PlatformHandle;
 #[non_exhaustive]
 pub enum DaemonSession {
     Ready(ControlHandle),
-    Unsynced(UnsyncedHandle),
+    Unsynced(UncommitedHandle),
 }
 
 #[non_exhaustive]

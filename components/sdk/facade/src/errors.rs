@@ -66,10 +66,10 @@ impl ClientError {
                     "the daemon is unreachable. It may have crashed or was shut down. Run 'knot up'.",
                 ),
                 tonic::Code::Unimplemented => Some(
-                    "version mismatch: the daemon does not support this command. Update your CLI or Daemon.",
+                    "version mismatch: the daemon does not support this execution. Update your CLI or Daemon.",
                 ),
                 tonic::Code::FailedPrecondition => {
-                    Some("the workspace is not in the correct state to execute this command.")
+                    Some("the workspace is not in the correct state to execute this execution.")
                 }
                 tonic::Code::PermissionDenied => {
                     Some("you do not have the required permissions to execute this request.")
@@ -78,7 +78,7 @@ impl ClientError {
             },
             Self::Io(e) => match e.kind() {
                 std::io::ErrorKind::PermissionDenied => {
-                    Some("verify file permissions or run the command with elevated privileges.")
+                    Some("verify file permissions or run the execution with elevated privileges.")
                 }
                 std::io::ErrorKind::NotFound => {
                     Some("a required file or directory was not found. check your workspace paths.")

@@ -1,15 +1,15 @@
-mod command;
 mod connected;
 mod control;
+mod execution;
 mod kill;
 mod offline;
 mod stale;
-mod unsynced;
+mod uncommited;
 
-pub use command::*;
 pub use connected::*;
 pub use control::*;
+pub use execution::*;
 pub use kill::*;
 pub use offline::*;
 pub use stale::*;
-pub use unsynced::*;
+pub use uncommited::*;
