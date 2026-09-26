@@ -136,7 +136,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -163,7 +162,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -195,7 +193,6 @@ mod tests {
 
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -230,7 +227,6 @@ mod tests {
 
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -278,7 +274,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::Unregistered as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -305,7 +300,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::Unspecified as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -333,7 +327,6 @@ mod tests {
                 Ok(Response::new(HandshakeResponse {
                     // Deliberately invalid protobuf enum value.
                     state: 999,
-                    ..Default::default()
                 }))
             }));
         }
@@ -360,7 +353,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -390,7 +382,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -426,7 +417,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
@@ -465,7 +455,6 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
-                    ..Default::default()
                 }))
             }));
         }
