@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package knot.commands.v1;
+package knot.v1.commands;
 
-import "knot/command/v1/command.proto";
+import "knot/v1/execution/execution.proto";
 
 // Starts all services in a workspace or the requested subset.
 message UpRequest {
@@ -15,13 +15,13 @@ message UpRequest {
 // Server-streamed progress and terminal state for an Up command.
 message UpResponse {
   oneof event {
-    knot.command.v1.CommandPlan plan = 1;
+    knot.v1.execution.ExecutionPlan plan = 1;
 
-    knot.command.v1.TaskStarting task_starting = 2;
-    knot.command.v1.TaskStarted task_started = 3;
-    knot.command.v1.TaskFailed task_failed = 4;
-    knot.command.v1.TaskSkipped task_skipped = 5;
-    knot.command.v1.TaskCancelled task_cancelled = 6;
+    knot.v1.execution.TaskStarting task_starting = 2;
+    knot.v1.execution.TaskSuccess task_success = 3;
+    knot.v1.execution.TaskFailed task_failed = 4;
+    knot.v1.execution.TaskSkipped task_skipped = 5;
+    knot.v1.execution.TaskCancelled task_cancelled = 6;
 
     UpDone up_done = 7;
     UpCancelled up_cancelled = 8;

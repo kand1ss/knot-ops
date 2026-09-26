@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package knot.v1.commands;
+
+import "knot/v1/config/config.proto";
+
+// Lightweight pre-command check that identifies a workspace and its current
+// configuration before workspace-scoped work begins.
+message HandshakeRequest {
+  // Immutable identifier created when the workspace is initialized.
+  string workspace_id = 1;
+  // Current service configuration observed by the client.
+  knot.v1.config.WorkspaceManifest manifest = 2;
+}
+
+// Result of comparing the submitted workspace with daemon state.
+message HandshakeResponse {
+  // Whether the workspace is commited and synchronized.
+  ManifestSyncState state = 1;
+
+  // Synchronization state of a workspace as recorded by the daemon.
+  enum ManifestSyncState {
+    MANIFEST_SYNC_STATE_UNSPECIFIED = 0;
+    MANIFEST_SYNC_STATE_IN_SYNC = 1;
+    MANIFEST_SYNC_STATE_OUT_OF_SYNC = 2;
+    MANIFEST_SYNC_STATE_UNREGISTERED = 3;
+  }
+}

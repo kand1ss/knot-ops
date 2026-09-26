@@ -1,16 +1,6 @@
 syntax = "proto3";
 
-package knot.commands.v1;
-
-// Severity assigned to a service log line.
-enum LogLevel {
-  LOG_LEVEL_UNSPECIFIED = 0;
-  LOG_LEVEL_TRACE = 1;
-  LOG_LEVEL_DEBUG = 2;
-  LOG_LEVEL_INFO = 3;
-  LOG_LEVEL_WARN = 4;
-  LOG_LEVEL_ERROR = 5;
-}
+package knot.v1.commands;
 
 // Selects service logs to return or follow.
 message LogsRequest {
@@ -30,8 +20,6 @@ message LogsResponse {
   string service = 1;
   // Unmodified log message content.
   string message = 2;
-  // Runtime-provided or inferred severity.
-  LogLevel level = 3;
   // Timestamp of the log line, expressed as Unix milliseconds.
   uint64 timestamp_ms = 4;
 }

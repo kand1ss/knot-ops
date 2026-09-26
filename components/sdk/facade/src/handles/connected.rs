@@ -1,21 +1,20 @@
 use crate::{
     errors::ClientError,
-    handles::{ControlHandle, UnsyncedHandle},
+    handles::{ControlHandle, UncommitedHandle},
     policies::PolicyConfig,
     states::DaemonSession,
     utils::request,
 };
-use knot_proto::{
-    api::v1::daemon_service_client::DaemonServiceClient,
-    commands::v1::HandshakeRequest,
-    data::v1::{WorkspaceManifest, WorkspaceMetadata},
+use knot_proto::v1::{
+    commands::HandshakeRequest, config::WorkspaceManifest,
+    daemon_service_client::DaemonServiceClient,
 };
 use std::{path::Path, sync::Arc};
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, error, instrument};
 
 use knot_grpc::IpcConnector;
-use knot_proto::data::v1::WorkspaceState;
+use knot_proto::v1::commands::handshake_response::ManifestSyncState;
 
 #[derive(Debug)]
 pub struct ConnectedHandle {
@@ -56,14 +55,14 @@ impl ConnectedHandle {
 
     pub async fn handshake(
         self,
-        workspace_meta: WorkspaceMetadata,
+        workspace_id: String,
         workspace_manifest: WorkspaceManifest,
     ) -> Result<DaemonSession, ClientError> {
         let mut client = self.client.clone();
         let response = client
             .handshake(request(
                 HandshakeRequest {
-                    metadata: Some(workspace_meta.clone()),
+                    workspace_id: workspace_id.clone(),
                     manifest: Some(workspace_manifest),
                 },
                 Some(self.policy.timeout.fast_commands),
@@ -72,21 +71,21 @@ impl ConnectedHandle {
 
         let controller = ControlHandle {
             client,
-            workspace_meta,
+            workspace_id,
             policy: Arc::clone(&self.policy),
         };
         let res = response.into_inner();
 
-        match WorkspaceState::try_from(res.state) {
-            Ok(WorkspaceState::OutOfSync) => {
-                let handle = UnsyncedHandle { controller };
+        match ManifestSyncState::try_from(res.state) {
+            Ok(ManifestSyncState::OutOfSync) => {
+                let handle = UncommitedHandle { controller };
                 Ok(DaemonSession::Unsynced(handle))
             }
-            Ok(WorkspaceState::InSync) => Ok(DaemonSession::Ready(controller)),
-            Ok(WorkspaceState::Unregistered) => Err(ClientError::Contract(
+            Ok(ManifestSyncState::InSync) => Ok(DaemonSession::Ready(controller)),
+            Ok(ManifestSyncState::Unregistered) => Err(ClientError::Contract(
                 "workspace registration error".to_string(),
             )),
-            Ok(WorkspaceState::Unspecified) | Err(_) => {
+            Ok(ManifestSyncState::Unspecified) | Err(_) => {
                 Err(ClientError::Contract("unknown workspace state".to_string()))
             }
         }
@@ -98,10 +97,10 @@ mod tests {
     use super::*;
     use crate::test_utils::spawn_mock_server;
 
-    use knot_proto::{
-        api::v1::daemon_service_client::DaemonServiceClient,
-        commands::v1::{HandshakeRequest, HandshakeResponse},
-        data::v1::{WorkspaceManifest, WorkspaceState},
+    use knot_proto::v1::{
+        commands::{HandshakeRequest, HandshakeResponse},
+        config::WorkspaceManifest,
+        daemon_service_client::DaemonServiceClient,
     };
 
     use std::sync::Arc;
@@ -111,13 +110,6 @@ mod tests {
         ConnectedHandle {
             client,
             policy: Arc::new(PolicyConfig::default()),
-        }
-    }
-
-    fn workspace_metadata() -> WorkspaceMetadata {
-        WorkspaceMetadata {
-            workspace_id: "workspace-test".to_string(),
-            root_path: "/tmp/knot-test".to_string(),
         }
     }
 
@@ -143,14 +135,13 @@ mod tests {
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::OutOfSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::OutOfSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
@@ -170,14 +161,13 @@ mod tests {
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::InSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::InSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
@@ -198,23 +188,17 @@ mod tests {
             *handler = Some(Box::new(|req: Request<HandshakeRequest>| {
                 let request = req.into_inner();
 
-                let metadata = request
-                    .metadata
-                    .expect("handshake must contain workspace metadata");
-
-                assert_eq!(metadata.workspace_id, "workspace-test");
-
-                assert_eq!(metadata.root_path, "/tmp/knot-test");
+                let workspace_id = request.workspace_id;
+                assert_eq!(workspace_id, "workspace-test");
 
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::InSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::InSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
@@ -242,14 +226,13 @@ mod tests {
                 assert_eq!(actual_manifest, expected_manifest);
 
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::InSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::InSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(workspace_metadata(), expected_manifest)
+            .handshake("workspace-test".to_string(), expected_manifest)
             .await
             .expect("handshake should succeed");
 
@@ -270,7 +253,7 @@ mod tests {
         }
 
         let result = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
         assert!(matches!(
@@ -290,14 +273,13 @@ mod tests {
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::Unregistered as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::Unregistered as i32,
                 }))
             }));
         }
 
         let result = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
         assert!(matches!(
@@ -317,14 +299,13 @@ mod tests {
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::Unspecified as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::Unspecified as i32,
                 }))
             }));
         }
 
         let result = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
         assert!(matches!(
@@ -346,13 +327,12 @@ mod tests {
                 Ok(Response::new(HandshakeResponse {
                     // Deliberately invalid protobuf enum value.
                     state: 999,
-                    ..Default::default()
                 }))
             }));
         }
 
         let result = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
         assert!(matches!(
@@ -367,35 +347,24 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
 
-        let metadata = WorkspaceMetadata {
-            workspace_id: "my-workspace".to_string(),
-            root_path: "/home/test/project".to_string(),
-        };
-
         {
             let mut handler = mock.handshake_handler.lock().await;
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::InSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::InSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(metadata.clone(), workspace_manifest())
+            .handshake("my-workspace".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
         match session {
             DaemonSession::Ready(controller) => {
-                assert_eq!(
-                    controller.workspace_meta.workspace_id,
-                    metadata.workspace_id
-                );
-
-                assert_eq!(controller.workspace_meta.root_path, metadata.root_path);
+                assert_eq!(controller.workspace_id, "my-workspace");
             }
 
             _ => panic!("expected Ready session"),
@@ -407,38 +376,24 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
 
-        let metadata = WorkspaceMetadata {
-            workspace_id: "out-of-sync".to_string(),
-            root_path: "/workspace/project".to_string(),
-        };
-
         {
             let mut handler = mock.handshake_handler.lock().await;
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::OutOfSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::OutOfSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(metadata.clone(), workspace_manifest())
+            .handshake("out-of-sync".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
         match session {
             DaemonSession::Unsynced(unsynced) => {
-                assert_eq!(
-                    unsynced.controller.workspace_meta.workspace_id,
-                    metadata.workspace_id
-                );
-
-                assert_eq!(
-                    unsynced.controller.workspace_meta.root_path,
-                    metadata.root_path
-                );
+                assert_eq!(unsynced.controller.workspace_id, "out-of-sync");
             }
 
             _ => panic!("expected Unsynced session"),
@@ -461,14 +416,13 @@ mod tests {
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::InSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::InSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
@@ -500,14 +454,13 @@ mod tests {
 
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
-                    state: WorkspaceState::OutOfSync as i32,
-                    ..Default::default()
+                    state: ManifestSyncState::OutOfSync as i32,
                 }))
             }));
         }
 
         let session = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await
             .expect("handshake should succeed");
 
@@ -537,7 +490,7 @@ mod tests {
         }
 
         let result = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
         match result {
@@ -567,7 +520,7 @@ mod tests {
         }
 
         let result = handle
-            .handshake(workspace_metadata(), workspace_manifest())
+            .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
         assert!(matches!(

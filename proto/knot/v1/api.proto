@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package knot.v1;
+
+import "knot/v1/execution/execution.proto";
+import "knot/v1/commands/commit.proto";
+import "knot/v1/commands/sync.proto";
+import "knot/v1/commands/down.proto";
+import "knot/v1/commands/handshake.proto";
+import "knot/v1/commands/logs.proto";
+import "knot/v1/commands/status.proto";
+import "knot/v1/commands/up.proto";
+
+// Local daemon API for workspace synchronization and service orchestration.
+service DaemonService {
+  // Checks workspace registration and configuration freshness before a command.
+  rpc Handshake(knot.v1.commands.HandshakeRequest) returns (knot.v1.commands.HandshakeResponse);
+  // Commits new workspace configuration
+  rpc Commit(knot.v1.commands.CommitRequest) returns (knot.v1.commands.CommitResponse);
+
+  // Starts services and streams the execution plan and task progress.
+  rpc Up(knot.v1.commands.UpRequest) returns (stream knot.v1.commands.UpResponse);
+  // Stops services and streams the execution plan and task progress.
+  rpc Down(knot.v1.commands.DownRequest) returns (stream knot.v1.commands.DownResponse);
+  // Reconciles the active runtime state with the target committed workspace state,
+  // bringing running processes into alignment with the updated configuration.
+  rpc Sync(knot.v1.commands.SyncRequest) returns (stream knot.v1.commands.SyncResponse);
+  // Returns the daemon-known state of selected services.
+  rpc Status(knot.v1.commands.StatusRequest) returns (knot.v1.commands.StatusResponse);
+  // Returns historical logs and optionally streams future service logs.
+  rpc Logs(knot.v1.commands.LogsRequest) returns (stream knot.v1.commands.LogsResponse);
+
+  // Requests graceful cancellation of a running streamed command.
+  rpc CancelExecution(knot.v1.execution.CancelExecutionRequest) returns (knot.v1.execution.CancelExecutionResponse);
+}

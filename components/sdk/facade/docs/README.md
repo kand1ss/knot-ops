@@ -98,7 +98,7 @@ Can be found at [states.md](states.md)
 
 ### Phase 2: Session & Control Handles
 
-#### 5. `UnsyncedHandle`
+#### 5. `UncommitedHandle`
 
 * **Condition**: Handshake succeeded, but the daemon reported the workspace configuration state as `OutOfSync`.
 * **Key Fields**: `controller: ControlHandle`
@@ -244,15 +244,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 5. Execute command and stream events
+    // 5. Execute execution and stream events
     let mut command_handle = control_handle.up(UpRequest::default()).await?;
-    println!("Started 'up' command [ID: {}]", command_handle.command_id);
+    println!("Started 'up' execution [ID: {}]", command_handle.command_id);
 
     while let Some(event) = command_handle.events.next().await {
         match event {
             Ok(evt) => println!("Received event: {:?}", evt),
             Err(err) => {
-                eprintln!("Stream error: {}. Cancelling command...", err);
+                eprintln!("Stream error: {}. Cancelling execution...", err);
                 command_handle.cancel("error during execution stream").await?;
                 break;
             }
