@@ -100,7 +100,10 @@ impl DaemonService for MockKnotDaemon {
     }
 
     type SyncStream = ReceiverStream<Result<SyncResponse, Status>>;
-    async fn sync(&self, request: Request<SyncRequest>) -> Result<Response<Self::SyncStream>, Status> {
+    async fn sync(
+        &self,
+        request: Request<SyncRequest>,
+    ) -> Result<Response<Self::SyncStream>, Status> {
         match self.sync_handler.lock().await.as_mut() {
             Some(h) => h(request),
             None => Err(Status::unimplemented("sync not mocked")),
