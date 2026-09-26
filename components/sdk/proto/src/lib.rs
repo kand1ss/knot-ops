@@ -1,29 +1,19 @@
-pub mod config {
-    pub mod v1 {
-        tonic::include_proto!("knot.config.v1");
-    }
-}
+pub mod v1 {
+    tonic::include_proto!("knot.v1");
 
-pub mod command {
-    pub mod v1 {
-        tonic::include_proto!("knot.command.v1");
+    pub mod config {
+        tonic::include_proto!("knot.v1.config");
     }
-}
 
-pub mod commands {
-    pub mod v1 {
-        tonic::include_proto!("knot.commands.v1");
+    pub mod execution {
+        tonic::include_proto!("knot.v1.execution");
     }
-}
 
-pub mod data {
-    pub mod v1 {
-        tonic::include_proto!("knot.data.v1");
+    pub mod commands {
+        tonic::include_proto!("knot.v1.commands");
     }
-}
 
-pub mod api {
-    pub mod v1 {
-        tonic::include_proto!("knot.api.v1");
+    pub mod data {
+        tonic::include_proto!("knot.v1.data");
     }
 }
