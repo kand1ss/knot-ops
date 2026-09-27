@@ -14,7 +14,7 @@ type LogsRequest struct {
 }
 
 type LogsResponse struct {
-	Service   string
+	Service   values.ServiceName
 	Message   string
 	Timestamp time.Time
 }
