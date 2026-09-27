@@ -17,10 +17,11 @@ func NewInMemoryWorkspaceRegistry() *InMemoryWorkspaceRegistry {
 	}
 }
 
-func (i *InMemoryWorkspaceRegistry) Commit(id values.WorkspaceId, record Record) {
+func (i *InMemoryWorkspaceRegistry) Commit(id values.WorkspaceId, record Record) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.workspaces[id] = record
+	return nil
 }
 
 func (i *InMemoryWorkspaceRegistry) Get(id values.WorkspaceId) (Record, bool) {
