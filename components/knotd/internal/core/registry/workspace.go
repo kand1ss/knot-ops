@@ -10,6 +10,6 @@ type WorkspaceRegistry interface {
 	// be called from Handshake — Handshake only reads (Get) to compute
 	// drift; writing here before Sync actually reconciles runtime state
 	// would let the daemon believe a manifest is applied when it isn't.
-	Commit(id values.WorkspaceId, record workspace.Record)
+	Commit(id values.WorkspaceId, record workspace.Record) error
 	Get(id values.WorkspaceId) (workspace.Record, bool)
 }
