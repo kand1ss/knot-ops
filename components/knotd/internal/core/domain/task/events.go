@@ -1,13 +1,13 @@
 package task
 
-type CommandPlan struct {
-	CommandId string
-	Groups    []TaskGroup
+type ExecutionPlan struct {
+	ExecutionID string
+	Groups      []TaskGroup
 }
 
-func (c *CommandPlan) IsSyncEvent() {}
-func (c *CommandPlan) IsUpEvent()   {}
-func (c *CommandPlan) IsDownEvent() {}
+func (c *ExecutionPlan) IsSyncEvent() {}
+func (c *ExecutionPlan) IsUpEvent()   {}
+func (c *ExecutionPlan) IsDownEvent() {}
 
 type TaskError struct {
 	Issue    string
@@ -59,12 +59,3 @@ type TaskCancelled struct {
 func (t *TaskCancelled) IsSyncEvent() {}
 func (t *TaskCancelled) IsUpEvent()   {}
 func (t *TaskCancelled) IsDownEvent() {}
-
-type CancelTaskRequest struct {
-	TaskID string
-	Reason string
-}
-
-type CancelTaskResponse struct {
-	Cancelled bool
-}

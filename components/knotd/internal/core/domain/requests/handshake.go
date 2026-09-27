@@ -1,21 +1,23 @@
 package requests
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+import (
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
 
-type DriftReason int
+type ManifestSyncState int
 
 const (
-	DriftReasonNone = iota
-	DriftReasonNewWorkspace
-	DriftReasonConfigChanged
+	ManifestSyncStateInSync = iota
+	ManifestSyncStateOutOfSync
+	ManifestSyncStateUnregistered
 )
 
 type HandshakeRequest struct {
-	Manifest domain.WorkspaceManifest
-	Metadata domain.WorkspaceMetadata
+	WorkspaceID values.WorkspaceId
+	Manifest    domain.WorkspaceManifest
 }
 
 type HandshakeResponse struct {
-	WorkspaceState domain.WorkspaceState
-	DriftReason    DriftReason
+	State ManifestSyncState
 }

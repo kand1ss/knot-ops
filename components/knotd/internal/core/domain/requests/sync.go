@@ -1,24 +1,29 @@
 package requests
 
-import (
-	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
-)
+import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 
 type SyncEvent interface {
 	IsSyncEvent()
 }
 
-type SyncResult struct {
-	ServicesAdded   []string
-	ServicesChanged []string
-	ServicesRemoved []string
+type SyncDone struct {
+	ServicesStarted uint32
+	ServicesStopped uint32
+	ServicesFailed  uint32
 }
 
-func (s *SyncResult) IsSyncEvent() {}
+func (s *SyncDone) IsSyncEvent() {}
+
+type SyncCancelled struct {
+	Reason          string
+	ServicesStarted uint32
+	ServicesStopped uint32
+}
+
+func (s *SyncCancelled) IsSyncEvent() {}
 
 type SyncRequest struct {
-	Manifest domain.WorkspaceManifest
-	Metadata domain.WorkspaceMetadata
+	WorkspaceID values.WorkspaceId
 }
 
 type SyncResponse SyncEvent
