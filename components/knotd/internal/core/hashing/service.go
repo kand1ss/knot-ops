@@ -62,3 +62,16 @@ func ServiceHash(svc domain.ServiceSpec) (Hash, error) {
 	copy(out[:], h.Sum(nil))
 	return out, nil
 }
+
+func ServicesHash(services []domain.ServiceSpec) (map[values.ServiceName]Hash, error) {
+	pairs := make(map[values.ServiceName]Hash)
+	for _, svc := range services {
+		h, err := ServiceHash(svc)
+		if err != nil {
+			return nil, err
+		}
+		pairs[svc.Name] = h
+	}
+
+	return pairs, nil
+}
