@@ -11,7 +11,7 @@ type CommitRequest struct {
 }
 
 type CommitResponse struct {
-	ServicesAdded   []string
-	ServicesRemoved []string
-	ServicesChanged []string
+	ServicesAdded   []values.ServiceName
+	ServicesRemoved []values.ServiceName
+	ServicesChanged []values.ServiceName
 }
