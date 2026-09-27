@@ -56,9 +56,9 @@ func (r *InMemoryRuntimeRegistry) WorkspaceHash(ws values.WorkspaceId) (hashing.
 		return hashing.Hash{}, false
 	}
 
-	pairs := make([]hashing.NamedHash, 0, len(services))
+	pairs := make(map[values.ServiceName]hashing.Hash)
 	for name, h := range services {
-		pairs = append(pairs, hashing.NamedHash{Name: string(name), Hash: h.Hash})
+		pairs[name] = h.Hash
 	}
 	return hashing.Combine(pairs), true
 }
@@ -81,10 +81,10 @@ func (r *InMemoryRuntimeRegistry) Snapshot(ws values.WorkspaceId) (RuntimeSnapsh
 	}
 
 	handles := make([]ServiceHandle, 0, len(services))
-	pairs := make([]hashing.NamedHash, 0, len(services))
+	pairs := make(map[values.ServiceName]hashing.Hash)
 	for name, h := range services {
 		handles = append(handles, h)
-		pairs = append(pairs, hashing.NamedHash{Name: string(name), Hash: h.Hash})
+		pairs[name] = h.Hash
 	}
 
 	return RuntimeSnapshot{
