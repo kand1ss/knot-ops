@@ -1,6 +1,9 @@
 package diff
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+import (
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
 
 type Diff struct {
 	Added   []values.ServiceName
@@ -8,7 +11,7 @@ type Diff struct {
 	Updated []values.ServiceName
 }
 
-func ComputeDiff(previous map[values.ServiceName][32]byte, incoming map[values.ServiceName][32]byte) Diff {
+func ComputeDiff(previous, incoming map[values.ServiceName]hashing.Hash) Diff {
 	var diff Diff
 	for name, newHash := range incoming {
 		oldHash, ok := previous[name]
