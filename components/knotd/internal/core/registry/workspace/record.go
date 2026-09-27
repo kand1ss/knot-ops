@@ -13,22 +13,19 @@ type Record struct {
 }
 
 func BuildWorkspaceRecord(manifest domain.WorkspaceManifest) (Record, error) {
-	serviceHashes := make(map[values.ServiceName]hashing.Hash, len(manifest.Services()))
-	for _, svc := range manifest.Services() {
-		hash, err := hashing.ServiceHash(svc)
-		if err != nil {
-			return Record{}, err
-		}
-		serviceHashes[svc.Name] = hash
-	}
-
-	hash, err := hashing.CanonicalManifestHash(manifest)
+	serviceHashes, err := hashing.ServicesHash(manifest.Services())
 	if err != nil {
 		return Record{}, err
 	}
+
+	canonicalHash := hashing.Combine(serviceHashes)
 	return Record{
 		Manifest:      manifest,
-		Hash:          hash,
+		Hash:          canonicalHash,
 		ServiceHashes: serviceHashes,
 	}, nil
+}
+
+func (r *Record) Equals(to Record) bool {
+	return r.Hash == to.Hash
 }
