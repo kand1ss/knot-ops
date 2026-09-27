@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"sort"
+	"slices"
+
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 // Hash is the single content-hash type used everywhere in the system —
@@ -16,12 +18,6 @@ type Hash [32]byte
 
 func (h Hash) String() string { return hex.EncodeToString(h[:]) }
 func (h Hash) IsZero() bool   { return h == Hash{} }
-
-// NamedHash pairs a stable name with its hash, the unit Combine folds over.
-type NamedHash struct {
-	Name string
-	Hash Hash
-}
 
 // Combine is the single canonical algorithm for folding a set of named
 // hashes into one combined Hash. It is used both when building a
@@ -35,13 +31,18 @@ type NamedHash struct {
 // Assumes names are unique within pairs — duplicate service names are a
 // manifest validation error that must be rejected upstream (config
 // parsing), not a concern Combine re-defends against here.
-func Combine(pairs []NamedHash) Hash {
-	sorted := append([]NamedHash(nil), pairs...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+func Combine(m map[values.ServiceName]Hash) Hash {
+	names := make([]values.ServiceName, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
 
 	h := sha256.New()
-	for _, p := range sorted {
-		_, err := fmt.Fprintf(h, "name=%d:%s\x00hash=%s\x00", len(p.Name), p.Name, p.Hash)
+	for _, name := range names {
+		hash := m[name]
+		_, err := fmt.Fprintf(h, "name=%d:%s\x00hash=%s\x00", len(name), name, hash)
 		if err != nil {
 			panic(err)
 		}

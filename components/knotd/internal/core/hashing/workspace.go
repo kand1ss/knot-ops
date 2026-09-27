@@ -10,13 +10,9 @@ import (
 // duplicated inline logic from before — ServiceHash is now the single
 // source of per-service canonicalization.
 func CanonicalManifestHash(manifest domain.WorkspaceManifest) (Hash, error) {
-	pairs := make([]NamedHash, 0, len(manifest.Services()))
-	for _, svc := range manifest.Services() {
-		h, err := ServiceHash(svc)
-		if err != nil {
-			return Hash{}, err
-		}
-		pairs = append(pairs, NamedHash{Name: string(svc.Name), Hash: h})
+	pairs, err := ServicesHash(manifest.Services())
+	if err != nil {
+		return Hash{}, err
 	}
 	return Combine(pairs), nil
 }
