@@ -5,26 +5,27 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 func TestComputeDiff(t *testing.T) {
-	hashA := [32]byte{1}
-	hashA2 := [32]byte{1, 1}
-	hashB := [32]byte{2}
-	hashC := [32]byte{3}
-	zeroHash := [32]byte{}
+	hashA := hashing.Hash{1}
+	hashA2 := hashing.Hash{1, 1}
+	hashB := hashing.Hash{2}
+	hashC := hashing.Hash{3}
+	zeroHash := hashing.Hash{}
 
 	tests := []struct {
 		name     string
-		previous map[values.ServiceName][32]byte
-		incoming map[values.ServiceName][32]byte
+		previous map[values.ServiceName]hashing.Hash
+		incoming map[values.ServiceName]hashing.Hash
 		expected Diff
 	}{
 		{
 			name:     "Both maps empty",
-			previous: map[values.ServiceName][32]byte{},
-			incoming: map[values.ServiceName][32]byte{},
+			previous: map[values.ServiceName]hashing.Hash{},
+			incoming: map[values.ServiceName]hashing.Hash{},
 			expected: Diff{},
 		},
 		{
@@ -36,7 +37,7 @@ func TestComputeDiff(t *testing.T) {
 		{
 			name:     "Nil previous map, non-empty incoming",
 			previous: nil,
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 			},
 			expected: Diff{
@@ -45,7 +46,7 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "Non-empty previous map, nil incoming",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 			},
 			incoming: nil,
@@ -55,11 +56,11 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "No changes",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 				"svc-2": hashB,
 			},
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 				"svc-2": hashB,
 			},
@@ -67,10 +68,10 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "Only added services",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 			},
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 				"svc-2": hashB,
 				"svc-3": hashC,
@@ -81,12 +82,12 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "Only removed services",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 				"svc-2": hashB,
 				"svc-3": hashC,
 			},
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 			},
 			expected: Diff{
@@ -95,11 +96,11 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "Only updated services",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA,
 				"svc-2": hashB,
 			},
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"svc-1": hashA2,
 				"svc-2": hashC,
 			},
@@ -109,12 +110,12 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "Mixed changes (Added, Removed, Updated, Unchanged)",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"unchanged": hashA,
 				"updated":   hashB,
 				"removed":   hashC,
 			},
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"unchanged": hashA,
 				"updated":   hashA2,
 				"added":     hashC,
@@ -127,11 +128,11 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "Handling zero-value hashes",
-			previous: map[values.ServiceName][32]byte{
+			previous: map[values.ServiceName]hashing.Hash{
 				"zero-unchanged":  zeroHash,
 				"zero-to-nonzero": zeroHash,
 			},
-			incoming: map[values.ServiceName][32]byte{
+			incoming: map[values.ServiceName]hashing.Hash{
 				"zero-unchanged":  zeroHash,
 				"zero-to-nonzero": hashA,
 			},
