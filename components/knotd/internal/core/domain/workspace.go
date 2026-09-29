@@ -26,9 +26,9 @@ func (w *WorkspaceManifest) Append(service ServiceSpec) {
 	w.services[service.Name] = service
 }
 
-func (w *WorkspaceManifest) Get(name string) (ServiceSpec, bool) {
+func (w *WorkspaceManifest) Get(name values.ServiceName) (ServiceSpec, bool) {
 	for _, service := range w.services {
-		if string(service.Name) == name {
+		if service.Name == name {
 			return service, true
 		}
 	}
@@ -41,4 +41,12 @@ func (w *WorkspaceManifest) Services() []ServiceSpec {
 		values = append(values, v)
 	}
 	return values
+}
+
+func (w *WorkspaceManifest) ServiceNames() []values.ServiceName {
+	names := make([]values.ServiceName, 0, len(w.services))
+	for _, v := range w.services {
+		names = append(names, v.Name)
+	}
+	return names
 }
