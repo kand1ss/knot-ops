@@ -11,17 +11,17 @@ type DownDone struct {
 	Failed  uint32
 }
 
-func (d *DownDone) IsDownEvent() {}
+func (d DownDone) IsDownEvent() {}
 
 type DownCancelled struct {
 	Reason  string
 	Stopped uint32
 }
 
-func (d *DownCancelled) IsDownEvent() {}
+func (d DownCancelled) IsDownEvent() {}
 
 type DownRequest struct {
-	WorkspaceID string
+	WorkspaceID values.WorkspaceId
 	Services    []values.ServiceName
 }
 

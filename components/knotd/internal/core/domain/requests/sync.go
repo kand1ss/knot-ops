@@ -12,7 +12,7 @@ type SyncDone struct {
 	ServicesFailed  uint32
 }
 
-func (s *SyncDone) IsSyncEvent() {}
+func (s SyncDone) IsSyncEvent() {}
 
 type SyncCancelled struct {
 	Reason          string
@@ -20,7 +20,7 @@ type SyncCancelled struct {
 	ServicesStopped uint32
 }
 
-func (s *SyncCancelled) IsSyncEvent() {}
+func (s SyncCancelled) IsSyncEvent() {}
 
 type SyncRequest struct {
 	WorkspaceID values.WorkspaceId
