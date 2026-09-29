@@ -7,53 +7,40 @@ import (
 )
 
 type WorkspaceLock struct {
-	mu    sync.RWMutex
+	mu    sync.Mutex
 	locks map[values.WorkspaceId]*sync.RWMutex
 }
 
-func NewWorkspaceLock(workspaceIds ...values.WorkspaceId) *WorkspaceLock {
-	locks := make(map[values.WorkspaceId]*sync.RWMutex, len(workspaceIds))
-	for _, id := range workspaceIds {
-		locks[id] = &sync.RWMutex{}
-	}
-
+func NewWorkspaceLock() *WorkspaceLock {
 	return &WorkspaceLock{
-		locks: locks,
+		locks: make(map[values.WorkspaceId]*sync.RWMutex),
 	}
 }
 
-func (l *WorkspaceLock) getMutex(id values.WorkspaceId) *sync.RWMutex {
-	l.mu.RLock()
-	m, exists := l.locks[id]
-	l.mu.RUnlock()
-	if exists {
-		return m
-	}
-
+func (l *WorkspaceLock) getOrCreate(id values.WorkspaceId) *sync.RWMutex {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if m, exists = l.locks[id]; exists {
-		return m
+	mtx, exists := l.locks[id]
+	if !exists {
+		mtx = &sync.RWMutex{}
+		l.locks[id] = mtx
 	}
-
-	m = &sync.RWMutex{}
-	l.locks[id] = m
-	return m
+	return mtx
 }
 
 func (l *WorkspaceLock) Lock(id values.WorkspaceId) {
-	l.getMutex(id).Lock()
-}
-
-func (l *WorkspaceLock) RLock(id values.WorkspaceId) {
-	l.getMutex(id).RLock()
+	l.getOrCreate(id).Lock()
 }
 
 func (l *WorkspaceLock) Unlock(id values.WorkspaceId) {
-	l.getMutex(id).Unlock()
+	l.getOrCreate(id).Unlock()
+}
+
+func (l *WorkspaceLock) RLock(id values.WorkspaceId) {
+	l.getOrCreate(id).RLock()
 }
 
 func (l *WorkspaceLock) RUnlock(id values.WorkspaceId) {
-	l.getMutex(id).RUnlock()
+	l.getOrCreate(id).RUnlock()
 }
