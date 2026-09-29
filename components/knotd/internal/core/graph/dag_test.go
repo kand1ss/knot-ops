@@ -37,8 +37,6 @@ func assertWavesEqual[T comparable](t *testing.T, expected, actual [][]T) {
 	}
 }
 
-// --- HAPPY PATHS ---
-
 func TestBuildWaves_HappyPaths(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -103,8 +101,6 @@ func TestBuildWaves_HappyPaths(t *testing.T) {
 	}
 }
 
-// --- FAIL PATHS (CYCLES) ---
-
 func TestBuildWaves_Cycles(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -162,8 +158,6 @@ func TestBuildWaves_Cycles(t *testing.T) {
 		})
 	}
 }
-
-// --- EDGE CASES ---
 
 func TestBuildWaves_EdgeCases(t *testing.T) {
 	t.Run("Empty graph", func(t *testing.T) {
@@ -228,6 +222,163 @@ func TestBuildWaves_EdgeCases(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		assertWavesEqual(t, expected, waves)
+	})
+}
+
+func TestBuildWavesFor_HappyPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		build    func() DependencyGraph[string]
+		targets  []string
+		expected [][]string
+	}{
+		{
+			name: "Target subset in a linear chain (Target B in A -> B -> C)",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("C", "B")
+				g.AddNode("B", "A")
+				return g
+			},
+			targets: []string{"B"},
+			expected: [][]string{
+				{"A"},
+				{"B"},
+			},
+		},
+		{
+			name: "Target subset excludes unrelated branches",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("Auth", "DB")
+				g.AddNode("API", "Auth")
+				g.AddNode("Storage", "Cache")
+				g.AddNode("UI", "Storage")
+				return g
+			},
+			targets: []string{"API"},
+			expected: [][]string{
+				{"DB"},
+				{"Auth"},
+				{"API"},
+			},
+		},
+		{
+			name: "Multiple targets with shared dependencies",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("D", "B", "C")
+				g.AddNode("B", "A")
+				g.AddNode("C", "A")
+				return g
+			},
+			targets: []string{"B", "C"},
+			expected: [][]string{
+				{"A"},
+				{"B", "C"},
+			},
+		},
+		{
+			name: "Multiple targets from distinct subgraphs",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("ServiceA", "DB1")
+				g.AddNode("ServiceB", "DB2")
+				return g
+			},
+			targets: []string{"ServiceA", "ServiceB"},
+			expected: [][]string{
+				{"DB1", "DB2"},
+				{"ServiceA", "ServiceB"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := tt.build()
+			waves, err := g.BuildWavesFor(tt.targets...)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertWavesEqual(t, tt.expected, waves)
+		})
+	}
+}
+
+func TestBuildWavesFor_Cycles(t *testing.T) {
+	t.Run("Cycle inside target's dependency path", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("C", "B")
+		g.AddNode("B", "A")
+		g.AddNode("A", "B")
+
+		_, err := g.BuildWavesFor("C")
+		if err == nil {
+			t.Fatal("expected ErrCycleDetected, got nil")
+		}
+		if !errors.Is(err, ErrCycleDetected) {
+			t.Errorf("expected ErrCycleDetected, got %v", err)
+		}
+	})
+
+	t.Run("Isolated cycle in graph does NOT affect target outside cycle", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("X", "Y")
+		g.AddNode("Y", "X")
+
+		g.AddNode("C", "B")
+		g.AddNode("B", "A")
+
+		expected := [][]string{
+			{"A"},
+			{"B"},
+			{"C"},
+		}
+
+		waves, err := g.BuildWavesFor("C")
+		if err != nil {
+			t.Fatalf("unexpected error processing independent target: %v", err)
+		}
+		assertWavesEqual(t, expected, waves)
+	})
+}
+
+func TestBuildWavesFor_EdgeCasesAndErrors(t *testing.T) {
+	t.Run("No targets provided (empty arguments)", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A", "B")
+
+		waves, err := g.BuildWavesFor()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if waves != nil {
+			t.Errorf("expected nil waves for empty targets, got %v", waves)
+		}
+	})
+
+	t.Run("Single isolated target without dependencies", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A")
+		g.AddNode("B", "A")
+
+		expected := [][]string{{"A"}}
+		waves, err := g.BuildWavesFor("A")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, expected, waves)
+	})
+
+	t.Run("Non-existent target node returns error", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A")
+
+		_, err := g.BuildWavesFor("NonExistentNode")
+		if err == nil {
+			t.Fatal("expected error for non-existent node target, got nil")
+		}
 	})
 }
 

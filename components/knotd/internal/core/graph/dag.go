@@ -2,12 +2,14 @@ package graph
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 var ErrCycleDetected = errors.New("cycle detected in dependency graph")
+var ErrNodeNotFound = errors.New("node not found in dependency graph")
 
 type DependencyGraph[T comparable] struct {
 	adj   map[T][]T
@@ -36,6 +38,58 @@ func (g *DependencyGraph[T]) AddNode(node T, depends ...T) {
 		g.nodes[dep] = struct{}{}
 		g.adj[node] = append(g.adj[node], dep)
 	}
+}
+
+func (g *DependencyGraph[T]) subgraph(targets ...T) (DependencyGraph[T], error) {
+	requiredNodes := make(map[T]struct{})
+
+	var collectDeps func(node T) error
+	collectDeps = func(node T) error {
+		if _, exists := g.nodes[node]; !exists {
+			return fmt.Errorf("%w: %v", ErrNodeNotFound, node)
+		}
+		if _, visited := requiredNodes[node]; visited {
+			return nil
+		}
+
+		requiredNodes[node] = struct{}{}
+		for _, dep := range g.adj[node] {
+			if err := collectDeps(dep); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for _, target := range targets {
+		if err := collectDeps(target); err != nil {
+			return DependencyGraph[T]{}, err
+		}
+	}
+
+	sub := NewDependencyGraph[T]()
+	for node := range requiredNodes {
+		sub.nodes[node] = struct{}{}
+		for _, dep := range g.adj[node] {
+			sub.adj[node] = append(sub.adj[node], dep)
+			sub.nodes[dep] = struct{}{}
+		}
+	}
+
+	return sub, nil
+}
+
+func (g *DependencyGraph[T]) BuildWavesFor(targets ...T) ([][]T, error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	sub, err := g.subgraph(targets...)
+	if err != nil {
+		return nil, err
+	}
+
+	return sub.BuildWaves()
 }
 
 func (g *DependencyGraph[T]) BuildWaves() ([][]T, error) {
