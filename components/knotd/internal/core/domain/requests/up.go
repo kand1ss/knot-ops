@@ -12,7 +12,7 @@ type UpDone struct {
 	Failed  uint32
 }
 
-func (u *UpDone) IsUpEvent() {}
+func (u UpDone) IsUpEvent() {}
 
 type UpCancelled struct {
 	Reason  string
@@ -20,7 +20,7 @@ type UpCancelled struct {
 	Stopped uint32
 }
 
-func (u *UpCancelled) IsUpEvent() {}
+func (u UpCancelled) IsUpEvent() {}
 
 type UpRequest struct {
 	WorkspaceId values.WorkspaceId
