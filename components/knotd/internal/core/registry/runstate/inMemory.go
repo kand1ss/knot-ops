@@ -106,13 +106,13 @@ func (r *InMemoryRuntimeRegistry) Get(ws values.WorkspaceId, service values.Serv
 	return h, ok
 }
 
-func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceId, service values.ServiceName) {
+func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceId, service values.ServiceName) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	services, ok := r.byWorkspace[ws]
 	if !ok {
-		return
+		return nil
 	}
 	delete(services, service)
 
@@ -122,6 +122,7 @@ func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceId, service values.S
 	if len(services) == 0 {
 		delete(r.byWorkspace, ws)
 	}
+	return nil
 }
 
 func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceId) []ServiceHandle {

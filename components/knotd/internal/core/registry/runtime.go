@@ -13,7 +13,7 @@ import (
 type RuntimeRegistry interface {
 	Register(handle runstate.ServiceHandle) error
 	Get(ws values.WorkspaceId, service values.ServiceName) (runstate.ServiceHandle, bool)
-	Remove(ws values.WorkspaceId, service values.ServiceName)
+	Remove(ws values.WorkspaceId, service values.ServiceName) error
 	List(ws values.WorkspaceId) []runstate.ServiceHandle
 	ListAll() []runstate.ServiceHandle
 
