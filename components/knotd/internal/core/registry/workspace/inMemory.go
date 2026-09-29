@@ -1,0 +1,32 @@
+package workspace
+
+import (
+	"sync"
+
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
+
+type InMemoryWorkspaceRegistry struct {
+	mu         sync.RWMutex
+	workspaces map[values.WorkspaceId]Record
+}
+
+func NewInMemoryWorkspaceRegistry() *InMemoryWorkspaceRegistry {
+	return &InMemoryWorkspaceRegistry{
+		workspaces: make(map[values.WorkspaceId]Record),
+	}
+}
+
+func (i *InMemoryWorkspaceRegistry) Commit(id values.WorkspaceId, record Record) error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.workspaces[id] = record
+	return nil
+}
+
+func (i *InMemoryWorkspaceRegistry) Get(id values.WorkspaceId) (Record, bool) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	m, ok := i.workspaces[id]
+	return m, ok
+}
