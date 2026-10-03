@@ -7,14 +7,18 @@ import "knot/v1/task/events.proto";
 
 // Stops running services in a workspace or a requested subset.
 //
-// Unlike other commands, Down performs only a Handshake without Commit, verifying only
-// that the workspace_id is registered (i.e. state != MANIFEST_SYNC_STATE_UNREGISTERED).
-// It operates exclusively on the runtime state and does not require the actual workspace
-// configuration, ensuring services (including orphaned ones) can still be stopped
-// even if the configuration is broken or invalid.
+// Unlike commands that mutate or validate workspace configuration (e.g., Commit, Up),
+// Down performs only a minimal Handshake to verify that workspace_id is registered
+// in the daemon state (i.e. state != MANIFEST_SYNC_STATE_UNREGISTERED).
+//
+// Down operates strictly on daemon runtime state and intentionally bypasses configuration
+// parsing and revision checks (expected_revision). This guarantees that running services
+// (including orphaned ones) can always be safely stopped, even if the local configuration
+// is broken, corrupted, or completely missing.
 message DownRequest {
   // Identifier of the workspace whose services are to be stopped.
   string workspace_id = 1;
+
   // Optional list of service names to stop; an empty list targets all workspace services.
   repeated string services = 2;
 }

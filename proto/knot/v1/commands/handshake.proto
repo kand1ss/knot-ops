@@ -18,6 +18,10 @@ message HandshakeResponse {
   // Whether the workspace is committed and synchronized.
   ManifestSyncState state = 1;
 
+  // Current state revision of the workspace in the daemon registry.
+  // Must be passed as `expected_revision` in subsequent Commit or Command requests.
+  string revision = 2;
+
   // Synchronization state of a workspace as recorded by the daemon.
   enum ManifestSyncState {
     MANIFEST_SYNC_STATE_UNSPECIFIED = 0;

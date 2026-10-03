@@ -14,10 +14,16 @@ import "knot/v1/task/events.proto";
 message UpRequest {
   // Identifier of the target workspace.
   string workspace_id = 1;
+
   // Optional list of service names to start or restart; an empty list selects the workspace default.
   repeated string services = 2;
+
+  // Proves the client holds the up-to-date state (obtained from Handshake or Commit).
+  // Ensures no concurrent updates occurred before initiating execution.
+  string expected_revision = 3;
+
   // When true, stops and cleans up orphaned services that are no longer present in the workspace configuration.
-  bool prune = 3;
+  bool prune = 4;
 }
 
 // Server-streamed progress and terminal state for an Up command.
