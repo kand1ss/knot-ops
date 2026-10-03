@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package knot.v1.task;
+
+// Structured failure reported by a service in a task event stream.
+message ServiceError {
+  // Short description of the failure.
+  string issue = 1;
+  // Relevant diagnostic context
+  string context = 2;
+  // Suggested user action to resolve the failure.
+  string solution = 3;
+}
+
+message ServiceEvent {
+    string service = 1;
+    string task_id = 2;
+    oneof kind {
+        StartingEvent starting = 10;
+        RunningEvent running = 11;
+        FailedEvent failed = 12;
+        SkippedEvent skipped = 13;
+        StoppingEvent stopping = 14;
+        StoppedEvent stopped = 15;
+    }
+}
+
+message StartingEvent {
+    string message = 1;
+}
+
+message RunningEvent {
+    string message = 1;
+}
+
+message FailedEvent {
+    ServiceError error = 1;
+}
+
+message SkippedEvent {
+    string message = 1;
+}
+
+message StoppingEvent {
+    string message = 1;
+}
+
+message StoppedEvent {
+    string message = 1;
+}

@@ -2,7 +2,8 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/execution/execution.proto";
+import "knot/v1/task/task.proto";
+import "knot/v1/task/events.proto";
 
 // Request to reconcile the runtime state of a workspace with its committed state.
 message SyncRequest {
@@ -12,17 +13,12 @@ message SyncRequest {
 
 // Server-streamed progress and terminal state for an Sync command.
 message SyncResponse {
-  oneof event {
-    knot.v1.execution.ExecutionPlan plan = 1;
+  oneof kind {
+    knot.v1.task.TaskAccepted accepted = 1;
+    knot.v1.task.TaskCancelled cancelled = 2;
 
-    knot.v1.execution.TaskStarting task_starting = 2;
-    knot.v1.execution.TaskSuccess task_success = 3;
-    knot.v1.execution.TaskFailed task_failed = 4;
-    knot.v1.execution.TaskSkipped task_skipped = 5;
-    knot.v1.execution.TaskCancelled task_cancelled = 6;
-
-    SyncDone up_done = 7;
-    SyncCancelled up_cancelled = 8;
+    knot.v1.task.ServiceEvent event = 3;
+    SyncDone done = 4;
   }
 }
 
@@ -34,13 +30,4 @@ message SyncDone {
   uint32 stopped = 2;
   // Number of services that failed to start/stop.
   uint32 failed = 3;
-}
-
-message SyncCancelled {
-  // Cancellation reason supplied by the requester or daemon.
-  string reason = 1;
-  // Number of services started before cancellation.
-  uint32 started = 2;
-  // Number of services stopped during rollback.
-  uint32 stopped = 3;
 }

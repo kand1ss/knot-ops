@@ -15,7 +15,7 @@ message HandshakeRequest {
 
 // Result of comparing the submitted workspace with daemon state.
 message HandshakeResponse {
-  // Whether the workspace is commited and synchronized.
+  // Whether the workspace is committed and synchronized.
   ManifestSyncState state = 1;
 
   // Synchronization state of a workspace as recorded by the daemon.

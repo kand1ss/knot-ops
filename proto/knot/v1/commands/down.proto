@@ -2,7 +2,8 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/execution/execution.proto";
+import "knot/v1/task/task.proto";
+import "knot/v1/task/events.proto";
 
 // Stops all services in a workspace or the requested subset.
 message DownRequest {
@@ -14,17 +15,12 @@ message DownRequest {
 
 // Server-streamed progress and terminal state for a Down command.
 message DownResponse {
-  oneof event {
-    knot.v1.execution.ExecutionPlan plan = 1;
+  oneof kind {
+    knot.v1.task.TaskAccepted accepted = 1;
+    knot.v1.task.TaskCancelled cancelled = 2;
 
-    knot.v1.execution.TaskStarting task_starting = 2;
-    knot.v1.execution.TaskSuccess task_success = 3;
-    knot.v1.execution.TaskFailed task_failed = 4;
-    knot.v1.execution.TaskSkipped task_skipped = 5;
-    knot.v1.execution.TaskCancelled task_cancelled = 6;
-
-    DownDone down_done = 7;
-    DownCancelled down_cancelled = 8;
+    knot.v1.task.ServiceEvent event = 3;
+    DownDone done = 4;
   }
 }
 
@@ -34,12 +30,4 @@ message DownDone {
   uint32 stopped = 1;
   // Number of services that failed to stop.
   uint32 failed = 2;
-}
-
-// Terminal summary for a Down command cancelled before completion.
-message DownCancelled {
-  // Cancellation reason supplied by the requester or daemon.
-  string reason = 1;
-  // Number of services stopped before cancellation.
-  uint32 stopped = 2;
 }
