@@ -5,22 +5,32 @@ package knot.v1.commands;
 import "knot/v1/task/task.proto";
 import "knot/v1/task/events.proto";
 
-// Starts all services in a workspace or the requested subset.
+// Starts or restarts specified services to bring the runtime state into alignment
+// with the committed state.
+//
+// Without `prune`, services that were removed from the workspace configuration become
+// orphaned and remain running. Setting `prune` to true enables explicit cleanup of
+// these orphaned services.
 message UpRequest {
-  // Workspace whose services are started.
+  // Identifier of the target workspace.
   string workspace_id = 1;
-  // Optional service names to start; an empty list selects the workspace default.
+  // Optional list of service names to start or restart; an empty list selects the workspace default.
   repeated string services = 2;
+  // When true, stops and cleans up orphaned services that are no longer present in the workspace configuration.
   bool prune = 3;
 }
 
 // Server-streamed progress and terminal state for an Up command.
 message UpResponse {
   oneof kind {
+    // Event emitted when the Up task is accepted for processing.
     knot.v1.task.TaskAccepted accepted = 1;
+    // Event emitted when the Up task execution is cancelled.
     knot.v1.task.TaskCancelled cancelled = 2;
 
+    // Progress or status update event from a service.
     knot.v1.task.ServiceEvent event = 3;
+    // Terminal event indicating that the Up command has finished executing.
     UpDone done = 4;
   }
 }

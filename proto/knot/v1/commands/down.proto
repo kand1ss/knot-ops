@@ -5,21 +5,31 @@ package knot.v1.commands;
 import "knot/v1/task/task.proto";
 import "knot/v1/task/events.proto";
 
-// Stops all services in a workspace or the requested subset.
+// Stops running services in a workspace or a requested subset.
+//
+// Unlike other commands, Down performs only a Handshake without Commit, verifying only
+// that the workspace_id is registered (i.e. state != MANIFEST_SYNC_STATE_UNREGISTERED).
+// It operates exclusively on the runtime state and does not require the actual workspace
+// configuration, ensuring services (including orphaned ones) can still be stopped
+// even if the configuration is broken or invalid.
 message DownRequest {
-  // Workspace whose services are stopped.
+  // Identifier of the workspace whose services are to be stopped.
   string workspace_id = 1;
-  // Optional service names to stop; an empty list selects the workspace default.
+  // Optional list of service names to stop; an empty list targets all workspace services.
   repeated string services = 2;
 }
 
 // Server-streamed progress and terminal state for a Down command.
 message DownResponse {
   oneof kind {
+    // Event emitted when the Down task is accepted for processing.
     knot.v1.task.TaskAccepted accepted = 1;
+    // Event emitted when the Down task execution is cancelled.
     knot.v1.task.TaskCancelled cancelled = 2;
 
+    // Progress or status update event from a service being stopped.
     knot.v1.task.ServiceEvent event = 3;
+    // Terminal event indicating that the Down command execution has finished.
     DownDone done = 4;
   }
 }
