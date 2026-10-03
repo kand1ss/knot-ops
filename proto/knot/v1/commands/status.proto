@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/data/info.proto";
+import "knot/v1/data/service.proto";
 
 // Requests the latest daemon-known status for services in a workspace.
 message StatusRequest {

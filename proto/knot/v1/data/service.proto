@@ -18,24 +18,22 @@ message ServiceInfo {
   string name = 1;
   // Current lifecycle state.
   ServiceStatus status = 2;
-  // Process ID when the runtime exposes one.
-  optional uint32 pid = 3;
+  // Process ID
+  uint32 pid = 3;
   // Elapsed running time in seconds.
   uint64 uptime_secs = 4;
-  // Number of restarts since the current daemon state was established.
-  uint32 restart_count = 5;
 
   // Optional runtime and user-facing service details.
-  optional ServiceMetadata metadata = 6;
+  optional ServiceMetadata metadata = 5;
 
   // True when the service exists in the current workspace manifest, but its
   // running instance was started from a different ServiceSpec (spec hash mismatch).
   // Always false if `orphaned` is true.
-  bool drifted = 7;
+  bool drifted = 6;
 
   // True when the running service exists in daemon state, but is no longer
   // declared in the current workspace manifest (service was removed from config).
-  bool orphaned = 8;
+  bool orphaned = 7;
 }
 
 // Additional details about a service that do not determine its lifecycle state.
@@ -44,10 +42,8 @@ message ServiceMetadata {
   optional string port = 1;
   // Command used by the process runtime, when applicable.
   optional string command = 2;
-  // User-defined labels associated with the service.
-  repeated string tags = 3;
   // Exit status from the most recent process termination, when available.
-  optional int32 last_exit_code = 4;
+  optional int32 last_exit_code = 3;
 
   // Forward-compatible service metadata.
   map<string, string> extra = 15;
