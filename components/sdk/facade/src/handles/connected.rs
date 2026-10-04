@@ -65,7 +65,7 @@ impl ConnectedHandle {
             .handshake(request(
                 HandshakeRequest {
                     workspace_id: workspace_id.clone(),
-                    manifest: Some(workspace_manifest),
+                    manifest: Some(workspace_manifest.clone()),
                 },
                 Some(self.policy.timeout.fast_commands),
             ))
@@ -81,7 +81,7 @@ impl ConnectedHandle {
 
         match ManifestSyncState::try_from(res.state) {
             Ok(ManifestSyncState::OutOfSync) => {
-                let handle = UncommittedHandle { controller };
+                let handle = UncommittedHandle { controller, to_commit: workspace_manifest };
                 Ok(DaemonSession::Uncommitted(handle))
             }
             Ok(ManifestSyncState::InSync) => Ok(DaemonSession::Ready(controller)),

@@ -12,20 +12,16 @@ use tracing::{debug, error, info, instrument};
 #[derive(Debug)]
 pub struct UncommittedHandle {
     pub(crate) controller: ControlHandle,
+    pub(crate) to_commit: WorkspaceManifest,
 }
 
 impl UncommittedHandle {
-    // TODO - improve api by removing a redundant 'workspace_manifest' argument
     /// Pushes the initial workspace configuration to the daemon.
     ///
     /// This method consumes the `UncommittedHandle` to enforce the state machine transition.
     /// Upon a successful synchronization, it returns the underlying connection controller
     /// alongside the daemon's differential response, allowing the caller to upgrade the session
     /// into a fully operational state (e.g., `ReadyHandle`).
-    ///
-    /// # Arguments
-    ///
-    /// * `workspace_manifest` - The fully parsed `Workspace` configuration object to be applied.
     ///
     /// # Returns
     ///
@@ -37,15 +33,12 @@ impl UncommittedHandle {
     /// Returns a `ClientError` if the gRPC commit request fails or if the daemon
     /// rejects the provided configuration.
     #[instrument(skip_all, name = "uninitialized_commit")]
-    pub async fn commit(
-        self,
-        workspace_manifest: WorkspaceManifest,
-    ) -> Result<(ControlHandle, CommitResponse), ClientError> {
+    pub async fn commit(self) -> Result<(ControlHandle, CommitResponse), ClientError> {
         debug!("committing workspace configuration to daemon");
 
         let response = self
             .controller
-            .commit(workspace_manifest)
+            .commit(self.to_commit)
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to commit workspace configuration");
@@ -87,6 +80,10 @@ mod tests {
         }
     }
 
+    fn handle(client: DaemonServiceClient<Channel>) -> UncommittedHandle {
+        UncommittedHandle { controller: controller(client), to_commit: manifest() }
+    }
+
     fn manifest() -> WorkspaceManifest {
         WorkspaceManifest::default()
     }
@@ -103,9 +100,7 @@ mod tests {
     #[tokio::test]
     async fn commit_sends_workspace_manifest_and_id() {
         let (mock, client) = spawn_mock_server().await;
-
-        let controller = controller(client);
-        let handle = UncommittedHandle { controller };
+        let handle = handle(client);
 
         {
             let mut handler = mock.commit_handler.lock().await;
@@ -125,7 +120,7 @@ mod tests {
         }
 
         let (_controller, response) = handle
-            .commit(manifest())
+            .commit()
             .await
             .expect("sync should succeed");
 
@@ -135,9 +130,7 @@ mod tests {
     #[tokio::test]
     async fn commit_propagates_grpc_error() {
         let (mock, client) = spawn_mock_server().await;
-
-        let controller = controller(client);
-        let handle = UncommittedHandle { controller };
+        let handle = handle(client);
 
         {
             let mut handler = mock.commit_handler.lock().await;
@@ -149,7 +142,7 @@ mod tests {
             }));
         }
 
-        let result = handle.commit(manifest()).await;
+        let result = handle.commit().await;
 
         assert!(matches!(
             result,
@@ -161,9 +154,7 @@ mod tests {
     #[tokio::test]
     async fn commit_returns_original_controller() {
         let (mock, client) = spawn_mock_server().await;
-
-        let controller = controller(client);
-        let handle = UncommittedHandle { controller };
+        let handle = handle(client);
 
         {
             let mut handler = mock.commit_handler.lock().await;
@@ -172,7 +163,7 @@ mod tests {
         }
 
         let (returned_controller, _command) = handle
-            .commit(manifest())
+            .commit()
             .await
             .expect("sync should succeed");
 
