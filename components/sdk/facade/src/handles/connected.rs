@@ -1,6 +1,6 @@
 use crate::{
     errors::ClientError,
-    handles::{ControlHandle, UncommitedHandle},
+    handles::{ControlHandle, UncommittedHandle},
     policies::PolicyConfig,
     states::DaemonSession,
     utils::request,
@@ -28,6 +28,7 @@ impl ConnectedHandle {
     /// # Arguments
     ///
     /// * `socket_path` - The file system path to the UNIX domain socket (or named pipe).
+    /// * `policy` - Client policy
     ///
     /// # Errors
     ///
@@ -53,6 +54,7 @@ impl ConnectedHandle {
         Ok(Self { client, policy })
     }
 
+    // TODO - add docs
     pub async fn handshake(
         self,
         workspace_id: String,
@@ -69,17 +71,18 @@ impl ConnectedHandle {
             ))
             .await?;
 
+        let res = response.into_inner();
         let controller = ControlHandle {
             client,
             workspace_id,
             policy: Arc::clone(&self.policy),
+            expected_revision: res.revision,
         };
-        let res = response.into_inner();
 
         match ManifestSyncState::try_from(res.state) {
             Ok(ManifestSyncState::OutOfSync) => {
-                let handle = UncommitedHandle { controller };
-                Ok(DaemonSession::Unsynced(handle))
+                let handle = UncommittedHandle { controller };
+                Ok(DaemonSession::Uncommitted(handle))
             }
             Ok(ManifestSyncState::InSync) => Ok(DaemonSession::Ready(controller)),
             Ok(ManifestSyncState::Unregistered) => Err(ClientError::Contract(
@@ -125,6 +128,8 @@ mod tests {
         }
     }
 
+    const REVISION: &str = "test";
+
     #[tokio::test]
     async fn handshake_returns_unsynced_for_out_of_sync_workspace() {
         let (mock, client) = spawn_mock_server().await;
@@ -136,6 +141,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -146,7 +152,7 @@ mod tests {
             .expect("handshake should succeed");
 
         assert!(
-            matches!(session, DaemonSession::Unsynced(_)),
+            matches!(session, DaemonSession::Uncommitted(_)),
             "expected Unsynced session"
         );
     }
@@ -162,6 +168,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -193,6 +200,7 @@ mod tests {
 
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -227,6 +235,7 @@ mod tests {
 
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -274,6 +283,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::Unregistered as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -300,6 +310,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::Unspecified as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -327,6 +338,7 @@ mod tests {
                 Ok(Response::new(HandshakeResponse {
                     // Deliberately invalid protobuf enum value.
                     state: 999,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -353,6 +365,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -382,6 +395,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -392,7 +406,7 @@ mod tests {
             .expect("handshake should succeed");
 
         match session {
-            DaemonSession::Unsynced(unsynced) => {
+            DaemonSession::Uncommitted(unsynced) => {
                 assert_eq!(unsynced.controller.workspace_id, "out-of-sync");
             }
 
@@ -417,6 +431,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -455,6 +470,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -465,7 +481,7 @@ mod tests {
             .expect("handshake should succeed");
 
         match session {
-            DaemonSession::Unsynced(unsynced) => {
+            DaemonSession::Uncommitted(unsynced) => {
                 assert!(
                     Arc::ptr_eq(&unsynced.controller.policy, &policy),
                     "policy Arc must be preserved"

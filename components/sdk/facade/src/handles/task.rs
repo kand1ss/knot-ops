@@ -1,5 +1,5 @@
 use knot_proto::v1::{
-    daemon_service_client::DaemonServiceClient, execution::CancelExecutionRequest,
+    daemon_service_client::DaemonServiceClient, task::CancelTaskRequest,
 };
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -9,61 +9,59 @@ use tracing::{debug, error, info, instrument, warn};
 
 /// An asynchronous stream wrapper representing a long-running daemon execution.
 ///
-/// `CommandHandle` implements the `Stream` trait, allowing you to seamlessly iterate
+/// `TaskHandle` implements the `Stream` trait, allowing you to seamlessly iterate
 /// over real-time execution events (such as task progress or completion statuses).
 /// It also retains a clone of the underlying gRPC client, empowering the caller to
 /// programmatically abort the execution mid-execution via the [`Self::cancel`] method.
 #[derive(Debug)]
-pub struct ExecutionHandle<E> {
+pub struct TaskHandle<E> {
     /// The unique identifier assigned by the daemon for this specific execution execution.
-    pub execution_id: String,
+    pub task_id: String,
     pub(crate) events: Streaming<E>,
     client: DaemonServiceClient<Channel>,
 }
 
-impl<E> ExecutionHandle<E> {
+impl<E> TaskHandle<E> {
     /// Constructs a new `CommandHandle`.
     ///
     /// This is typically called internally by the orchestrator after initiating a
     /// execution like `up` or `down`.
     pub fn new(
-        execution_id: String,
+        task_id: String,
         events: Streaming<E>,
         client: DaemonServiceClient<Channel>,
     ) -> Self {
         Self {
-            execution_id,
+            task_id,
             events,
             client,
         }
     }
 
-    /// Attempts to gracefully abort the ongoing execution execution on the daemon side.
+
+    // TODO - change method signature to inform caller about reason of negative result
+    /// Attempts to gracefully abort the ongoing task on the daemon side.
     ///
-    /// This method sends a cancellation signal to the daemon. If the execution is still running,
+    /// This method sends a cancellation signal to the daemon. If the task is still running,
     /// the daemon will attempt to halt further task execution and initiate rollback or shutdown
-    /// procedures for tasks spawned by this specific execution ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `reason` - A descriptive reason for the cancellation (e.g., "user pressed Ctrl+C").
+    /// procedures for tasks spawned by this specific task ID.
     ///
     /// # Returns
     ///
-    /// Returns `true` if the daemon successfully caught and canceled the execution, or `false`
+    /// Returns `true` if the daemon successfully caught and canceled the task, or `false`
     /// if the execution had already finished or could not be canceled.
     ///
     /// # Errors
     ///
     /// Returns a `tonic::Status` if the gRPC network request fails or if the daemon is unreachable.
-    #[instrument(skip(self), fields(execution_id = %self.execution_id))]
+    #[instrument(skip(self), fields(execution_id = %self.task_id))]
     pub async fn cancel(&self) -> Result<bool, tonic::Status> {
         debug!("sending cancellation request for active execution");
 
         let mut client = self.client.clone();
         let resp = client
-            .cancel_execution(CancelExecutionRequest {
-                execution_id: self.execution_id.clone(),
+            .cancel_task(CancelTaskRequest {
+                task_id: self.task_id.clone(),
             })
             .await
             .map_err(|e| {
@@ -82,7 +80,7 @@ impl<E> ExecutionHandle<E> {
     }
 }
 
-impl<E> Stream for ExecutionHandle<E> {
+impl<E> Stream for TaskHandle<E> {
     type Item = Result<E, tonic::Status>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -100,10 +98,10 @@ mod tests {
     use knot_proto::v1::{
         commands::{UpRequest, UpResponse},
         daemon_service_client::DaemonServiceClient,
-        execution::CancelExecutionResponse,
+        task::CancelTaskResponse,
     };
 
-    use knot_proto::v1::execution::cancel_execution_response::Code as CancelCode;
+    use knot_proto::v1::task::cancel_task_response::Code as CancelCode;
     use tokio_stream::StreamExt;
     use tonic::{Code, Response, Status, transport::Channel};
 
@@ -112,8 +110,9 @@ mod tests {
     async fn create_up_handle(
         mock: &crate::test_utils::MockKnotDaemon,
         client: DaemonServiceClient<Channel>,
-        command_id: &str,
-    ) -> ExecutionHandle<UpResponse> {
+        task_id: &str,
+        expected_revision: &str,
+    ) -> TaskHandle<UpResponse> {
         {
             let mut handler = mock.up_handler.lock().await;
 
@@ -138,11 +137,13 @@ mod tests {
             .up(UpRequest {
                 services: vec![],
                 workspace_id: WORKSPACE_ID.to_string(),
+                expected_revision: expected_revision.to_string(),
+                prune: false,
             })
             .await
             .expect("failed to create mock execution stream");
 
-        ExecutionHandle::new(command_id.to_string(), response.into_inner(), client)
+        TaskHandle::new(task_id.to_string(), response.into_inner(), client)
     }
 
     #[tokio::test]
@@ -150,21 +151,20 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         {
-            let mut handler = mock.cancel_execution_handler.lock().await;
+            let mut handler = mock.cancel_task_handler.lock().await;
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
 
-                assert_eq!(request.execution_id, "test-cmd-id-1");
-                Ok(Response::new(CancelExecutionResponse {
+                assert_eq!(request.task_id, "test-cmd-id-1");
+                Ok(Response::new(CancelTaskResponse {
                     cancelled: true,
                     code: i32::from(CancelCode::Success),
                 }))
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "test-cmd-id-1").await;
-
+        let handle = create_up_handle(&mock, client, "test-cmd-id-1", "test").await;
         let cancelled = handle.cancel().await.expect("cancel should succeed");
 
         assert!(
@@ -178,20 +178,20 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         {
-            let mut handler = mock.cancel_execution_handler.lock().await;
+            let mut handler = mock.cancel_task_handler.lock().await;
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
 
-                assert_eq!(request.execution_id, "test-cmd-id-2");
-                Ok(Response::new(CancelExecutionResponse {
+                assert_eq!(request.task_id, "test-cmd-id-2");
+                Ok(Response::new(CancelTaskResponse {
                     cancelled: false,
                     code: i32::from(CancelCode::AlreadyCompleted),
                 }))
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "test-cmd-id-2").await;
+        let handle = create_up_handle(&mock, client, "test-cmd-id-2", "test").await;
 
         let cancelled = handle.cancel().await.expect("cancel RPC should succeed");
 
@@ -206,18 +206,17 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         {
-            let mut handler = mock.cancel_execution_handler.lock().await;
+            let mut handler = mock.cancel_task_handler.lock().await;
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
 
-                assert_eq!(request.execution_id, "test-cmd-id-3");
+                assert_eq!(request.task_id, "test-cmd-id-3");
                 Err(Status::unavailable("daemon unavailable"))
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "test-cmd-id-3").await;
-
+        let handle = create_up_handle(&mock, client, "test-cmd-id-3", "test").await;
         let result = handle.cancel().await;
 
         match result {
@@ -261,13 +260,15 @@ mod tests {
         let response = client
             .clone()
             .up(UpRequest {
+                expected_revision: "test".to_string(),
+                prune: false,
                 services: vec![],
                 workspace_id: WORKSPACE_ID.to_string(),
             })
             .await
             .expect("up RPC should succeed");
 
-        let mut handle = ExecutionHandle::<UpResponse>::new(
+        let mut handle = TaskHandle::<UpResponse>::new(
             "stream-cmd".to_string(),
             response.into_inner(),
             client,
@@ -317,13 +318,15 @@ mod tests {
         let response = client
             .clone()
             .up(UpRequest {
+                expected_revision: "test".to_string(),
+                prune: false,
                 services: vec![],
                 workspace_id: WORKSPACE_ID.to_string(),
             })
             .await
             .expect("up RPC should succeed");
 
-        let mut handle = ExecutionHandle::<UpResponse>::new(
+        let mut handle = TaskHandle::<UpResponse>::new(
             "ordered-stream".to_string(),
             response.into_inner(),
             client,
@@ -383,13 +386,15 @@ mod tests {
         let response = client
             .clone()
             .up(UpRequest {
+                expected_revision: "test".to_string(),
+                prune: false,
                 services: vec![],
                 workspace_id: WORKSPACE_ID.to_string(),
             })
             .await
             .expect("up RPC should succeed");
 
-        let mut handle = ExecutionHandle::<UpResponse>::new(
+        let mut handle = TaskHandle::<UpResponse>::new(
             "stream-error".to_string(),
             response.into_inner(),
             client,
@@ -421,9 +426,9 @@ mod tests {
     async fn command_handle_preserves_command_id() {
         let (mock, client) = spawn_mock_server().await;
 
-        let handle = create_up_handle(&mock, client, "preserved-execution-id").await;
+        let handle = create_up_handle(&mock, client, "preserved-execution-id", "test").await;
 
-        assert_eq!(handle.execution_id, "preserved-execution-id");
+        assert_eq!(handle.task_id, "preserved-execution-id");
     }
 
     #[tokio::test]
@@ -431,20 +436,20 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         {
-            let mut handler = mock.cancel_execution_handler.lock().await;
+            let mut handler = mock.cancel_task_handler.lock().await;
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
 
-                assert_eq!(request.execution_id, "multiple-cancel");
-                Ok(Response::new(CancelExecutionResponse {
+                assert_eq!(request.task_id, "multiple-cancel");
+                Ok(Response::new(CancelTaskResponse {
                     cancelled: false,
                     code: i32::from(CancelCode::AlreadyCancelling),
                 }))
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "multiple-cancel").await;
+        let handle = create_up_handle(&mock, client, "multiple-cancel", "test").await;
 
         let first = handle.cancel().await.expect("first cancel should succeed");
 

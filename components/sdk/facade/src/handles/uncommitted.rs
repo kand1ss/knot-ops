@@ -10,51 +10,52 @@ use tracing::{debug, error, info, instrument};
 /// commands (such as `up` or `down`) are invalid. The only permitted operational action is
 /// to provide the initial configuration via the [`Self::sync`] method.
 #[derive(Debug)]
-pub struct UncommitedHandle {
+pub struct UncommittedHandle {
     pub(crate) controller: ControlHandle,
 }
 
-impl UncommitedHandle {
+impl UncommittedHandle {
+    // TODO - improve api by removing a redundant 'workspace_manifest' argument
     /// Pushes the initial workspace configuration to the daemon.
     ///
-    /// This method consumes the `UninitializedHandle` to enforce the state machine transition.
+    /// This method consumes the `UncommittedHandle` to enforce the state machine transition.
     /// Upon a successful synchronization, it returns the underlying connection controller
     /// alongside the daemon's differential response, allowing the caller to upgrade the session
     /// into a fully operational state (e.g., `ReadyHandle`).
     ///
     /// # Arguments
     ///
-    /// * `config` - The fully parsed `Workspace` configuration object to be applied.
+    /// * `workspace_manifest` - The fully parsed `Workspace` configuration object to be applied.
     ///
     /// # Returns
     ///
-    /// Returns a tuple containing the reclaimed `ControllerHandle` and the `SyncResponse`
+    /// Returns a tuple containing the reclaimed `ControlHandle` and the `CommitResponse`
     /// detailing the applied changes (added, removed, or modified services).
     ///
     /// # Errors
     ///
-    /// Returns a `ClientError` if the gRPC synchronization request fails or if the daemon
+    /// Returns a `ClientError` if the gRPC commit request fails or if the daemon
     /// rejects the provided configuration.
-    #[instrument(skip_all, name = "uninitialized_sync")]
+    #[instrument(skip_all, name = "uninitialized_commit")]
     pub async fn commit(
         self,
         workspace_manifest: WorkspaceManifest,
     ) -> Result<(ControlHandle, CommitResponse), ClientError> {
-        debug!("pushing initial workspace configuration to uninitialized daemon");
+        debug!("committing workspace configuration to daemon");
 
         let response = self
             .controller
             .commit(workspace_manifest)
             .await
             .map_err(|e| {
-                error!(error = %e, "failed to synchronize initial workspace configuration");
+                error!(error = %e, "failed to commit workspace configuration");
                 e
             })?;
 
-        info!("initial synchronization successful, consuming uninitialized handle");
+        info!("commit successful, consuming unsynced handle");
 
         // We safely return the underlying controller so the orchestrator can wrap it
-        // into the next logical state (like ReadyHandle).
+        // into the next logical state.
         Ok((self.controller, response))
     }
 }
@@ -75,9 +76,11 @@ mod tests {
     use tonic::{Code, Response};
 
     const WORKSPACE_ID: &str = "test_id";
+    const REVISION: &str = "test";
 
     fn controller(client: DaemonServiceClient<Channel>) -> ControlHandle {
         ControlHandle {
+            expected_revision: REVISION.to_string(),
             workspace_id: WORKSPACE_ID.to_string(),
             client,
             policy: Arc::new(PolicyConfig::default()),
@@ -90,6 +93,7 @@ mod tests {
 
     fn commit_response(service: &str) -> CommitResponse {
         CommitResponse {
+            revision: REVISION.to_string(),
             services_added: vec![service.to_string()],
             services_changed: vec![],
             services_removed: vec![],
@@ -101,7 +105,7 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         let controller = controller(client);
-        let handle = UncommitedHandle { controller };
+        let handle = UncommittedHandle { controller };
 
         {
             let mut handler = mock.commit_handler.lock().await;
@@ -133,7 +137,7 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         let controller = controller(client);
-        let handle = UncommitedHandle { controller };
+        let handle = UncommittedHandle { controller };
 
         {
             let mut handler = mock.commit_handler.lock().await;
@@ -159,7 +163,7 @@ mod tests {
         let (mock, client) = spawn_mock_server().await;
 
         let controller = controller(client);
-        let handle = UncommitedHandle { controller };
+        let handle = UncommittedHandle { controller };
 
         {
             let mut handler = mock.commit_handler.lock().await;
