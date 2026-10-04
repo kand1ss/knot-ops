@@ -1,7 +1,33 @@
 use crate::errors::ClientError;
 use crate::handles::ControlHandle;
 use knot_proto::v1::{commands::CommitResponse, config::WorkspaceManifest};
-use tracing::{debug, error, info, instrument};
+use tracing::instrument;
+
+/// Outcome of a successful commit.
+#[derive(Debug)]
+#[non_exhaustive] // allows adding fields without a breaking change
+pub struct Committed {
+    /// Session in the in-sync state; ready for `up` / `down` / `status`.
+    pub control: ControlHandle,
+    /// Service-level changes the daemon applied.
+    pub summary: CommitResponse,
+}
+
+/// A failed commit. Carries the handle back so the caller can retry or `skip()`.
+#[derive(Debug, thiserror::Error)]
+#[error("failed to commit workspace changes")]
+pub struct CommitError {
+    pub handle: UncommittedHandle,
+    #[source]
+    pub source: ClientError,
+}
+
+// Keeps `?` ergonomic for callers that do not care about recovery.
+impl From<CommitError> for ClientError {
+    fn from(e: CommitError) -> Self {
+        e.source
+    }
+}
 
 /// A stateful handle representing a connected but unconfigured daemon.
 ///
@@ -16,40 +42,47 @@ pub struct UncommittedHandle {
 }
 
 impl UncommittedHandle {
-    /// Pushes the initial workspace configuration to the daemon.
+    /// Sends the pending workspace changes to the daemon.
     ///
-    /// This method consumes the `UncommittedHandle` to enforce the state machine transition.
-    /// Upon a successful synchronization, it returns the underlying connection controller
-    /// alongside the daemon's differential response, allowing the caller to upgrade the session
-    /// into a fully operational state (e.g., `ReadyHandle`).
-    ///
-    /// # Returns
-    ///
-    /// Returns a tuple containing the reclaimed `ControlHandle` and the `CommitResponse`
-    /// detailing the applied changes (added, removed, or modified services).
+    /// Consumes the handle. On success returns the in-sync [`ControlHandle`]
+    /// together with the daemon's summary of applied changes.
     ///
     /// # Errors
     ///
-    /// Returns a `ClientError` if the gRPC commit request fails or if the daemon
-    /// rejects the provided configuration.
-    #[instrument(skip_all, name = "uninitialized_commit")]
-    pub async fn commit(self) -> Result<(ControlHandle, CommitResponse), ClientError> {
-        debug!("committing workspace configuration to daemon");
+    /// On failure the handle is returned inside [`CommitError`]. Retrying is
+    /// safe only because the daemon treats a commit of an already-applied
+    /// manifest as a no-op.
+    #[instrument(skip_all, name = "commit")]
+    pub async fn commit(self) -> Result<Committed, CommitError> {
+        match self.controller.commit(self.to_commit.clone()).await {
+            Ok(summary) => Ok(Committed {
+                control: self.controller,
+                summary,
+            }),
+            Err(source) => Err(CommitError {
+                handle: self,
+                source,
+            }),
+        }
+    }
 
-        let response = self
-            .controller
-            .commit(self.to_commit)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to commit workspace configuration");
-                e
-            })?;
-
-        info!("commit successful, consuming unsynced handle");
-
-        // We safely return the underlying controller so the orchestrator can wrap it
-        // into the next logical state.
-        Ok((self.controller, response))
+    /// Abandons the pending commit and continues with the daemon's current state.
+    ///
+    /// Consumes the handle and returns the underlying [`ControlHandle`] **without**
+    /// contacting the daemon. The changes held by this handle are discarded and are
+    /// not sent anywhere.
+    ///
+    /// # Caveats
+    ///
+    /// The returned [`ControlHandle`] operates on the configuration the daemon
+    /// already has, which is out of sync with the local workspace. Commands such as
+    /// `up` will act on the daemon's last committed state, not on local changes.
+    /// Use this only when running against the stale configuration is intended
+    /// (e.g. the user explicitly opted out of synchronization).
+    ///
+    /// This method performs no I/O and cannot fail.
+    pub fn discard(self) -> ControlHandle {
+        self.controller
     }
 }
 
@@ -81,7 +114,10 @@ mod tests {
     }
 
     fn handle(client: DaemonServiceClient<Channel>) -> UncommittedHandle {
-        UncommittedHandle { controller: controller(client), to_commit: manifest() }
+        UncommittedHandle {
+            controller: controller(client),
+            to_commit: manifest(),
+        }
     }
 
     fn manifest() -> WorkspaceManifest {
@@ -119,12 +155,12 @@ mod tests {
             }));
         }
 
-        let (_controller, response) = handle
-            .commit()
-            .await
-            .expect("sync should succeed");
+        let response = handle.commit().await.expect("sync should succeed");
 
-        assert_eq!(response.services_added, vec!["service-a".to_string()]);
+        assert_eq!(
+            response.summary.services_added,
+            vec!["service-a".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -143,10 +179,11 @@ mod tests {
         }
 
         let result = handle.commit().await;
+        let error = result.unwrap_err();
 
         assert!(matches!(
-            result,
-            Err(ClientError::Protocol(status))
+            error.source,
+            ClientError::Protocol(status)
                 if status.code() == Code::FailedPrecondition
         ),);
     }
@@ -162,11 +199,8 @@ mod tests {
             *handler = Some(Box::new(|_request| Ok(Response::new(commit_response("")))));
         }
 
-        let (returned_controller, _command) = handle
-            .commit()
-            .await
-            .expect("sync should succeed");
+        let response = handle.commit().await.expect("sync should succeed");
 
-        assert_eq!(returned_controller.workspace_id, WORKSPACE_ID);
+        assert_eq!(response.control.workspace_id, WORKSPACE_ID);
     }
 }
