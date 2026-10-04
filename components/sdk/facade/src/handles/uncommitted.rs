@@ -1,7 +1,11 @@
 use crate::errors::ClientError;
 use crate::handles::ControlHandle;
-use knot_proto::v1::{commands::CommitResponse, config::WorkspaceManifest};
-use tracing::instrument;
+use crate::utils::request;
+use knot_proto::v1::{
+    commands::{CommitRequest, CommitResponse},
+    config::WorkspaceManifest,
+};
+use tracing::{debug, error, instrument};
 
 /// Outcome of a successful commit.
 #[derive(Debug)]
@@ -54,7 +58,7 @@ impl UncommittedHandle {
     /// manifest as a no-op.
     #[instrument(skip_all, name = "commit")]
     pub async fn commit(self) -> Result<Committed, CommitError> {
-        match self.controller.commit(self.to_commit.clone()).await {
+        match self.inner_commit().await {
             Ok(summary) => Ok(Committed {
                 control: self.controller,
                 summary,
@@ -64,6 +68,27 @@ impl UncommittedHandle {
                 source,
             }),
         }
+    }
+
+    async fn inner_commit(&self) -> Result<CommitResponse, ClientError> {
+        debug!("sending 'commit' request to daemon");
+
+        let mut client = self.controller.client.clone();
+        let response = client
+            .commit(request(
+                CommitRequest {
+                    workspace_id: self.controller.workspace_id.clone(),
+                    expected_revision: self.controller.expected_revision.clone(),
+                    manifest: Some(self.to_commit.clone()),
+                },
+                Some(self.controller.policy.timeout.fast_commands),
+            ))
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to commit workspace configuration");
+                e
+            })?;
+        Ok(response.into_inner())
     }
 
     /// Abandons the pending commit and continues with the daemon's current state.

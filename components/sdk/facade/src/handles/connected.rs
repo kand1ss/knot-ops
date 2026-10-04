@@ -51,7 +51,14 @@ impl ConnectedHandle {
 
         debug!("successfully established gRPC channel over IPC");
         let client = DaemonServiceClient::new(channel);
-        Ok(Self { client, policy })
+        Ok(Self::from_parts(client, policy))
+    }
+
+    pub(crate) fn from_parts(
+        client: DaemonServiceClient<Channel>,
+        policy: Arc<PolicyConfig>,
+    ) -> Self {
+        Self { client, policy }
     }
 
     // TODO - add docs

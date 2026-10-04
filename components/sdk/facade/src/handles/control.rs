@@ -1,12 +1,10 @@
 use crate::errors::ClientError;
-use crate::handles::TaskHandle;
+use crate::handles::{ConnectedHandle, TaskHandle};
 use crate::policies::PolicyConfig;
+use crate::states::DaemonSession;
 use crate::utils::request;
 use knot_proto::v1::{
-    commands::{
-        CommitRequest, CommitResponse, DownRequest, DownResponse, StatusRequest, StatusResponse,
-        UpRequest, UpResponse,
-    },
+    commands::{DownRequest, DownResponse, StatusRequest, StatusResponse, UpRequest, UpResponse},
     config::WorkspaceManifest,
     daemon_service_client::DaemonServiceClient,
 };
@@ -43,44 +41,6 @@ impl ControlHandle {
             })
     }
 
-    /// Commits the local workspace configuration to the daemon.
-    ///
-    /// # Arguments
-    ///
-    /// * `workspace_manifest` - The `Workspace` configuration to commit.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `TaskHandle<CommitResponse>` tied to the specific execution.
-    #[instrument(
-        skip(self, workspace_manifest),
-        name = "commit_command",
-        fields(workspace_id = %self.workspace_id)
-    )]
-    pub async fn commit(
-        &self,
-        workspace_manifest: WorkspaceManifest,
-    ) -> Result<CommitResponse, ClientError> {
-        debug!("sending 'commit' request to daemon");
-
-        let mut client = self.client.clone();
-        let response = client
-            .commit(request(
-                CommitRequest {
-                    workspace_id: self.workspace_id.clone(),
-                    expected_revision: self.expected_revision.clone(),
-                    manifest: Some(workspace_manifest),
-                },
-                Some(self.policy.timeout.fast_commands),
-            ))
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to commit workspace configuration");
-                e
-            })?;
-        Ok(response.into_inner())
-    }
-
     /// Starts or restarts services managed by the daemon.
     ///
     /// This method initiates the startup sequence and returns a server-stream
@@ -111,7 +71,7 @@ impl ControlHandle {
             .up(request(
                 UpRequest {
                     services: Vec::from(services),
-                    expected_revision: self.workspace_id.clone(),
+                    expected_revision: self.expected_revision.clone(),
                     workspace_id: self.workspace_id.clone(),
                     prune,
                 },
@@ -211,6 +171,17 @@ impl ControlHandle {
         );
         Ok(res)
     }
+
+    /// Re-evaluates the workspace against the daemon.
+    ///
+    /// Consumes this handle: after a configuration change, or after the daemon
+    /// rejected a request because of a revision mismatch, the revision held here
+    /// is stale. Returns a fresh session in the state the daemon reports.
+    pub async fn recheck(self, manifest: WorkspaceManifest) -> Result<DaemonSession, ClientError> {
+        ConnectedHandle::from_parts(self.client, self.policy)
+            .handshake(self.workspace_id, manifest)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -219,10 +190,7 @@ mod tests {
 
     use crate::test_utils::{control_handle, spawn_mock_server};
 
-    use knot_proto::v1::{
-        commands::{CommitResponse, StatusResponse},
-        config::WorkspaceManifest,
-    };
+    use knot_proto::v1::commands::StatusResponse;
 
     use tokio_stream::StreamExt;
     use tonic::{Code, Response, Status, metadata::MetadataValue};
@@ -256,17 +224,6 @@ mod tests {
         );
 
         response
-    }
-
-    fn command_with_id<T>(task_id: &str, response: T) -> Response<T> {
-        let mut res = Response::new(response);
-        res.metadata_mut().insert(
-            "x-task-id",
-            task_id
-                .parse::<MetadataValue<_>>()
-                .expect("invalid test task id"),
-        );
-        res
     }
 
     #[tokio::test]
@@ -358,75 +315,6 @@ mod tests {
             result,
             Err(ClientError::Protocol(status))
                 if status.code() == Code::PermissionDenied
-        ),);
-    }
-
-    #[tokio::test]
-    async fn commit_sends_workspace_id_and_manifest() {
-        let (mock, client) = spawn_mock_server().await;
-        let controller = control_handle(client);
-
-        let expected_manifest = WorkspaceManifest::default();
-
-        {
-            let mut handler = mock.commit_handler.lock().await;
-
-            let expected_manifest = expected_manifest.clone();
-
-            *handler = Some(Box::new(move |req| {
-                let request = req.into_inner();
-                let metadata = request.workspace_id;
-
-                assert_eq!(metadata, "test_id");
-                let manifest = request
-                    .manifest
-                    .expect("sync request must contain workspace manifest");
-
-                assert_eq!(manifest, expected_manifest);
-
-                Ok(command_with_id(
-                    "cmd_sync_123",
-                    CommitResponse {
-                        services_added: vec!["service_a".to_string()],
-                        services_removed: vec![],
-                        services_changed: vec![],
-                        revision: request.expected_revision,
-                    },
-                ))
-            }));
-        }
-
-        let response = controller
-            .commit(expected_manifest)
-            .await
-            .expect("sync request should succeed");
-
-        assert_eq!(response.services_added, vec!["service_a"]);
-        assert!(response.services_removed.is_empty());
-        assert!(response.services_changed.is_empty());
-    }
-
-    // TODO - add commit test when an expected revision error doesn't match with actual
-
-    #[tokio::test]
-    async fn commit_propagates_grpc_error() {
-        let (mock, client) = spawn_mock_server().await;
-        let controller = control_handle(client);
-
-        {
-            let mut handler = mock.commit_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Err(Status::failed_precondition("workspace locked"))
-            }));
-        }
-
-        let result = controller.commit(WorkspaceManifest::default()).await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Protocol(status))
-                if status.code() == Code::FailedPrecondition
         ),);
     }
 
