@@ -38,7 +38,7 @@ The CLI constructs pending UI rows and groups from its local manifest (`[groups]
 
 - Daemon-generated **`task_id`** (renamed from `execution_id`) and the session registry keyed by it, using `context.Context` for cancellation signaling.
 - Unary `CancelTask` RPC (`CancelTaskRequest` / `CancelTaskResponse`) returning immediately.
-- Rollback is reported directly on the **original** event stream (`Stopped` events for services being torn down, followed by `UpCancelled` / `DownCancelled` terminal events), rather than requiring a secondary stream.
+- Rollback is reported directly on the **original** event stream (`Stopped` events for services being torn down, followed by the `TaskCancelled` terminal event), rather than requiring a secondary stream.
 
 ---
 
@@ -46,7 +46,7 @@ The CLI constructs pending UI rows and groups from its local manifest (`[groups]
 
 1. **Stream Lifecycle:** The first event emitted on a command stream is `TaskAccepted`; the final event is a terminal command event (`UpCancelled`, `DownCancelled`, `TaskCancelled`, etc.). Nothing follows a terminal event.
 2. **Service State Machine:** Events for a single service strictly follow the `ServiceStatus` state machine. Ordering between distinct services is guaranteed only to the extent implied by the dependency DAG.
-3. **Bounded Execution:** Every execution reaches a terminal event. If a service fails to become ready, `Starting` is bounded by a timeout that produces `Failed { cause: health_timeout }`.
+3. **Bounded Execution:** Every execution reaches a terminal event. If a service fails to become ready, `Starting` is bounded by a timeout that produces `Failed`.
 4. **Forward Compatibility:** A client logs and ignores events with unknown `oneof` variants or unknown service names without failing.
 
 ---
