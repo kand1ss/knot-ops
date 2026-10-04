@@ -85,9 +85,9 @@ impl ControlHandle {
     ///
     /// This method initiates the startup sequence and returns a server-stream
     /// to monitor the execution progress (e.g., service starting, running, or failing).
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `services` - Services to start or restart
     /// * `prune` - Flag to remove orphaned services in workspace
     ///
@@ -125,11 +125,7 @@ impl ControlHandle {
         let task_id = Self::get_task_id(&response)?;
         info!(task_id = %task_id, "successfully initiated 'up' execution stream");
 
-        Ok(TaskHandle::new(
-            task_id,
-            response.into_inner(),
-            client,
-        ))
+        Ok(TaskHandle::new(task_id, response.into_inner(), client))
     }
 
     /// Stops services managed by the daemon.
@@ -137,9 +133,9 @@ impl ControlHandle {
     /// This method sends a `Down` request to gracefully terminate all
     /// active services. Like `Self::up`, it provides a stream to monitor
     /// the shutdown sequence.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `services` - Services to stop
     ///
     /// # Returns
@@ -150,10 +146,7 @@ impl ControlHandle {
         name = "down_command",
         fields(workspace_id = %self.workspace_id)
     )]
-    pub async fn down(
-        &self,
-        services: &[String],
-    ) -> Result<TaskHandle<DownResponse>, ClientError> {
+    pub async fn down(&self, services: &[String]) -> Result<TaskHandle<DownResponse>, ClientError> {
         debug!(
             services_count = services.len(),
             "initiating 'down' execution"
@@ -176,11 +169,7 @@ impl ControlHandle {
         let task_id = Self::get_task_id(&response)?;
         info!(task_id = %task_id, "successfully initiated 'down' execution stream");
 
-        Ok(TaskHandle::new(
-            task_id,
-            response.into_inner(),
-            client,
-        ))
+        Ok(TaskHandle::new(task_id, response.into_inner(), client))
     }
 
     /// Fetches the current status of all managed services in the workspace.

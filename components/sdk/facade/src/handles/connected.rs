@@ -81,7 +81,10 @@ impl ConnectedHandle {
 
         match ManifestSyncState::try_from(res.state) {
             Ok(ManifestSyncState::OutOfSync) => {
-                let handle = UncommittedHandle { controller, to_commit: workspace_manifest };
+                let handle = UncommittedHandle {
+                    controller,
+                    to_commit: workspace_manifest,
+                };
                 Ok(DaemonSession::Uncommitted(handle))
             }
             Ok(ManifestSyncState::InSync) => Ok(DaemonSession::Ready(controller)),

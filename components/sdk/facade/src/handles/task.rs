@@ -1,6 +1,4 @@
-use knot_proto::v1::{
-    daemon_service_client::DaemonServiceClient, task::CancelTaskRequest,
-};
+use knot_proto::v1::{daemon_service_client::DaemonServiceClient, task::CancelTaskRequest};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio_stream::Stream;
@@ -37,7 +35,6 @@ impl<E> TaskHandle<E> {
             client,
         }
     }
-
 
     // TODO - change method signature to inform caller about reason of negative result
     /// Attempts to gracefully abort the ongoing task on the daemon side.
@@ -268,11 +265,8 @@ mod tests {
             .await
             .expect("up RPC should succeed");
 
-        let mut handle = TaskHandle::<UpResponse>::new(
-            "stream-cmd".to_string(),
-            response.into_inner(),
-            client,
-        );
+        let mut handle =
+            TaskHandle::<UpResponse>::new("stream-cmd".to_string(), response.into_inner(), client);
 
         assert!(handle.next().await.expect("first item must exist").is_ok());
 
