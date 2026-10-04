@@ -28,7 +28,7 @@ message CommitResponse {
 
   // Services removed from daemon state because they are absent from the manifest.
   repeated string services_removed = 3;
-  
+
   // Services whose definitions changed since the previous commit.
   repeated string services_changed = 4;
 }

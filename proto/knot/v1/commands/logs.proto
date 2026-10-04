@@ -44,6 +44,6 @@ message LogEntry {
   uint64 timestamp_ms = 2;
 }
 
-// Marker event signaling that all requested historical log lines (`tail`) 
+// Marker event signaling that all requested historical log lines (`tail`)
 // have been sent. Subsequent events are real-time log updates when `follow` is true.
 message TailComplete {}

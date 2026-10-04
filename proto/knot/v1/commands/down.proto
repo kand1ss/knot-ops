@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/task/task.proto";
 import "knot/v1/task/events.proto";
+import "knot/v1/task/task.proto";
 
 // Stops running services in a workspace or a requested subset.
 //
