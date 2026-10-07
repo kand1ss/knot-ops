@@ -45,8 +45,8 @@ Diagrams: [flow.md](flow.md) (decision tree), [states.md](states.md) (state mach
 | Discovery   | `StaleHandle`     | Leftover artifacts of a dead daemon.                      | `OfflineHandle` (via `clean`)         |
 | Discovery   | `KillHandle`      | A matching daemon process exists but is unresponsive.     | `StaleHandle` (via `kill`)            |
 | Discovery   | `ConnectedHandle` | IPC channel is healthy; workspace not yet checked.        | `DaemonSession` (via `handshake`)     |
-| Session     | `UncommittedHandle` | Workspace is registered but out of sync with the daemon. | `ControlHandle` (via `sync`)          |
-| Session     | `ControlHandle`   | Workspace is in sync; the main operational handle.        | `TaskHandle` (via `up`/`down`/`sync`) |
+| Session     | `UncommittedHandle` | Workspace is registered but out of sync with the daemon. | `ControlHandle` (via `commit`)          |
+| Session     | `ControlHandle`   | Workspace is in sync; the main operational handle.        | `TaskHandle` (via `up`/`down`) |
 | Execution   | `TaskHandle<E>`   | A running long-lived command, exposed as an event stream. | back to `ControlHandle` when finished |
 
 Key properties:

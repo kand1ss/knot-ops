@@ -21,7 +21,7 @@ pub struct Committed {
 #[derive(Debug, thiserror::Error)]
 #[error("failed to commit workspace changes")]
 pub struct CommitError {
-    pub handle: UncommittedHandle,
+    pub handle: Box<UncommittedHandle>,
     #[source]
     pub source: ClientError,
 }
@@ -64,7 +64,7 @@ impl UncommittedHandle {
                 summary,
             }),
             Err(source) => Err(CommitError {
-                handle: self,
+                handle: Box::new(self),
                 source,
             }),
         }
