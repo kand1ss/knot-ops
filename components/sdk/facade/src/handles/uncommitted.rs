@@ -7,6 +7,23 @@ use knot_proto::v1::{
 };
 use tracing::{debug, error, instrument};
 
+#[derive(Debug)]
+pub struct CommitSummary {
+    pub services_added: Vec<String>,
+    pub services_removed: Vec<String>,
+    pub services_changed: Vec<String>,
+}
+
+impl From<CommitResponse> for CommitSummary {
+    fn from(from: CommitResponse) -> CommitSummary {
+        CommitSummary { 
+            services_added: from.services_added, 
+            services_removed: from.services_removed, 
+            services_changed: from.services_changed 
+        }
+    }
+}
+
 /// Outcome of a successful commit.
 #[derive(Debug)]
 #[non_exhaustive] // allows adding fields without a breaking change
@@ -14,7 +31,7 @@ pub struct Committed {
     /// Session in the in-sync state; ready for `up` / `down` / `status`.
     pub control: ControlHandle,
     /// Service-level changes the daemon applied.
-    pub summary: CommitResponse,
+    pub summary: CommitSummary,
 }
 
 /// A failed commit. Carries the handle back so the caller can retry or `skip()`.
@@ -38,7 +55,7 @@ impl From<CommitError> for ClientError {
 /// This handle is returned during the handshake phase if the daemon is currently running
 /// but has no active workspace configuration loaded in memory. In this state, lifecycle
 /// commands (such as `up` or `down`) are invalid. The only permitted operational action is
-/// to provide the initial configuration via the [`Self::sync`] method.
+/// to provide the initial configuration via the [`Self::commit`] method.
 #[derive(Debug)]
 pub struct UncommittedHandle {
     pub(crate) controller: ControlHandle,
@@ -57,7 +74,7 @@ impl UncommittedHandle {
     /// safe only because the daemon treats a commit of an already-applied
     /// manifest as a no-op.
     #[instrument(skip_all, name = "commit")]
-    pub async fn commit(self) -> Result<Committed, CommitError> {
+    pub async fn commit(mut self) -> Result<Committed, CommitError> {
         match self.inner_commit().await {
             Ok(summary) => Ok(Committed {
                 control: self.controller,
@@ -70,7 +87,7 @@ impl UncommittedHandle {
         }
     }
 
-    async fn inner_commit(&self) -> Result<CommitResponse, ClientError> {
+    async fn inner_commit(&mut self) -> Result<CommitSummary, ClientError> {
         debug!("sending 'commit' request to daemon");
 
         let mut client = self.controller.client.clone();
@@ -88,7 +105,10 @@ impl UncommittedHandle {
                 error!(error = %e, "failed to commit workspace configuration");
                 e
             })?;
-        Ok(response.into_inner())
+
+        let res = response.into_inner();
+        self.controller.set_revision(res.revision.clone());
+        Ok(CommitSummary::from(res))
     }
 
     /// Abandons the pending commit and continues with the daemon's current state.

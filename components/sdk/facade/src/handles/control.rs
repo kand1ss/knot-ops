@@ -41,6 +41,10 @@ impl ControlHandle {
             })
     }
 
+    pub(crate) fn set_revision(&mut self, revision: String) {
+        self.expected_revision = revision
+    }
+
     /// Starts or restarts services managed by the daemon.
     ///
     /// This method initiates the startup sequence and returns a server-stream
