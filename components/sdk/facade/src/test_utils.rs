@@ -1,7 +1,6 @@
 use crate::handles::ControlHandle;
 use crate::policies::PolicyConfig;
 use async_trait::async_trait;
-use knot_proto::v1::commands::{SyncRequest, SyncResponse};
 use knot_proto::v1::{
     commands::{
         CommitRequest, CommitResponse, DownRequest, DownResponse, HandshakeRequest,
@@ -10,7 +9,7 @@ use knot_proto::v1::{
     },
     daemon_service_client::DaemonServiceClient,
     daemon_service_server::{DaemonService, DaemonServiceServer},
-    execution::{CancelExecutionRequest, CancelExecutionResponse},
+    task::{CancelTaskRequest, CancelTaskResponse},
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -57,10 +56,9 @@ pub struct MockKnotDaemon {
     pub handshake_handler: Handler<HandshakeRequest, HandshakeResponse>,
     pub commit_handler: Handler<CommitRequest, CommitResponse>,
     pub status_handler: Handler<StatusRequest, StatusResponse>,
-    pub cancel_execution_handler: Handler<CancelExecutionRequest, CancelExecutionResponse>,
+    pub cancel_task_handler: Handler<CancelTaskRequest, CancelTaskResponse>,
     pub up_handler: StreamHandler<UpRequest, UpResponse>,
     pub down_handler: StreamHandler<DownRequest, DownResponse>,
-    pub sync_handler: StreamHandler<SyncRequest, SyncResponse>,
 }
 
 #[async_trait]
@@ -99,17 +97,6 @@ impl DaemonService for MockKnotDaemon {
         }
     }
 
-    type SyncStream = ReceiverStream<Result<SyncResponse, Status>>;
-    async fn sync(
-        &self,
-        request: Request<SyncRequest>,
-    ) -> Result<Response<Self::SyncStream>, Status> {
-        match self.sync_handler.lock().await.as_mut() {
-            Some(h) => h(request),
-            None => Err(Status::unimplemented("sync not mocked")),
-        }
-    }
-
     async fn status(
         &self,
         request: Request<StatusRequest>,
@@ -124,11 +111,11 @@ impl DaemonService for MockKnotDaemon {
     ) -> Result<Response<Self::LogsStream>, Status> {
         Err(Status::unimplemented("logs not mocked"))
     }
-    async fn cancel_execution(
+    async fn cancel_task(
         &self,
-        request: Request<CancelExecutionRequest>,
-    ) -> Result<Response<CancelExecutionResponse>, Status> {
-        call_handler(&self.cancel_execution_handler, request, "cancel_command").await
+        request: Request<CancelTaskRequest>,
+    ) -> Result<Response<CancelTaskResponse>, Status> {
+        call_handler(&self.cancel_task_handler, request, "cancel_command").await
     }
 }
 
@@ -161,6 +148,7 @@ pub async fn spawn_mock_server() -> (MockKnotDaemon, DaemonServiceClient<Channel
 pub fn control_handle(client: DaemonServiceClient<Channel>) -> ControlHandle {
     ControlHandle {
         workspace_id: "test_id".to_string(),
+        expected_revision: "test".to_string(),
         client,
         policy: Arc::new(PolicyConfig::default()),
     }

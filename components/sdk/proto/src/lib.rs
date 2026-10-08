@@ -5,8 +5,8 @@ pub mod v1 {
         tonic::include_proto!("knot.v1.config");
     }
 
-    pub mod execution {
-        tonic::include_proto!("knot.v1.execution");
+    pub mod task {
+        tonic::include_proto!("knot.v1.task");
     }
 
     pub mod commands {

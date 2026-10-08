@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package knot.v1.task;
+
+// Event emitted when a task has been successfully accepted for processing.
+message TaskAccepted {
+  // Unique identifier of the accepted task.
+  string task_id = 1;
+  // List of services participating in the task execution.
+  repeated string services = 2;
+}
+
+// Event emitted when a task execution is cancelled.
+message TaskCancelled {
+  // Unique identifier of the cancelled task.
+  string task_id = 1;
+  // Reason or additional context regarding the cancellation.
+  string message = 2;
+}
+
+// Requests graceful cancellation of a running task.
+message CancelTaskRequest {
+  // Unique identifier of the task to cancel.
+  string task_id = 1;
+}
+
+// Immediate acknowledgement of a cancellation request. Rollback and final
+// command state continue on the original command event stream.
+message CancelTaskResponse {
+  // True when an active execution matching execution_id was found.
+  bool cancelled = 1;
+  // Result code explaining the cancellation state.
+  Code code = 2;
+
+  // Status code indicating the result of the cancellation attempt.
+  enum Code {
+    CODE_UNSPECIFIED = 0;
+    // Cancellation signal was successfully sent to the execution.
+    CODE_SUCCESS = 1;
+    // Task with the specified task_id was not found in daemon state.
+    CODE_NOT_FOUND = 2;
+    // Task has already finished (completed, failed, or was skipped).
+    CODE_ALREADY_COMPLETED = 3;
+    // Task is already in the process of cancelling.
+    CODE_ALREADY_CANCELLING = 4;
+  }
+}

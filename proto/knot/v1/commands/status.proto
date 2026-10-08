@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/data/info.proto";
+import "knot/v1/data/service.proto";
 
 // Requests the latest daemon-known status for services in a workspace.
 message StatusRequest {
@@ -16,4 +16,9 @@ message StatusRequest {
 message StatusResponse {
   // One entry for each service selected by the request.
   repeated knot.v1.data.ServiceInfo services = 1;
+
+  // True if at least one running service has spec drift compared to manifest.
+  bool has_drifted = 2;
+  // True if at least one running service is no longer present in the manifest.
+  bool has_orphaned = 3;
 }
