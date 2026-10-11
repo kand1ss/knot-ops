@@ -35,6 +35,9 @@ pub enum ClientError {
 
     #[error("failed to resolve daemon binary path")]
     PathResolution(#[from] PathResolutionError),
+
+    #[error("the daemon rejects a provided revision")]
+    WrongRevision,
 }
 
 impl ClientError {
@@ -50,6 +53,9 @@ impl ClientError {
                 "the OS reported no valid application data directory for the current user"
                     .to_string(),
             ),
+            Self::WrongRevision => Some(
+                "handshake with the daemon not established, or a revision was changed between calls".to_string()
+            )
         }
     }
 
@@ -96,6 +102,7 @@ impl ClientError {
                 home directory configured (e.g. the $HOME variable on Linux/macOS, \
                 or a valid user profile on Windows), then retry.",
             ),
+            Self::WrongRevision => Some("try executing the command again"),
         }
     }
 }

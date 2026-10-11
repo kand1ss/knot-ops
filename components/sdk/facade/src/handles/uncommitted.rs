@@ -1,6 +1,5 @@
 use crate::errors::ClientError;
 use crate::handles::ControlHandle;
-use crate::utils::request;
 use knot_proto::v1::{
     commands::{CommitRequest, CommitResponse},
     config::WorkspaceManifest,
@@ -16,10 +15,10 @@ pub struct CommitSummary {
 
 impl From<CommitResponse> for CommitSummary {
     fn from(from: CommitResponse) -> CommitSummary {
-        CommitSummary { 
-            services_added: from.services_added, 
-            services_removed: from.services_removed, 
-            services_changed: from.services_changed 
+        CommitSummary {
+            services_added: from.services_added,
+            services_removed: from.services_removed,
+            services_changed: from.services_changed,
         }
     }
 }
@@ -90,23 +89,20 @@ impl UncommittedHandle {
     async fn inner_commit(&mut self) -> Result<CommitSummary, ClientError> {
         debug!("sending 'commit' request to daemon");
 
-        let mut client = self.controller.client.clone();
-        let response = client
-            .commit(request(
-                CommitRequest {
-                    workspace_id: self.controller.workspace_id.clone(),
-                    expected_revision: self.controller.expected_revision.clone(),
-                    manifest: Some(self.to_commit.clone()),
-                },
-                Some(self.controller.policy.timeout.fast_commands),
-            ))
+        let res = self
+            .controller
+            .client
+            .commit(CommitRequest {
+                workspace_id: self.controller.workspace_id.clone(),
+                expected_revision: self.controller.expected_revision.clone(),
+                manifest: Some(self.to_commit.clone()),
+            })
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to commit workspace configuration");
                 e
             })?;
 
-        let res = response.into_inner();
         self.controller.set_revision(res.revision.clone());
         Ok(CommitSummary::from(res))
     }
@@ -135,21 +131,18 @@ impl UncommittedHandle {
 mod tests {
     use super::*;
 
+    use crate::guarded_client::GuardedDaemonClient;
     use crate::policies::PolicyConfig;
     use crate::test_utils::spawn_mock_server;
-    use knot_proto::v1::{
-        commands::CommitResponse, config::WorkspaceManifest,
-        daemon_service_client::DaemonServiceClient,
-    };
+    use knot_proto::v1::{commands::CommitResponse, config::WorkspaceManifest};
     use std::sync::Arc;
 
-    use tonic::transport::Channel;
     use tonic::{Code, Response};
 
     const WORKSPACE_ID: &str = "test_id";
     const REVISION: &str = "test";
 
-    fn controller(client: DaemonServiceClient<Channel>) -> ControlHandle {
+    fn controller(client: GuardedDaemonClient) -> ControlHandle {
         ControlHandle {
             expected_revision: REVISION.to_string(),
             workspace_id: WORKSPACE_ID.to_string(),
@@ -158,7 +151,7 @@ mod tests {
         }
     }
 
-    fn handle(client: DaemonServiceClient<Channel>) -> UncommittedHandle {
+    fn handle(client: GuardedDaemonClient) -> UncommittedHandle {
         UncommittedHandle {
             controller: controller(client),
             to_commit: manifest(),

@@ -9,13 +9,13 @@
 mod builder;
 mod client;
 pub mod errors;
+mod guarded_client;
 pub mod handles;
 pub mod policies;
 pub mod states;
 
 #[cfg(test)]
 pub mod test_utils;
-mod utils;
 
 pub use builder::ClientBuilder;
 pub use client::KnotClient;

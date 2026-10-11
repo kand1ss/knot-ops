@@ -1,5 +1,5 @@
-use crate::handles::ControlHandle;
 use crate::policies::PolicyConfig;
+use crate::{guarded_client::GuardedDaemonClient, handles::ControlHandle};
 use async_trait::async_trait;
 use knot_proto::v1::{
     commands::{
@@ -119,7 +119,7 @@ impl DaemonService for MockKnotDaemon {
     }
 }
 
-pub async fn spawn_mock_server() -> (MockKnotDaemon, DaemonServiceClient<Channel>) {
+pub(crate) async fn spawn_mock_server() -> (MockKnotDaemon, GuardedDaemonClient) {
     let mock = MockKnotDaemon::default();
     let service = DaemonServiceServer::new(mock.clone());
 
@@ -142,10 +142,14 @@ pub async fn spawn_mock_server() -> (MockKnotDaemon, DaemonServiceClient<Channel
         .await
         .unwrap();
 
-    (mock, DaemonServiceClient::new(channel))
+    let client = DaemonServiceClient::new(channel);
+    (
+        mock,
+        GuardedDaemonClient::new(client, Arc::new(PolicyConfig::default())),
+    )
 }
 
-pub fn control_handle(client: DaemonServiceClient<Channel>) -> ControlHandle {
+pub(crate) fn control_handle(client: GuardedDaemonClient) -> ControlHandle {
     ControlHandle {
         workspace_id: "test_id".to_string(),
         expected_revision: "test".to_string(),

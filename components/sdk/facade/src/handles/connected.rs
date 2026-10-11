@@ -1,16 +1,16 @@
 use crate::{
     errors::ClientError,
+    guarded_client::GuardedDaemonClient,
     handles::{ControlHandle, UncommittedHandle},
     policies::PolicyConfig,
     states::DaemonSession,
-    utils::request,
 };
 use knot_proto::v1::{
     commands::HandshakeRequest, config::WorkspaceManifest,
     daemon_service_client::DaemonServiceClient,
 };
 use std::{path::Path, sync::Arc};
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::Endpoint;
 use tracing::{debug, error, instrument};
 
 use knot_grpc::IpcConnector;
@@ -18,7 +18,7 @@ use knot_proto::v1::commands::handshake_response::ManifestSyncState;
 
 #[derive(Debug)]
 pub struct ConnectedHandle {
-    pub(crate) client: DaemonServiceClient<Channel>,
+    pub(crate) client: GuardedDaemonClient,
     pub(crate) policy: Arc<PolicyConfig>,
 }
 
@@ -51,13 +51,11 @@ impl ConnectedHandle {
 
         debug!("successfully established gRPC channel over IPC");
         let client = DaemonServiceClient::new(channel);
-        Ok(Self::from_parts(client, policy))
+        let guarded = GuardedDaemonClient::new(client, Arc::clone(&policy));
+        Ok(Self::from_parts(guarded, policy))
     }
 
-    pub(crate) fn from_parts(
-        client: DaemonServiceClient<Channel>,
-        policy: Arc<PolicyConfig>,
-    ) -> Self {
+    pub(crate) fn from_parts(client: GuardedDaemonClient, policy: Arc<PolicyConfig>) -> Self {
         Self { client, policy }
     }
 
@@ -67,20 +65,16 @@ impl ConnectedHandle {
         workspace_id: String,
         workspace_manifest: WorkspaceManifest,
     ) -> Result<DaemonSession, ClientError> {
-        let mut client = self.client.clone();
-        let response = client
-            .handshake(request(
-                HandshakeRequest {
-                    workspace_id: workspace_id.clone(),
-                    manifest: Some(workspace_manifest.clone()),
-                },
-                Some(self.policy.timeout.fast_commands),
-            ))
+        let res = self
+            .client
+            .handshake(HandshakeRequest {
+                workspace_id: workspace_id.clone(),
+                manifest: Some(workspace_manifest.clone()),
+            })
             .await?;
 
-        let res = response.into_inner();
         let controller = ControlHandle {
-            client,
+            client: self.client,
             workspace_id,
             policy: Arc::clone(&self.policy),
             expected_revision: res.revision,
@@ -113,13 +107,12 @@ mod tests {
     use knot_proto::v1::{
         commands::{HandshakeRequest, HandshakeResponse},
         config::WorkspaceManifest,
-        daemon_service_client::DaemonServiceClient,
     };
 
     use std::sync::Arc;
     use tonic::{Code, Request, Response, Status};
 
-    fn handle(client: DaemonServiceClient<Channel>) -> ConnectedHandle {
+    fn handle(client: GuardedDaemonClient) -> ConnectedHandle {
         ConnectedHandle {
             client,
             policy: Arc::new(PolicyConfig::default()),

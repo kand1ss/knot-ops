@@ -1,15 +1,13 @@
 use crate::errors::ClientError;
+use crate::guarded_client::GuardedDaemonClient;
 use crate::handles::{ConnectedHandle, TaskHandle};
 use crate::policies::PolicyConfig;
 use crate::states::DaemonSession;
-use crate::utils::request;
 use knot_proto::v1::{
     commands::{DownRequest, DownResponse, StatusRequest, StatusResponse, UpRequest, UpResponse},
     config::WorkspaceManifest,
-    daemon_service_client::DaemonServiceClient,
 };
 use std::sync::Arc;
-use tonic::{Response, transport::Channel};
 use tracing::{debug, error, info, instrument};
 
 /// A handle for controlling and communicating with the Knot daemon.
@@ -21,26 +19,11 @@ use tracing::{debug, error, info, instrument};
 pub struct ControlHandle {
     pub(crate) workspace_id: String,
     pub(crate) expected_revision: String,
-    pub(crate) client: DaemonServiceClient<Channel>,
+    pub(crate) client: GuardedDaemonClient,
     pub(crate) policy: Arc<PolicyConfig>,
 }
 
-// TODO - add aborted request handling when expected revision doesn't match with an actual daemon revision
 impl ControlHandle {
-    /// Extracts the `x-task-id` from the gRPC response metadata.
-    fn get_task_id<R>(response: &Response<R>) -> Result<String, ClientError> {
-        response
-            .metadata()
-            .get("x-task-id")
-            .and_then(|v| v.to_str().ok())
-            .map(String::from)
-            .ok_or_else(|| {
-                let err_msg = "daemon did not return an 'x-task-id' header";
-                error!(err_msg);
-                ClientError::Contract(err_msg.to_string())
-            })
-    }
-
     pub(crate) fn set_revision(&mut self, revision: String) {
         self.expected_revision = revision
     }
@@ -70,26 +53,23 @@ impl ControlHandle {
     ) -> Result<TaskHandle<UpResponse>, ClientError> {
         debug!(services_count = services.len(), "initiating 'up' execution");
 
-        let mut client = self.client.clone();
-        let response = client
-            .up(request(
-                UpRequest {
-                    services: Vec::from(services),
-                    expected_revision: self.expected_revision.clone(),
-                    workspace_id: self.workspace_id.clone(),
-                    prune,
-                },
-                self.policy.timeout.long_streams,
-            ))
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to initiate 'up' execution");
-                e
-            })?;
-        let task_id = Self::get_task_id(&response)?;
-        info!(task_id = %task_id, "successfully initiated 'up' execution stream");
+        let req = UpRequest {
+            services: Vec::from(services),
+            expected_revision: self.expected_revision.clone(),
+            workspace_id: self.workspace_id.clone(),
+            prune,
+        };
 
-        Ok(TaskHandle::new(task_id, response.into_inner(), client))
+        let task_handle = self.client.up(req).await.map_err(|e| {
+            error!(error = %e, "failed to initiate 'up' execution");
+            e
+        })?;
+
+        info!(
+            task_id = %task_handle.task_id,
+            "successfully initiated 'up' execution stream"
+        );
+        Ok(task_handle)
     }
 
     /// Stops services managed by the daemon.
@@ -116,24 +96,22 @@ impl ControlHandle {
             "initiating 'down' execution"
         );
 
-        let mut client = self.client.clone();
-        let response = client
-            .down(request(
-                DownRequest {
-                    services: Vec::from(services),
-                    workspace_id: self.workspace_id.clone(),
-                },
-                self.policy.timeout.long_streams,
-            ))
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to initiate 'down' execution");
-                e
-            })?;
-        let task_id = Self::get_task_id(&response)?;
-        info!(task_id = %task_id, "successfully initiated 'down' execution stream");
+        let req = DownRequest {
+            services: Vec::from(services),
+            workspace_id: self.workspace_id.clone(),
+        };
 
-        Ok(TaskHandle::new(task_id, response.into_inner(), client))
+        let task_handle = self.client.down(req).await.map_err(|e| {
+            error!(error = %e, "failed to initiate 'down' execution");
+            e
+        })?;
+
+        info!(
+            task_id = %task_handle.task_id,
+            "successfully initiated 'down' execution stream"
+        );
+
+        Ok(task_handle)
     }
 
     /// Fetches the current status of all managed services in the workspace.
@@ -153,27 +131,21 @@ impl ControlHandle {
     pub async fn status(&self) -> Result<StatusResponse, ClientError> {
         debug!("fetching daemon status");
 
-        let mut client = self.client.clone();
-        let response = client
-            .status(request(
-                StatusRequest {
-                    services: vec![],
-                    workspace_id: self.workspace_id.clone(),
-                },
-                Some(self.policy.timeout.fast_commands),
-            ))
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to fetch status from daemon");
-                e
-            })?;
+        let req = StatusRequest {
+            workspace_id: self.workspace_id.clone(),
+            services: Vec::new(),
+        };
 
-        let res = response.into_inner();
+        let response = self.client.status(req).await.map_err(|e| {
+            error!(error = %e, "failed to initiate 'down' execution");
+            e
+        })?;
+
         debug!(
-            services_count = res.services.len(),
+            services_count = response.services.len(),
             "successfully retrieved status"
         );
-        Ok(res)
+        Ok(response)
     }
 
     /// Re-evaluates the workspace against the daemon.
@@ -397,8 +369,6 @@ mod tests {
                 if status.code() == Code::Unavailable
         ),);
     }
-
-    // TODO - add up test when an provided expected revision doesn't match with actual
 
     #[tokio::test]
     async fn up_propagates_stream_error() {

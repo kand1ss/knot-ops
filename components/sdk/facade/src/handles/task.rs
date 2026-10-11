@@ -90,24 +90,22 @@ impl<E> Stream for TaskHandle<E> {
 mod tests {
     use super::*;
 
-    use crate::test_utils::spawn_mock_server;
+    use crate::{guarded_client::GuardedDaemonClient, test_utils::spawn_mock_server};
 
     use knot_proto::v1::{
         commands::{UpRequest, UpResponse},
-        daemon_service_client::DaemonServiceClient,
         task::CancelTaskResponse,
     };
 
     use knot_proto::v1::task::cancel_task_response::Code as CancelCode;
     use tokio_stream::StreamExt;
-    use tonic::{Code, Response, Status, transport::Channel};
+    use tonic::{Code, Response, Status, metadata::MetadataValue};
 
     const WORKSPACE_ID: &str = "test-workspace";
 
     async fn create_up_handle(
         mock: &crate::test_utils::MockKnotDaemon,
-        client: DaemonServiceClient<Channel>,
-        task_id: &str,
+        client: GuardedDaemonClient,
         expected_revision: &str,
     ) -> TaskHandle<UpResponse> {
         {
@@ -123,13 +121,11 @@ mod tests {
 
                 let (_tx, rx) = tokio::sync::mpsc::channel(1);
 
-                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
-                    rx,
-                )))
+                Ok(response(tokio_stream::wrappers::ReceiverStream::new(rx)))
             }));
         }
 
-        let response = client
+        client
             .clone()
             .up(UpRequest {
                 services: vec![],
@@ -138,9 +134,18 @@ mod tests {
                 prune: false,
             })
             .await
-            .expect("failed to create mock execution stream");
+            .expect("failed to create mock execution stream")
+    }
 
-        TaskHandle::new(task_id.to_string(), response.into_inner(), client)
+    const TASK_ID: &str = "test";
+
+    fn response<T>(msg: T) -> Response<T> {
+        let mut response = Response::new(msg);
+        response.metadata_mut().insert(
+            crate::guarded_client::METADATA_TASK_ID_HEADER,
+            MetadataValue::try_from(TASK_ID).unwrap(),
+        );
+        response
     }
 
     #[tokio::test]
@@ -152,16 +157,18 @@ mod tests {
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
+                assert_eq!(request.task_id, TASK_ID);
 
-                assert_eq!(request.task_id, "test-cmd-id-1");
-                Ok(Response::new(CancelTaskResponse {
+                let response = response(CancelTaskResponse {
                     cancelled: true,
                     code: i32::from(CancelCode::Success),
-                }))
+                });
+
+                Ok(response)
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "test-cmd-id-1", "test").await;
+        let handle = create_up_handle(&mock, client, "test").await;
         let cancelled = handle.cancel().await.expect("cancel should succeed");
 
         assert!(
@@ -179,16 +186,18 @@ mod tests {
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
+                assert_eq!(request.task_id, TASK_ID);
 
-                assert_eq!(request.task_id, "test-cmd-id-2");
-                Ok(Response::new(CancelTaskResponse {
+                let response = response(CancelTaskResponse {
                     cancelled: false,
                     code: i32::from(CancelCode::AlreadyCompleted),
-                }))
+                });
+
+                Ok(response)
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "test-cmd-id-2", "test").await;
+        let handle = create_up_handle(&mock, client, "test").await;
 
         let cancelled = handle.cancel().await.expect("cancel RPC should succeed");
 
@@ -207,13 +216,13 @@ mod tests {
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
+                assert_eq!(request.task_id, TASK_ID);
 
-                assert_eq!(request.task_id, "test-cmd-id-3");
                 Err(Status::unavailable("daemon unavailable"))
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "test-cmd-id-3", "test").await;
+        let handle = create_up_handle(&mock, client, "test").await;
         let result = handle.cancel().await;
 
         match result {
@@ -248,13 +257,11 @@ mod tests {
                 tx.try_send(Ok(UpResponse::default()))
                     .expect("failed to send second response");
 
-                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
-                    rx,
-                )))
+                Ok(response(tokio_stream::wrappers::ReceiverStream::new(rx)))
             }));
         }
 
-        let response = client
+        let mut handle = client
             .clone()
             .up(UpRequest {
                 expected_revision: "test".to_string(),
@@ -264,9 +271,6 @@ mod tests {
             })
             .await
             .expect("up RPC should succeed");
-
-        let mut handle =
-            TaskHandle::<UpResponse>::new("stream-cmd".to_string(), response.into_inner(), client);
 
         assert!(handle.next().await.expect("first item must exist").is_ok());
 
@@ -303,13 +307,11 @@ mod tests {
                 }))
                 .unwrap();
 
-                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
-                    rx,
-                )))
+                Ok(response(tokio_stream::wrappers::ReceiverStream::new(rx)))
             }));
         }
 
-        let response = client
+        let mut handle = client
             .clone()
             .up(UpRequest {
                 expected_revision: "test".to_string(),
@@ -319,12 +321,6 @@ mod tests {
             })
             .await
             .expect("up RPC should succeed");
-
-        let mut handle = TaskHandle::<UpResponse>::new(
-            "ordered-stream".to_string(),
-            response.into_inner(),
-            client,
-        );
 
         let first = handle
             .next()
@@ -371,13 +367,11 @@ mod tests {
                 tx.try_send(Err(Status::internal("execution execution failed")))
                     .expect("failed to send stream error");
 
-                Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
-                    rx,
-                )))
+                Ok(response(tokio_stream::wrappers::ReceiverStream::new(rx)))
             }));
         }
 
-        let response = client
+        let mut handle = client
             .clone()
             .up(UpRequest {
                 expected_revision: "test".to_string(),
@@ -387,12 +381,6 @@ mod tests {
             })
             .await
             .expect("up RPC should succeed");
-
-        let mut handle = TaskHandle::<UpResponse>::new(
-            "stream-error".to_string(),
-            response.into_inner(),
-            client,
-        );
 
         assert!(handle.next().await.expect("first item must exist").is_ok());
 
@@ -420,9 +408,9 @@ mod tests {
     async fn command_handle_preserves_command_id() {
         let (mock, client) = spawn_mock_server().await;
 
-        let handle = create_up_handle(&mock, client, "preserved-execution-id", "test").await;
+        let handle = create_up_handle(&mock, client, "test").await;
 
-        assert_eq!(handle.task_id, "preserved-execution-id");
+        assert_eq!(handle.task_id, TASK_ID);
     }
 
     #[tokio::test]
@@ -434,19 +422,18 @@ mod tests {
 
             *handler = Some(Box::new(|req| {
                 let request = req.into_inner();
+                assert_eq!(request.task_id, TASK_ID);
 
-                assert_eq!(request.task_id, "multiple-cancel");
-                Ok(Response::new(CancelTaskResponse {
+                Ok(response(CancelTaskResponse {
                     cancelled: false,
                     code: i32::from(CancelCode::AlreadyCancelling),
                 }))
             }));
         }
 
-        let handle = create_up_handle(&mock, client, "multiple-cancel", "test").await;
+        let handle = create_up_handle(&mock, client, "test").await;
 
         let first = handle.cancel().await.expect("first cancel should succeed");
-
         let second = handle.cancel().await.expect("second cancel should succeed");
 
         assert!(!first);
