@@ -122,7 +122,7 @@ impl ConnectedHandle {
                 "workspace registration error".to_string(),
             )),
             Ok(ManifestSyncState::Unspecified) | Err(_) => {
-                Err(ClientError::Contract("unknown workspace state".to_string()))
+                Err(ClientError::Contract(format!("unexpected workspace state: {}", res.state)))
             }
         }
     }
