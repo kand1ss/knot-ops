@@ -59,7 +59,36 @@ impl ConnectedHandle {
         Self { client, policy }
     }
 
-    // TODO - add docs
+    /// Identifies the workspace to the daemon and reports whether the daemon's
+    /// stored configuration matches the local manifest.
+    ///
+    /// Consumes the `ConnectedHandle`. The daemon registers the workspace as part
+    /// of this call and responds with its current *revision*; that revision is
+    /// captured by the returned session and sent with every later request, so the
+    /// daemon can reject commands issued against a configuration that has since
+    /// changed.
+    ///
+    /// # Returns
+    ///
+    /// The session state reported by the daemon:
+    ///
+    /// * [`DaemonSession::Ready`] — the daemon's configuration matches
+    ///   `workspace_manifest`; commands can be issued immediately.
+    /// * [`DaemonSession::Uncommitted`] — the configuration differs. The manifest
+    ///   is kept in the returned handle and must be committed (or explicitly
+    ///   skipped) before commands become available.
+    ///
+    /// # Errors
+    ///
+    /// * [`ClientError::Protocol`] / [`ClientError::Transport`] — the request
+    ///   failed.
+    /// * [`ClientError::Contract`] — the daemon replied with a state this client
+    ///   does not accept: `Unregistered` (registration is expected to happen
+    ///   during the handshake) or an unspecified/unknown value, which usually
+    ///   means the CLI and daemon versions do not match.
+    ///
+    /// The handle is consumed in every case; recovering from an error requires
+    /// reconnecting.
     pub async fn handshake(
         self,
         workspace_id: String,
