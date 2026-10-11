@@ -110,7 +110,7 @@ impl ConnectedHandle {
         };
 
         match ManifestSyncState::try_from(res.state) {
-            Ok(ManifestSyncState::OutOfSync) => {
+            Ok(ManifestSyncState::OutOfSync) | Ok(ManifestSyncState::Unregistered) => {
                 let handle = UncommittedHandle {
                     controller,
                     to_commit: workspace_manifest,
@@ -118,12 +118,10 @@ impl ConnectedHandle {
                 Ok(DaemonSession::Uncommitted(handle))
             }
             Ok(ManifestSyncState::InSync) => Ok(DaemonSession::Ready(controller)),
-            Ok(ManifestSyncState::Unregistered) => Err(ClientError::Contract(
-                "workspace registration error".to_string(),
-            )),
-            Ok(ManifestSyncState::Unspecified) | Err(_) => {
-                Err(ClientError::Contract(format!("unexpected workspace state: {}", res.state)))
-            }
+            Ok(ManifestSyncState::Unspecified) | Err(_) => Err(ClientError::Contract(format!(
+                "unexpected workspace state: {}",
+                res.state
+            ))),
         }
     }
 }
@@ -305,7 +303,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handshake_rejects_unregistered_workspace() {
+    async fn handshake_transitions_to_uncommitted_when_unregistered() {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
 
@@ -324,66 +322,7 @@ mod tests {
             .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "workspace registration error"
-        ),);
-    }
-
-    #[tokio::test]
-    async fn handshake_rejects_unspecified_workspace_state() {
-        let (mock, client) = spawn_mock_server().await;
-        let handle = handle(client);
-
-        {
-            let mut handler = mock.handshake_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Ok(Response::new(HandshakeResponse {
-                    state: ManifestSyncState::Unspecified as i32,
-                    revision: REVISION.to_string(),
-                }))
-            }));
-        }
-
-        let result = handle
-            .handshake("workspace-test".to_string(), workspace_manifest())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "unknown workspace state"
-        ),);
-    }
-
-    #[tokio::test]
-    async fn handshake_rejects_unknown_workspace_state() {
-        let (mock, client) = spawn_mock_server().await;
-        let handle = handle(client);
-
-        {
-            let mut handler = mock.handshake_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Ok(Response::new(HandshakeResponse {
-                    // Deliberately invalid protobuf enum value.
-                    state: 999,
-                    revision: REVISION.to_string(),
-                }))
-            }));
-        }
-
-        let result = handle
-            .handshake("workspace-test".to_string(), workspace_manifest())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "unknown workspace state"
-        ),);
+        assert!(matches!(result, Ok(DaemonSession::Uncommitted(_))));
     }
 
     #[tokio::test]
@@ -552,29 +491,5 @@ mod tests {
                 panic!("expected ClientError::Protocol");
             }
         }
-    }
-
-    #[tokio::test]
-    async fn handshake_rejects_missing_response_state() {
-        let (mock, client) = spawn_mock_server().await;
-        let handle = handle(client);
-
-        {
-            let mut handler = mock.handshake_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Ok(Response::new(HandshakeResponse::default()))
-            }));
-        }
-
-        let result = handle
-            .handshake("workspace-test".to_string(), workspace_manifest())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "unknown workspace state"
-        ),);
     }
 }
