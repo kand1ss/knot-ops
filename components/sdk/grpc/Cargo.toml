@@ -28,4 +28,4 @@ name = "integration"
 path = "tests/integration_tests.rs"
 [build-dependencies]
 tonic-prost-build = "0.14.6"
-protox = "0.9.1"
+protox = "0.10.0"

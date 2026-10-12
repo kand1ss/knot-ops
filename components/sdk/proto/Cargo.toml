@@ -12,5 +12,5 @@ tonic = "0.14.6"
 tonic-prost = "0.14.6"
 
 [build-dependencies]
-protox = "0.9.1"
+protox = "0.10.0"
 tonic-prost-build = "0.14.6"
