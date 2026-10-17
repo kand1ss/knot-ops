@@ -2,29 +2,39 @@ syntax = "proto3";
 
 package knot.v1.commands;
 
-import "knot/v1/execution/execution.proto";
+import "knot/v1/task/events.proto";
+import "knot/v1/task/task.proto";
 
-// Stops all services in a workspace or the requested subset.
+// Stops running services in a workspace or a requested subset.
+//
+// Unlike commands that mutate or validate workspace configuration (e.g., Commit, Up),
+// Down performs only a minimal Handshake to verify that workspace_id is registered
+// in the daemon state (i.e. state != MANIFEST_SYNC_STATE_UNREGISTERED).
+//
+// Down operates strictly on daemon runtime state and intentionally bypasses configuration
+// parsing and revision checks (expected_revision). This guarantees that running services
+// (including orphaned ones) can always be safely stopped, even if the local configuration
+// is broken, corrupted, or completely missing.
 message DownRequest {
-  // Workspace whose services are stopped.
+  // Identifier of the workspace whose services are to be stopped.
   string workspace_id = 1;
-  // Optional service names to stop; an empty list selects the workspace default.
+
+  // Optional list of service names to stop; an empty list targets all workspace services.
   repeated string services = 2;
 }
 
 // Server-streamed progress and terminal state for a Down command.
 message DownResponse {
-  oneof event {
-    knot.v1.execution.ExecutionPlan plan = 1;
+  oneof kind {
+    // Event emitted when the Down task is accepted for processing.
+    knot.v1.task.TaskAccepted accepted = 1;
+    // Event emitted when the Down task execution is cancelled.
+    knot.v1.task.TaskCancelled cancelled = 2;
 
-    knot.v1.execution.TaskStarting task_starting = 2;
-    knot.v1.execution.TaskSuccess task_success = 3;
-    knot.v1.execution.TaskFailed task_failed = 4;
-    knot.v1.execution.TaskSkipped task_skipped = 5;
-    knot.v1.execution.TaskCancelled task_cancelled = 6;
-
-    DownDone down_done = 7;
-    DownCancelled down_cancelled = 8;
+    // Progress or status update event from a service being stopped.
+    knot.v1.task.ServiceEvent event = 3;
+    // Terminal event indicating that the Down command execution has finished.
+    DownDone done = 4;
   }
 }
 
@@ -34,12 +44,4 @@ message DownDone {
   uint32 stopped = 1;
   // Number of services that failed to stop.
   uint32 failed = 2;
-}
-
-// Terminal summary for a Down command cancelled before completion.
-message DownCancelled {
-  // Cancellation reason supplied by the requester or daemon.
-  string reason = 1;
-  // Number of services stopped before cancellation.
-  uint32 stopped = 2;
 }

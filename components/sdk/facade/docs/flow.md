@@ -12,8 +12,9 @@ flowchart TD
     Offline -->|launch daemon| Connected
     Connected --> QHandshake{Daemon handshake state?}
     QHandshake -->|InSync| Control[ControlHandle / Ready]
-    QHandshake -->|OutOfSync| Unsynced[UnsyncedHandle]
-    Unsynced -->|sync manifest| Control
-    Control -->|Execute up/down/sync| Command[CommandHandle]
-    Command -->|cancel command| Control
+    QHandshake -->|OutOfSync| Uncommitted[UncommittedHandle]
+    Uncommitted -->|commit / discard| Control
+    Control -->|recheck| QHandshake
+    Control -->|Execute up/down| Task[TaskHandle]
+    Task -->|cancel task| Control
 ```

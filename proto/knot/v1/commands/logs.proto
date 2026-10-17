@@ -14,12 +14,36 @@ message LogsRequest {
   uint32 tail = 4;
 }
 
-// A single log line emitted by a service runtime.
+// Server-streamed event carrying log entries or stream lifecycle markers.
 message LogsResponse {
-  // Service that emitted the line.
+  // Service that emitted the log payload or event.
   string service = 1;
-  // Unmodified log message content.
-  string message = 2;
-  // Timestamp of the log line, expressed as Unix milliseconds.
-  uint64 timestamp_ms = 4;
+
+  // Type of log response event.
+  oneof event {
+    // Batch of log entries emitted by the service.
+    LogBatch batch = 2;
+    // Marker indicating that historical tail entries have been fully delivered.
+    TailComplete tail_complete = 3;
+  }
 }
+
+// Collection of log entries transmitted in a single stream event.
+message LogBatch {
+  // Ordered sequence of log entries.
+  repeated LogEntry entries = 1;
+  // Number of log lines dropped due to rate-limiting or buffer overflow since the previous batch.
+  uint32 dropped = 2;
+}
+
+// A single log line emitted by a service runtime.
+message LogEntry {
+  // Unmodified log message content.
+  string message = 1;
+  // Timestamp when the log line was generated, expressed in Unix milliseconds.
+  uint64 timestamp_ms = 2;
+}
+
+// Marker event signaling that all requested historical log lines (`tail`)
+// have been sent. Subsequent events are real-time log updates when `follow` is true.
+message TailComplete {}

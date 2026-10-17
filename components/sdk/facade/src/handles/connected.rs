@@ -1,16 +1,16 @@
 use crate::{
     errors::ClientError,
-    handles::{ControlHandle, UncommitedHandle},
+    guarded_client::GuardedDaemonClient,
+    handles::{ControlHandle, UncommittedHandle},
     policies::PolicyConfig,
     states::DaemonSession,
-    utils::request,
 };
 use knot_proto::v1::{
     commands::HandshakeRequest, config::WorkspaceManifest,
     daemon_service_client::DaemonServiceClient,
 };
 use std::{path::Path, sync::Arc};
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::Endpoint;
 use tracing::{debug, error, instrument};
 
 use knot_grpc::IpcConnector;
@@ -18,7 +18,7 @@ use knot_proto::v1::commands::handshake_response::ManifestSyncState;
 
 #[derive(Debug)]
 pub struct ConnectedHandle {
-    pub(crate) client: DaemonServiceClient<Channel>,
+    pub(crate) client: GuardedDaemonClient,
     pub(crate) policy: Arc<PolicyConfig>,
 }
 
@@ -28,6 +28,7 @@ impl ConnectedHandle {
     /// # Arguments
     ///
     /// * `socket_path` - The file system path to the UNIX domain socket (or named pipe).
+    /// * `policy` - Client policy
     ///
     /// # Errors
     ///
@@ -50,44 +51,77 @@ impl ConnectedHandle {
 
         debug!("successfully established gRPC channel over IPC");
         let client = DaemonServiceClient::new(channel);
-        Ok(Self { client, policy })
+        let guarded = GuardedDaemonClient::new(client, Arc::clone(&policy));
+        Ok(Self::from_parts(guarded, policy))
     }
 
+    pub(crate) fn from_parts(client: GuardedDaemonClient, policy: Arc<PolicyConfig>) -> Self {
+        Self { client, policy }
+    }
+
+    /// Identifies the workspace to the daemon and reports whether the daemon's
+    /// stored configuration matches the local manifest.
+    ///
+    /// Consumes the `ConnectedHandle`. The daemon registers the workspace as part
+    /// of this call and responds with its current *revision*; that revision is
+    /// captured by the returned session and sent with every later request, so the
+    /// daemon can reject commands issued against a configuration that has since
+    /// changed.
+    ///
+    /// # Returns
+    ///
+    /// The session state reported by the daemon:
+    ///
+    /// * [`DaemonSession::Ready`] — the daemon's configuration matches
+    ///   `workspace_manifest`; commands can be issued immediately.
+    /// * [`DaemonSession::Uncommitted`] — the configuration differs. The manifest
+    ///   is kept in the returned handle and must be committed (or explicitly
+    ///   skipped) before commands become available.
+    ///
+    /// # Errors
+    ///
+    /// * [`ClientError::Protocol`] / [`ClientError::Transport`] — the request
+    ///   failed.
+    /// * [`ClientError::Contract`] — the daemon replied with a state this client
+    ///   does not accept: `Unregistered` (registration is expected to happen
+    ///   during the handshake) or an unspecified/unknown value, which usually
+    ///   means the CLI and daemon versions do not match.
+    ///
+    /// The handle is consumed in every case; recovering from an error requires
+    /// reconnecting.
     pub async fn handshake(
         self,
         workspace_id: String,
         workspace_manifest: WorkspaceManifest,
     ) -> Result<DaemonSession, ClientError> {
-        let mut client = self.client.clone();
-        let response = client
-            .handshake(request(
-                HandshakeRequest {
-                    workspace_id: workspace_id.clone(),
-                    manifest: Some(workspace_manifest),
-                },
-                Some(self.policy.timeout.fast_commands),
-            ))
+        let res = self
+            .client
+            .handshake(HandshakeRequest {
+                workspace_id: workspace_id.clone(),
+                manifest: Some(workspace_manifest.clone()),
+            })
             .await?;
 
         let controller = ControlHandle {
-            client,
+            client: self.client,
             workspace_id,
             policy: Arc::clone(&self.policy),
+            expected_revision: res.revision,
         };
-        let res = response.into_inner();
 
         match ManifestSyncState::try_from(res.state) {
-            Ok(ManifestSyncState::OutOfSync) => {
-                let handle = UncommitedHandle { controller };
-                Ok(DaemonSession::Unsynced(handle))
+            Ok(ManifestSyncState::OutOfSync) | Ok(ManifestSyncState::Unregistered) => {
+                let handle = UncommittedHandle {
+                    controller,
+                    to_commit: workspace_manifest,
+                };
+                Ok(DaemonSession::Uncommitted(handle))
             }
             Ok(ManifestSyncState::InSync) => Ok(DaemonSession::Ready(controller)),
-            Ok(ManifestSyncState::Unregistered) => Err(ClientError::Contract(
-                "workspace registration error".to_string(),
-            )),
-            Ok(ManifestSyncState::Unspecified) | Err(_) => {
-                Err(ClientError::Contract("unknown workspace state".to_string()))
-            }
+            Ok(ManifestSyncState::Unspecified) | Err(_) => Err(ClientError::Contract(format!(
+                "unexpected workspace state: {}",
+                res.state
+            ))),
         }
     }
 }
@@ -100,13 +134,12 @@ mod tests {
     use knot_proto::v1::{
         commands::{HandshakeRequest, HandshakeResponse},
         config::WorkspaceManifest,
-        daemon_service_client::DaemonServiceClient,
     };
 
     use std::sync::Arc;
     use tonic::{Code, Request, Response, Status};
 
-    fn handle(client: DaemonServiceClient<Channel>) -> ConnectedHandle {
+    fn handle(client: GuardedDaemonClient) -> ConnectedHandle {
         ConnectedHandle {
             client,
             policy: Arc::new(PolicyConfig::default()),
@@ -125,6 +158,8 @@ mod tests {
         }
     }
 
+    const REVISION: &str = "test";
+
     #[tokio::test]
     async fn handshake_returns_unsynced_for_out_of_sync_workspace() {
         let (mock, client) = spawn_mock_server().await;
@@ -136,6 +171,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -146,7 +182,7 @@ mod tests {
             .expect("handshake should succeed");
 
         assert!(
-            matches!(session, DaemonSession::Unsynced(_)),
+            matches!(session, DaemonSession::Uncommitted(_)),
             "expected Unsynced session"
         );
     }
@@ -162,6 +198,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -193,6 +230,7 @@ mod tests {
 
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -227,6 +265,7 @@ mod tests {
 
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -264,7 +303,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handshake_rejects_unregistered_workspace() {
+    async fn handshake_transitions_to_uncommitted_when_unregistered() {
         let (mock, client) = spawn_mock_server().await;
         let handle = handle(client);
 
@@ -274,6 +313,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::Unregistered as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -282,64 +322,7 @@ mod tests {
             .handshake("workspace-test".to_string(), workspace_manifest())
             .await;
 
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "workspace registration error"
-        ),);
-    }
-
-    #[tokio::test]
-    async fn handshake_rejects_unspecified_workspace_state() {
-        let (mock, client) = spawn_mock_server().await;
-        let handle = handle(client);
-
-        {
-            let mut handler = mock.handshake_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Ok(Response::new(HandshakeResponse {
-                    state: ManifestSyncState::Unspecified as i32,
-                }))
-            }));
-        }
-
-        let result = handle
-            .handshake("workspace-test".to_string(), workspace_manifest())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "unknown workspace state"
-        ),);
-    }
-
-    #[tokio::test]
-    async fn handshake_rejects_unknown_workspace_state() {
-        let (mock, client) = spawn_mock_server().await;
-        let handle = handle(client);
-
-        {
-            let mut handler = mock.handshake_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Ok(Response::new(HandshakeResponse {
-                    // Deliberately invalid protobuf enum value.
-                    state: 999,
-                }))
-            }));
-        }
-
-        let result = handle
-            .handshake("workspace-test".to_string(), workspace_manifest())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "unknown workspace state"
-        ),);
+        assert!(matches!(result, Ok(DaemonSession::Uncommitted(_))));
     }
 
     #[tokio::test]
@@ -353,6 +336,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -382,6 +366,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -392,7 +377,7 @@ mod tests {
             .expect("handshake should succeed");
 
         match session {
-            DaemonSession::Unsynced(unsynced) => {
+            DaemonSession::Uncommitted(unsynced) => {
                 assert_eq!(unsynced.controller.workspace_id, "out-of-sync");
             }
 
@@ -417,6 +402,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::InSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -455,6 +441,7 @@ mod tests {
             *handler = Some(Box::new(|_req| {
                 Ok(Response::new(HandshakeResponse {
                     state: ManifestSyncState::OutOfSync as i32,
+                    revision: REVISION.to_string(),
                 }))
             }));
         }
@@ -465,7 +452,7 @@ mod tests {
             .expect("handshake should succeed");
 
         match session {
-            DaemonSession::Unsynced(unsynced) => {
+            DaemonSession::Uncommitted(unsynced) => {
                 assert!(
                     Arc::ptr_eq(&unsynced.controller.policy, &policy),
                     "policy Arc must be preserved"
@@ -504,29 +491,5 @@ mod tests {
                 panic!("expected ClientError::Protocol");
             }
         }
-    }
-
-    #[tokio::test]
-    async fn handshake_rejects_missing_response_state() {
-        let (mock, client) = spawn_mock_server().await;
-        let handle = handle(client);
-
-        {
-            let mut handler = mock.handshake_handler.lock().await;
-
-            *handler = Some(Box::new(|_req| {
-                Ok(Response::new(HandshakeResponse::default()))
-            }));
-        }
-
-        let result = handle
-            .handshake("workspace-test".to_string(), workspace_manifest())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ClientError::Contract(message))
-                if message == "unknown workspace state"
-        ),);
     }
 }

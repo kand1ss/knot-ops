@@ -8,16 +8,27 @@ import "knot/v1/config/config.proto";
 message CommitRequest {
   // Immutable identifier created when the workspace is initialized.
   string workspace_id = 1;
+
   // Current service configuration that becomes the synchronization input.
   knot.v1.config.WorkspaceManifest manifest = 2;
+
+  // Revision obtained from the prior Handshake call.
+  // Fails with REVISION_MISMATCH if daemon state has moved forward.
+  string expected_revision = 3;
 }
 
 // Final result for a commit command.
 message CommitResponse {
+  // New revision generated after successful commit.
+  // Must be passed as `expected_revision` to subsequent execution commands (e.g. Up).
+  string revision = 1;
+
   // Services present in the submitted manifest but absent from daemon state.
-  repeated string services_added = 1;
+  repeated string services_added = 2;
+
   // Services removed from daemon state because they are absent from the manifest.
-  repeated string services_removed = 2;
+  repeated string services_removed = 3;
+
   // Services whose definitions changed since the previous commit.
-  repeated string services_changed = 3;
+  repeated string services_changed = 4;
 }

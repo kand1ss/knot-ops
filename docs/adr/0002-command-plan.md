@@ -1,4 +1,4 @@
-# 0003 — CommandPlan and unified cancellation
+# 0002 — CommandPlan and unified cancellation
 
 ## Status
 

@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package knot.v1.task;
+
+// Structured failure reported by a service in a task event stream.
+message ServiceError {
+  // Short description of the failure.
+  string issue = 1;
+  // Relevant diagnostic context.
+  string context = 2;
+  // Suggested user action to resolve the failure.
+  string solution = 3;
+}
+
+// Lifecycle event emitted by a specific service during task execution.
+message ServiceEvent {
+  // Name or identifier of the service emitting the event.
+  string service = 1;
+  // Unique identifier of the associated task.
+  string task_id = 2;
+
+  // Specific lifecycle state and associated payload.
+  oneof kind {
+    // Service is initiating execution.
+    StartingEvent starting = 10;
+    // Service is actively running.
+    RunningEvent running = 11;
+    // Service encountered an unrecoverable failure.
+    FailedEvent failed = 12;
+    // Service execution was skipped.
+    SkippedEvent skipped = 13;
+    // Service is gracefully shutting down.
+    StoppingEvent stopping = 14;
+    // Service has completely stopped.
+    StoppedEvent stopped = 15;
+  }
+}
+
+// Event indicating that the service is starting up.
+message StartingEvent {
+  // Optional initialization or status message.
+  string message = 1;
+}
+
+// Event indicating ongoing execution progress of the service.
+message RunningEvent {
+  // Optional progress or operational status message.
+  string message = 1;
+}
+
+// Event indicating that the service execution failed.
+message FailedEvent {
+  // Structured error details explaining the failure.
+  ServiceError error = 1;
+}
+
+// Event indicating that the service execution was skipped.
+message SkippedEvent {
+  // Reason why the service execution was skipped.
+  string message = 1;
+}
+
+// Event indicating that the service is in the process of stopping.
+message StoppingEvent {
+  // Optional shutdown or cancellation message.
+  string message = 1;
+}
+
+// Event indicating that the service has fully stopped.
+message StoppedEvent {
+  // Final summary or cleanup message.
+  string message = 1;
+}
