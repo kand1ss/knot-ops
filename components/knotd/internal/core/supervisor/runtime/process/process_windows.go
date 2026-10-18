@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 )
 
 // buildCommand prepares an exec.Cmd configured to run a service command on Windows.

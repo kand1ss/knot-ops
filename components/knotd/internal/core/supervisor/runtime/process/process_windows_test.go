@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 )
 
 func TestBuildCommand_Windows_QuotedPathAndSuspendedRegression(t *testing.T) {

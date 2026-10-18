@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kand1ss/knot-ops/components/knotd/internal/domain"
-	"github.com/kand1ss/knot-ops/components/knotd/internal/supervisor/runtime/process"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime/process"
 )
 
 // helperSpecWithPID builds a spec that writes the payload's own PID to
