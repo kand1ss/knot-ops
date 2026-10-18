@@ -12,4 +12,7 @@ type StatusRequest struct {
 
 type StatusResponse struct {
 	Services []domain.ServiceSnapshot
+
+	HasDrifted  bool
+	HasOrphaned bool
 }

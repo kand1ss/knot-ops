@@ -1,10 +1,9 @@
 package requests
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
-
-type UpEvent interface {
-	IsUpEvent()
-}
+import (
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain/task"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
 
 type UpDone struct {
 	Started uint32
@@ -12,19 +11,13 @@ type UpDone struct {
 	Failed  uint32
 }
 
-func (u UpDone) IsUpEvent() {}
-
-type UpCancelled struct {
-	Reason  string
-	Started uint32
-	Stopped uint32
-}
-
-func (u UpCancelled) IsUpEvent() {}
+func (u UpDone) IsTaskEvent() {}
 
 type UpRequest struct {
-	WorkspaceId values.WorkspaceId
-	Services    []values.ServiceName
+	WorkspaceId      values.WorkspaceId
+	Services         []values.ServiceName
+	ExpectedRevision string
+	Prune            bool
 }
 
-type UpResponse UpEvent
+type UpResponse task.TaskEvent

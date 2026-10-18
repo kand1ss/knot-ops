@@ -13,8 +13,27 @@ type LogsRequest struct {
 	Tail        uint32
 }
 
-type LogsResponse struct {
-	Service   values.ServiceName
+type LogEntry struct {
 	Message   string
 	Timestamp time.Time
+}
+
+type LogEvent interface {
+	IsLogEvent()
+}
+
+type LogBatch struct {
+	Entries []LogEntry
+	Dropped uint32
+}
+
+func (l LogBatch) IsLogEvent() {}
+
+type TailComplete struct{}
+
+func (t TailComplete) IsLogEvent() {}
+
+type LogsResponse struct {
+	Service values.ServiceName
+	Event   LogEvent
 }

@@ -19,5 +19,6 @@ type HandshakeRequest struct {
 }
 
 type HandshakeResponse struct {
-	State ManifestSyncState
+	State    ManifestSyncState
+	Revision string
 }

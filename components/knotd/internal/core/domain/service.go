@@ -21,23 +21,14 @@ type ServiceSpec struct {
 	Env map[string]string
 }
 
-type ServiceMetadata struct {
-	port         string
-	command      string
-	tags         []string
-	lastExitCode uint32
-
-	extra map[string]string
-}
-
 type ServiceSnapshot struct {
-	name         string
-	status       ServiceStatus
-	pid          uint32
-	uptimeSecs   uint64
-	restartCount uint32
+	Name       values.ServiceName
+	Status     ServiceStatus
+	Pid        uint32
+	UptimeSecs uint64
 
-	metadata ServiceMetadata
+	Drifted  bool
+	Orphaned bool
 
-	configDrifted bool
+	Extra map[string]string
 }

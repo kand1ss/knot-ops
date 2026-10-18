@@ -6,11 +6,13 @@ import (
 )
 
 type CommitRequest struct {
-	WorkspaceID values.WorkspaceId
-	Manifest    domain.WorkspaceManifest
+	WorkspaceID      values.WorkspaceId
+	Manifest         domain.WorkspaceManifest
+	ExpectedRevision string
 }
 
 type CommitResponse struct {
+	Revision        string
 	ServicesAdded   []values.ServiceName
 	ServicesRemoved []values.ServiceName
 	ServicesChanged []values.ServiceName

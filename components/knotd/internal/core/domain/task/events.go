@@ -1,61 +1,55 @@
 package task
 
-type ExecutionPlan struct {
-	ExecutionID string
-	Groups      []TaskGroup
+type Event interface {
+	IsServiceEvent()
 }
 
-func (c ExecutionPlan) IsSyncEvent() {}
-func (c ExecutionPlan) IsUpEvent()   {}
-func (c ExecutionPlan) IsDownEvent() {}
+type ServiceEvent struct {
+	Service string
+	TaskID  string
+	Event   Event
+}
 
-type TaskError struct {
+func (e ServiceEvent) IsTaskEvent() {}
+
+type ServiceError struct {
 	Issue    string
 	Context  string
 	Solution string
 }
 
-type TaskStarting struct {
-	TaskID string
-	Detail string
+type StartingEvent struct {
+	Message string
 }
 
-func (t TaskStarting) IsSyncEvent() {}
-func (t TaskStarting) IsUpEvent()   {}
-func (t TaskStarting) IsDownEvent() {}
+func (e StartingEvent) IsServiceEvent() {}
 
-type TaskSuccess struct {
-	TaskID string
-	Detail string
+type RunningEvent struct {
+	Message string
 }
 
-func (t TaskSuccess) IsSyncEvent() {}
-func (t TaskSuccess) IsUpEvent()   {}
-func (t TaskSuccess) IsDownEvent() {}
+func (e RunningEvent) IsServiceEvent() {}
 
-type TaskFailed struct {
-	TaskID string
-	Error  TaskError
+type FailedEvent struct {
+	Error ServiceError
 }
 
-func (t TaskFailed) IsSyncEvent() {}
-func (t TaskFailed) IsUpEvent()   {}
-func (t TaskFailed) IsDownEvent() {}
+func (t FailedEvent) IsServiceEvent() {}
 
-type TaskSkipped struct {
-	TaskID string
-	Detail string
+type SkippedEvent struct {
+	Message string
 }
 
-func (t TaskSkipped) IsSyncEvent() {}
-func (t TaskSkipped) IsUpEvent()   {}
-func (t TaskSkipped) IsDownEvent() {}
+func (t SkippedEvent) IsServiceEvent() {}
 
-type TaskCancelled struct {
-	TaskID string
-	Detail string
+type StoppingEvent struct {
+	Message string
 }
 
-func (t TaskCancelled) IsSyncEvent() {}
-func (t TaskCancelled) IsUpEvent()   {}
-func (t TaskCancelled) IsDownEvent() {}
+func (e StoppingEvent) IsServiceEvent() {}
+
+type StoppedEvent struct {
+	Message string
+}
+
+func (e StoppedEvent) IsServiceEvent() {}

@@ -1,28 +1,20 @@
 package requests
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
-
-type DownEvent interface {
-	IsDownEvent()
-}
+import (
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain/task"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
 
 type DownDone struct {
 	Stopped uint32
 	Failed  uint32
 }
 
-func (d DownDone) IsDownEvent() {}
-
-type DownCancelled struct {
-	Reason  string
-	Stopped uint32
-}
-
-func (d DownCancelled) IsDownEvent() {}
+func (d DownDone) IsTaskEvent() {}
 
 type DownRequest struct {
 	WorkspaceID values.WorkspaceId
 	Services    []values.ServiceName
 }
 
-type DownResponse DownEvent
+type DownResponse task.TaskEvent
