@@ -30,7 +30,7 @@ const (
 )
 
 type CancelTaskRequest struct {
-	TaskID string
+	TaskID values.TaskID
 }
 
 type CancelTaskResponse struct {

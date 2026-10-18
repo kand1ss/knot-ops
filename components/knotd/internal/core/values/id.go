@@ -8,22 +8,12 @@ func NewWorkspaceId() WorkspaceId {
 	return WorkspaceId(uuid.New())
 }
 
-type ExecutionID uuid.UUID
+type TaskID uuid.UUID
 
-func NewExecutionId() ExecutionID {
-	return ExecutionID(uuid.New())
+func NewTaskID() TaskID {
+	return TaskID(uuid.New())
 }
 
-func (s ExecutionID) String() string {
+func (s TaskID) String() string {
 	return uuid.UUID(s).String()
-}
-
-type TaskId uuid.UUID
-
-func NewTaskId() TaskId {
-	return TaskId(uuid.New())
-}
-
-func (t TaskId) String() string {
-	return uuid.UUID(t).String()
 }

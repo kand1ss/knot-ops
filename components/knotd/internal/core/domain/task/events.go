@@ -1,12 +1,14 @@
 package task
 
+import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+
 type Event interface {
 	IsServiceEvent()
 }
 
 type ServiceEvent struct {
 	Service string
-	TaskID  string
+	TaskID  values.TaskID
 	Event   Event
 }
 
