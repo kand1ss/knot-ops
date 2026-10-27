@@ -159,3 +159,21 @@ func (r *InMemoryRuntimeRegistry) ListAll() []ServiceHandle {
 	}
 	return out
 }
+
+// TODO - add unit test
+func (r *InMemoryRuntimeRegistry) ListHashes(ws values.WorkspaceId) map[values.ServiceName]hashing.Hash {
+	r.mu.RLock()
+	defer r.mu.Unlock()
+
+	handlesByServices, ok := r.byWorkspace[ws]
+	if !ok {
+		return nil
+	}
+
+	hashesByServices := make(map[values.ServiceName]hashing.Hash, len(handlesByServices))
+	for name, handle := range handlesByServices {
+		hashesByServices[name] = handle.Hash
+	}
+
+	return hashesByServices
+}

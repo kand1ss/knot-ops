@@ -16,6 +16,7 @@ type RuntimeRegistry interface {
 	Remove(ws values.WorkspaceId, service values.ServiceName) error
 	List(ws values.WorkspaceId) []runstate.ServiceHandle
 	ListAll() []runstate.ServiceHandle
+	ListHashes(ws values.WorkspaceId) map[values.ServiceName]hashing.Hash
 
 	// WorkspaceHash and Snapshot exist specifically to make runtime-drift
 	// comparisons against workspace.WorkspaceRecord a plain equality check
