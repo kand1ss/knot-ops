@@ -74,7 +74,10 @@ func (s *Supervisor) tick(ctx context.Context) {
 		// Transition detected: process has exited since last tick.
 		// RuntimeRegistry must stop claiming this service is running —
 		// this is the single point where that claim gets corrected.
-		s.runtimes.Remove(sh.Workspace, sh.Service)
+		err = s.runtimes.Remove(sh.Workspace, sh.Service)
+		if err != nil {
+			slog.Error("failed to remove service from RuntimeRegistry", "err", err)
+		}
 
 		select {
 		case s.events <- Event{Workspace: sh, Status: EventExited, ExitCode: status.ExitCode}:
