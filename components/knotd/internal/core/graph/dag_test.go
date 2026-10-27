@@ -492,3 +492,329 @@ func TestNewDependencyGraphFromServices(t *testing.T) {
 		assertWavesEqual(t, expected, waves)
 	})
 }
+
+func TestBuildRevertedWavesFor_HappyPaths(t *testing.T) {
+	// chain: A depends on B, B depends on C
+	chain := func() DependencyGraph[string] {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A", "B")
+		g.AddNode("B", "C")
+		return g
+	}
+
+	tests := []struct {
+		name     string
+		build    func() DependencyGraph[string]
+		targets  []string
+		expected [][]string
+	}{
+		{
+			name:     "Chain, target is the root dependency: all dependents pulled in, dependents first",
+			build:    chain,
+			targets:  []string{"C"},
+			expected: [][]string{{"A"}, {"B"}, {"C"}},
+		},
+		{
+			name:     "Chain, target is the top dependent: dependencies are NOT touched",
+			build:    chain,
+			targets:  []string{"A"},
+			expected: [][]string{{"A"}},
+		},
+		{
+			name:     "Chain, target in the middle: only it and its dependents",
+			build:    chain,
+			targets:  []string{"B"},
+			expected: [][]string{{"A"}, {"B"}},
+		},
+		{
+			name: "Diamond, target is the shared dependency",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("D", "B", "C")
+				g.AddNode("B", "A")
+				g.AddNode("C", "A")
+				return g
+			},
+			targets:  []string{"A"},
+			expected: [][]string{{"D"}, {"B", "C"}, {"A"}},
+		},
+		{
+			name: "Diamond, target is one branch: sibling branch and base untouched",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("D", "B", "C")
+				g.AddNode("B", "A")
+				g.AddNode("C", "A")
+				return g
+			},
+			targets:  []string{"B"},
+			expected: [][]string{{"D"}, {"B"}},
+		},
+		{
+			name: "Multiple targets from distinct subgraphs",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("ServiceA", "DB1")
+				g.AddNode("ServiceB", "DB2")
+				return g
+			},
+			targets:  []string{"DB1", "DB2"},
+			expected: [][]string{{"ServiceA", "ServiceB"}, {"DB1", "DB2"}},
+		},
+		{
+			name: "Unrelated branch is excluded",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("API", "Auth")
+				g.AddNode("Auth", "DB")
+				g.AddNode("UI", "Storage")
+				g.AddNode("Storage", "Cache")
+				return g
+			},
+			targets:  []string{"DB"},
+			expected: [][]string{{"API"}, {"Auth"}, {"DB"}},
+		},
+		{
+			name: "Overlapping targets (target is also a dependent of another target)",
+			build: func() DependencyGraph[string] {
+				g := NewDependencyGraph[string]()
+				g.AddNode("B", "A")
+				g.AddNode("C", "B")
+				return g
+			},
+			targets:  []string{"A", "B"},
+			expected: [][]string{{"C"}, {"B"}, {"A"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := tt.build()
+			waves, err := g.BuildRevertedWavesFor(tt.targets...)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertWavesEqual(t, tt.expected, waves)
+		})
+	}
+}
+
+// Regression: levels are measured from the dependents side, so an independent
+// node must stop together with the first wave. Reversing BuildWavesFor would
+// put it in the last wave.
+func TestBuildRevertedWavesFor_MaximalParallelism(t *testing.T) {
+	g := NewDependencyGraph[string]()
+	g.AddNode("A", "B")
+	g.AddNode("B", "C")
+	g.AddNode("X") // independent
+
+	waves, err := g.BuildRevertedWavesFor("C", "X")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertWavesEqual(t, [][]string{{"A", "X"}, {"B"}, {"C"}}, waves)
+}
+
+// Core invariant: for every edge (dependent -> dependency) inside the result,
+// the dependent must appear in a strictly earlier wave.
+func TestBuildRevertedWavesFor_DependentsPrecedeDependencies(t *testing.T) {
+	g := NewDependencyGraph[string]()
+	g.AddNode("web", "api", "cache")
+	g.AddNode("api", "db", "cache")
+	g.AddNode("worker", "db")
+	g.AddNode("db")
+	g.AddNode("cache")
+
+	waves, err := g.BuildRevertedWavesFor("db", "cache")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	waveOf := make(map[string]int)
+	for i, w := range waves {
+		for _, n := range w {
+			if _, dup := waveOf[n]; dup {
+				t.Fatalf("node %q appears in more than one wave: %v", n, waves)
+			}
+			waveOf[n] = i
+		}
+	}
+
+	for dependent, deps := range g.adj {
+		di, ok := waveOf[dependent]
+		if !ok {
+			continue
+		}
+		for _, dep := range deps {
+			pi, ok := waveOf[dep]
+			if !ok {
+				continue
+			}
+			if di >= pi {
+				t.Errorf("%q (wave %d) must be stopped before its dependency %q (wave %d)",
+					dependent, di, dep, pi)
+			}
+		}
+	}
+}
+
+func TestBuildRevertedWavesFor_Cycles(t *testing.T) {
+	t.Run("Cycle inside the dependents closure", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A", "B")
+		g.AddNode("B", "A")
+		g.AddNode("B", "C")
+
+		_, err := g.BuildRevertedWavesFor("C")
+		if !errors.Is(err, ErrCycleDetected) {
+			t.Errorf("expected ErrCycleDetected, got %v", err)
+		}
+	})
+
+	t.Run("Cycle outside the closure does not affect the result", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("X", "Y")
+		g.AddNode("Y", "X")
+		g.AddNode("B", "A")
+
+		waves, err := g.BuildRevertedWavesFor("A")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]string{{"B"}, {"A"}}, waves)
+	})
+
+	t.Run("Self loop on a target", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A", "A")
+
+		_, err := g.BuildRevertedWavesFor("A")
+		if !errors.Is(err, ErrCycleDetected) {
+			t.Errorf("expected ErrCycleDetected, got %v", err)
+		}
+	})
+}
+
+func TestBuildRevertedWavesFor_EdgeCasesAndErrors(t *testing.T) {
+	t.Run("No targets provided", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A", "B")
+
+		waves, err := g.BuildRevertedWavesFor()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if waves != nil {
+			t.Errorf("expected nil waves for empty targets, got %v", waves)
+		}
+	})
+
+	t.Run("Non-existent target returns ErrNodeNotFound", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A")
+
+		_, err := g.BuildRevertedWavesFor("Ghost")
+		if !errors.Is(err, ErrNodeNotFound) {
+			t.Errorf("expected ErrNodeNotFound, got %v", err)
+		}
+	})
+
+	t.Run("One valid and one unknown target still fails", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A")
+
+		_, err := g.BuildRevertedWavesFor("A", "Ghost")
+		if !errors.Is(err, ErrNodeNotFound) {
+			t.Errorf("expected ErrNodeNotFound, got %v", err)
+		}
+	})
+
+	t.Run("Single isolated target", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("A")
+		g.AddNode("B")
+
+		waves, err := g.BuildRevertedWavesFor("A")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]string{{"A"}}, waves)
+	})
+
+	t.Run("Duplicate targets yield each node once", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("B", "A")
+
+		waves, err := g.BuildRevertedWavesFor("A", "A", "B")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]string{{"B"}, {"A"}}, waves)
+	})
+
+	t.Run("Implicit dependency node (only referenced, never declared)", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("worker", "db") // db exists only as a dependency
+
+		waves, err := g.BuildRevertedWavesFor("db")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]string{{"worker"}, {"db"}}, waves)
+	})
+
+	t.Run("Does not mutate the source graph", func(t *testing.T) {
+		g := NewDependencyGraph[string]()
+		g.AddNode("B", "A")
+
+		if _, err := g.BuildRevertedWavesFor("A"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		waves, err := g.BuildWaves()
+		if err != nil {
+			t.Fatalf("unexpected error after reverted build: %v", err)
+		}
+		assertWavesEqual(t, [][]string{{"A"}, {"B"}}, waves)
+	})
+}
+
+func TestBuildRevertedWavesFor_FromServices(t *testing.T) {
+	services := []domain.ServiceSpec{
+		{Name: "frontend", Depends: []values.ServiceName{"api"}},
+		{Name: "api", Depends: []values.ServiceName{"db", "cache"}},
+		{Name: "db"},
+		{Name: "cache"},
+		{Name: "metrics"},
+	}
+
+	t.Run("down -s db stops api and frontend, leaves cache and metrics", func(t *testing.T) {
+		g := NewDependencyGraphFromServices(services)
+		waves, err := g.BuildRevertedWavesFor("db")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]values.ServiceName{{"frontend"}, {"api"}, {"db"}}, waves)
+	})
+
+	t.Run("down -s frontend stops only frontend", func(t *testing.T) {
+		g := NewDependencyGraphFromServices(services)
+		waves, err := g.BuildRevertedWavesFor("frontend")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]values.ServiceName{{"frontend"}}, waves)
+	})
+
+	t.Run("down all: full stop order with maximal parallelism", func(t *testing.T) {
+		g := NewDependencyGraphFromServices(services)
+		waves, err := g.BuildRevertedWavesFor("frontend", "api", "db", "cache", "metrics")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertWavesEqual(t, [][]values.ServiceName{
+			{"frontend", "metrics"},
+			{"api"},
+			{"db", "cache"},
+		}, waves)
+	})
+}
