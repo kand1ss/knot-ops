@@ -8,8 +8,10 @@ import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
-var ErrCycleDetected = errors.New("cycle detected in dependency graph")
-var ErrNodeNotFound = errors.New("node not found in dependency graph")
+var (
+	ErrCycleDetected = errors.New("cycle detected in dependency graph")
+	ErrNodeNotFound  = errors.New("node not found in dependency graph")
+)
 
 type DependencyGraph[T comparable] struct {
 	adj   map[T][]T
@@ -171,22 +173,19 @@ func (g *DependencyGraph[T]) BuildWavesFor(targets ...T) ([][]T, error) {
 
 func (g *DependencyGraph[T]) BuildWaves() ([][]T, error) {
 	inDegree := make(map[T]int, len(g.nodes))
-	dependents := make(map[T][]T)
-
-	for node := range g.nodes {
-		inDegree[node] = 0
-	}
+	dependents := make(map[T][]T, len(g.nodes))
 
 	for node, deps := range g.adj {
 		inDegree[node] = len(deps)
+
 		for _, dep := range deps {
 			dependents[dep] = append(dependents[dep], node)
 		}
 	}
 
 	var currWave []T
-	for node, count := range inDegree {
-		if count == 0 {
+	for node := range g.nodes {
+		if inDegree[node] == 0 {
 			currWave = append(currWave, node)
 		}
 	}
@@ -200,10 +199,10 @@ func (g *DependencyGraph[T]) BuildWaves() ([][]T, error) {
 
 		var nextWave []T
 		for _, node := range currWave {
-			for _, depNode := range dependents[node] {
-				inDegree[depNode]--
-				if inDegree[depNode] == 0 {
-					nextWave = append(nextWave, depNode)
+			for _, dependent := range dependents[node] {
+				inDegree[dependent]--
+				if inDegree[dependent] == 0 {
+					nextWave = append(nextWave, dependent)
 				}
 			}
 		}
