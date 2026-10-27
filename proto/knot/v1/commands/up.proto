@@ -49,4 +49,6 @@ message UpDone {
   uint32 skipped = 2;
   // Number of services that failed to start.
   uint32 failed = 3;
+  // Number of services that was pruned
+  uint32 pruned = 4;
 }
