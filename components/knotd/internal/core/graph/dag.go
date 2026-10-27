@@ -42,43 +42,62 @@ func (g *DependencyGraph[T]) AddNode(node T, depends ...T) {
 	}
 }
 
-func (g *DependencyGraph[T]) subgraph(targets ...T) (DependencyGraph[T], error) {
-	requiredNodes := make(map[T]struct{})
-
-	var collectDeps func(node T) error
-	collectDeps = func(node T) error {
-		if _, exists := g.nodes[node]; !exists {
-			return fmt.Errorf("%w: %v", ErrNodeNotFound, node)
-		}
-		if _, visited := requiredNodes[node]; visited {
-			return nil
-		}
-
-		requiredNodes[node] = struct{}{}
-		for _, dep := range g.adj[node] {
-			if err := collectDeps(dep); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
+func (g *DependencyGraph[T]) subgraph(
+	targets ...T,
+) (*DependencyGraph[T], error) {
+	requiredNodes := make(map[T]struct{}, len(targets))
+	stack := make([]T, 0, len(targets))
 
 	for _, target := range targets {
-		if err := collectDeps(target); err != nil {
-			return DependencyGraph[T]{}, err
+		if _, exists := g.nodes[target]; !exists {
+			return nil, fmt.Errorf("%w: %v", ErrNodeNotFound, target)
+		}
+
+		if _, seen := requiredNodes[target]; seen {
+			continue
+		}
+
+		requiredNodes[target] = struct{}{}
+		stack = append(stack, target)
+	}
+
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		node := stack[last]
+		stack = stack[:last]
+
+		for _, dep := range g.adj[node] {
+			if _, exists := g.nodes[dep]; !exists {
+				return nil, fmt.Errorf(
+					"%w: %v (dependency of %v)",
+					ErrNodeNotFound,
+					dep,
+					node,
+				)
+			}
+
+			if _, seen := requiredNodes[dep]; seen {
+				continue
+			}
+
+			requiredNodes[dep] = struct{}{}
+			stack = append(stack, dep)
 		}
 	}
 
 	sub := NewDependencyGraph[T]()
+
 	for node := range requiredNodes {
 		sub.nodes[node] = struct{}{}
+	}
+
+	for node := range requiredNodes {
 		for _, dep := range g.adj[node] {
 			sub.adj[node] = append(sub.adj[node], dep)
-			sub.nodes[dep] = struct{}{}
 		}
 	}
 
-	return sub, nil
+	return &sub, nil
 }
 
 // dependentsClosure returns the subgraph induced by targets plus every node
