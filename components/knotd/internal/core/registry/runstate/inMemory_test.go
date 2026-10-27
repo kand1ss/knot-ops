@@ -167,7 +167,10 @@ func TestInMemoryRuntimeRegistry_Remove(t *testing.T) {
 		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
 		_ = r.Register(makeHandle(id, "svc2", &mockRunHandle{id: "h2"}))
 
-		r.Remove(id, "svc1")
+		err := r.Remove(id, "svc1")
+		if err != nil {
+			t.Error(err)
+		}
 
 		if _, ok := r.Get(id, "svc1"); ok {
 			t.Error("svc1 should have been removed")
@@ -182,7 +185,10 @@ func TestInMemoryRuntimeRegistry_Remove(t *testing.T) {
 		id := values.NewWorkspaceId()
 		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
 
-		r.Remove(id, "svc1")
+		err := r.Remove(id, "svc1")
+		if err != nil {
+			t.Error(err)
+		}
 
 		// Verify internal workspace map entry is pruned
 		if list := r.List(id); list != nil {
@@ -204,8 +210,15 @@ func TestInMemoryRuntimeRegistry_Remove(t *testing.T) {
 		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
 
 		// Removing non-existent service or workspace should not panic
-		r.Remove(id, "non-existent")
-		r.Remove(values.NewWorkspaceId(), "svc1")
+		err := r.Remove(id, "non-existent")
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = r.Remove(values.NewWorkspaceId(), "svc1")
+		if err != nil {
+			t.Error(err)
+		}
 
 		if _, ok := r.Get(id, "svc1"); !ok {
 			t.Error("ws1/svc1 was removed by invalid operation")
@@ -307,7 +320,10 @@ func TestInMemoryRuntimeRegistry_Concurrency(t *testing.T) {
 				for i := range opsPerGoroutine {
 					ws := values.NewWorkspaceId()
 					svc := values.ServiceName(fmt.Sprintf("svc-%d-%d", gID, i))
-					r.Remove(ws, svc)
+					err := r.Remove(ws, svc)
+					if err != nil {
+						t.Error(err)
+					}
 				}
 			}(g)
 		}
@@ -334,7 +350,10 @@ func TestInMemoryRuntimeRegistry_Concurrency(t *testing.T) {
 					svcName := fmt.Sprintf("svc-%d", i)
 					sh := makeHandle(ws, svcName, &mockRunHandle{id: "h"})
 					_ = r.Register(sh)
-					r.Remove(ws, values.ServiceName(svcName))
+					err := r.Remove(ws, values.ServiceName(svcName))
+					if err != nil {
+						t.Error(err)
+					}
 					i++
 				}
 			}

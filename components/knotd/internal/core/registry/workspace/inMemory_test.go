@@ -60,7 +60,10 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 			t.Fatalf("failed to build record: %v", err)
 		}
 
-		r.Commit(id, record)
+		err = r.Commit(id, record)
+		if err != nil {
+			t.Error(err)
+		}
 
 		got, ok := r.Get(id)
 		if !ok {
@@ -96,8 +99,15 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 		updatedManifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "v2"})
 		updatedRecord, _ := BuildWorkspaceRecord(updatedManifest)
 
-		r.Commit(id, initialRecord)
-		r.Commit(id, updatedRecord)
+		err := r.Commit(id, initialRecord)
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = r.Commit(id, updatedRecord)
+		if err != nil {
+			t.Error(err)
+		}
 
 		got, ok := r.Get(id)
 		if !ok {
@@ -115,7 +125,10 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "zero-svc"})
 		record, _ := BuildWorkspaceRecord(manifest)
 
-		r.Commit(zeroID, record)
+		err := r.Commit(zeroID, record)
+		if err != nil {
+			t.Error(err)
+		}
 
 		got, ok := r.Get(zeroID)
 		if !ok {
@@ -146,7 +159,10 @@ func TestInMemoryWorkspaceRegistry_RaceAndConcurrency(t *testing.T) {
 				defer wg.Done()
 				for range opsPerGoroutine {
 					id := values.NewWorkspaceId()
-					r.Commit(id, record)
+					err := r.Commit(id, record)
+					if err != nil {
+						t.Error(err)
+					}
 				}
 			}(g)
 		}
@@ -183,7 +199,10 @@ func TestInMemoryWorkspaceRegistry_RaceAndConcurrency(t *testing.T) {
 			go func(gID int) {
 				defer wg.Done()
 				for range iterations {
-					r.Commit(targetID, record)
+					err := r.Commit(targetID, record)
+					if err != nil {
+						t.Error(err)
+					}
 				}
 			}(g)
 		}
@@ -216,7 +235,10 @@ func TestInMemoryWorkspaceRegistry_Isolation(t *testing.T) {
 
 	for i := range ids {
 		ids[i] = values.NewWorkspaceId()
-		r.Commit(ids[i], record)
+		err := r.Commit(ids[i], record)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 
 	for i, id := range ids {

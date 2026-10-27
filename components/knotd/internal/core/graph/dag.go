@@ -92,9 +92,7 @@ func (g *DependencyGraph[T]) subgraph(
 	}
 
 	for node := range requiredNodes {
-		for _, dep := range g.adj[node] {
-			sub.adj[node] = append(sub.adj[node], dep)
-		}
+		sub.adj[node] = append(sub.adj[node], g.adj[node]...)
 	}
 
 	return &sub, nil
