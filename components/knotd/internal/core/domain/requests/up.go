@@ -1,12 +1,12 @@
 package requests
 
 import (
-	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain/task"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 type UpDone struct {
 	Started uint32
+	Pruned  uint32
 	Skipped uint32
 	Failed  uint32
 }
@@ -19,5 +19,3 @@ type UpRequest struct {
 	ExpectedRevision string
 	Prune            bool
 }
-
-type UpResponse task.TaskEvent

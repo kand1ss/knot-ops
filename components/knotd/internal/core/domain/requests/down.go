@@ -1,7 +1,6 @@
 package requests
 
 import (
-	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain/task"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
@@ -16,5 +15,3 @@ type DownRequest struct {
 	WorkspaceID values.WorkspaceId
 	Services    []values.ServiceName
 }
-
-type DownResponse task.TaskEvent
