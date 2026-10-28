@@ -160,7 +160,6 @@ func (r *InMemoryRuntimeRegistry) ListAll() []ServiceHandle {
 	return out
 }
 
-// TODO - add unit test
 func (r *InMemoryRuntimeRegistry) ListHashes(ws values.WorkspaceId) map[values.ServiceName]hashing.Hash {
 	r.mu.RLock()
 	defer r.mu.Unlock()

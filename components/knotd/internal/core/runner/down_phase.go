@@ -14,7 +14,6 @@ func buildStopPhase(
 	return NewPhase(PhaseKindStop, waves, wsID, ws)
 }
 
-// TODO - add unit test
 // BuildDownPhase: requested services + everything that transitively depends on them.
 func BuildDownPhase(
 	wsID values.WorkspaceId,
