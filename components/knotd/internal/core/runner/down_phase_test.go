@@ -53,8 +53,8 @@ func TestBuildDownPhase(t *testing.T) {
 		// db is a dependency of api, not a dependent of api; worker is unrelated.
 		for _, wave := range phase.Waves {
 			for _, unit := range wave {
-				if unit.Service == "db" || unit.Service == "worker" {
-					t.Errorf("unexpected service %q in stop plan", unit.Service)
+				if unit.Spec.Name == "db" || unit.Spec.Name == "worker" {
+					t.Errorf("unexpected service %q in stop plan", unit.Spec.Name)
 				}
 			}
 		}
@@ -193,7 +193,7 @@ func assertStopPhaseInvariants(t *testing.T, phases []Phase) {
 		for _, wave := range phase.Waves {
 			for _, unit := range wave {
 				if !reflect.DeepEqual(unit.Spec, domain.ServiceSpec{}) {
-					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.Service, unit.Spec)
+					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.Spec.Name, unit.Spec)
 				}
 			}
 		}

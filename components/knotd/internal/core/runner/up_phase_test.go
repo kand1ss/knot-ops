@@ -62,7 +62,7 @@ func testRecord(specs ...domain.ServiceSpec) workspace.Record {
 func namesOf(units []PhaseUnit) []values.ServiceName {
 	names := make([]values.ServiceName, 0, len(units))
 	for _, unit := range units {
-		names = append(names, unit.Service)
+		names = append(names, unit.Spec.Name)
 	}
 	return names
 }
@@ -89,7 +89,7 @@ func assertUniqueNonZeroTaskIDs(t *testing.T, phases []Phase) {
 		for _, wave := range phase.Waves {
 			for _, unit := range wave {
 				if unit.Id == (values.TaskID{}) {
-					t.Fatalf("service %q has a zero task ID", unit.Service)
+					t.Fatalf("service %q has a zero task ID", unit.Spec.Name)
 				}
 
 				if _, exists := seen[unit.Id]; exists {
@@ -256,7 +256,7 @@ func TestBuildPrunePhase(t *testing.T) {
 			assertNames(t, namesOf(phase.Waves[0]), tt.want)
 			for _, unit := range phase.Waves[0] {
 				if !reflect.DeepEqual(unit.Spec, domain.ServiceSpec{}) {
-					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.Service, unit.Spec)
+					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.Spec.Name, unit.Spec)
 				}
 			}
 			assertUniqueNonZeroTaskIDs(t, got)

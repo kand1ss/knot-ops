@@ -25,9 +25,8 @@ const (
 )
 
 type PhaseUnit struct {
-	Id      values.TaskID
-	Service values.ServiceName
-	Spec    domain.ServiceSpec
+	Id   values.TaskID
+	Spec domain.ServiceSpec
 }
 
 type Phase struct {
@@ -42,7 +41,7 @@ func NewPhase(kind PhaseKind, waves [][]values.ServiceName,
 	for _, names := range waves {
 		w := make([]PhaseUnit, 0, len(names))
 		for _, n := range names {
-			u := PhaseUnit{Id: values.NewTaskID(), Service: n}
+			u := PhaseUnit{Id: values.NewTaskID()}
 			if kind == PhaseKindStart {
 				spec, ok := ws.Manifest.Get(n)
 				if !ok { // graph/manifest divergence = invariant violation
