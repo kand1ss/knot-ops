@@ -35,11 +35,11 @@ func ResolveUpTargets(
 	}
 
 	for _, n := range req.Services {
-		if _, ok := ws.Manifest.Get(n); ok {
-			continue
+		if _, err := ws.Manifest.Get(n); err != nil {
+			return Targets{}, err
 		}
-		return Targets{}, ErrServiceNotExists{WorkspaceID: wsID, Service: n}
 	}
+
 	tg.Start = req.Services
 	return tg, nil
 }
@@ -47,43 +47,33 @@ func ResolveUpTargets(
 // BuildPrunePhase: all orphans in a single wave, stopped concurrently.
 // Dependency order is intentionally NOT honoured: orphans have no spec in the
 // manifest, so their edges are unknown without persisting them at start time.
-func BuildPrunePhase(
-	wsID values.WorkspaceId,
-	ws workspace.Record,
-	orphans []values.ServiceName,
-) ([]Phase, error) {
+func BuildPrunePhase(orphans []values.ServiceName) []Phase {
 	if len(orphans) == 0 {
-		return nil, nil
+		return nil
 	}
 	// Sort for a deterministic plan (stable task order in CommandPlan).
 	sorted := slices.Clone(orphans)
 	slices.Sort(sorted)
 
-	p, err := buildStopPhase(wsID, ws, [][]values.ServiceName{sorted})
-	if err != nil {
-		return nil, err
-	}
-	return []Phase{p}, nil
+	return []Phase{NewStopPhase([][]values.ServiceName{sorted})}
 }
 
 func BuildUpPhases(wsID values.WorkspaceId, ws workspace.Record, tg Targets) ([]Phase, error) {
-	phases, err := BuildPrunePhase(wsID, ws, tg.Stop)
-	if err != nil {
-		return nil, err
-	}
+	phases := BuildPrunePhase(tg.Stop)
 	if len(tg.Start) == 0 {
 		return phases, nil
 	}
 
 	g := graph.NewDependencyGraphFromServices(ws.Manifest.Services())
-	waves, err := g.BuildWavesFor(tg.Start...)
-	if err != nil {
-		return nil, err
-	}
-	start, err := NewPhase(PhaseKindStart, waves, wsID, ws)
+	nameWaves, err := g.BuildWavesFor(tg.Start...)
 	if err != nil {
 		return nil, err
 	}
 
-	return append(phases, start), nil // prune always precedes start
+	specWaves, err := ws.Manifest.SpecWaves(nameWaves)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(phases, NewStartPhase(specWaves)), nil // prune always precedes start
 }

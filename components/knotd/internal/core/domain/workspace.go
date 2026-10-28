@@ -1,6 +1,18 @@
 package domain
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+import (
+	"fmt"
+
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
+)
+
+type ErrServiceNotInManifest struct {
+	Service values.ServiceName
+}
+
+func (e ErrServiceNotInManifest) Error() string {
+	return fmt.Sprintf("service %q not exists in manifest", e.Service)
+}
 
 type WorkspaceManifest struct {
 	services map[values.ServiceName]ServiceSpec
@@ -26,13 +38,29 @@ func (w *WorkspaceManifest) Append(service ServiceSpec) {
 	w.services[service.Name] = service
 }
 
-func (w *WorkspaceManifest) Get(name values.ServiceName) (ServiceSpec, bool) {
+func (w *WorkspaceManifest) Get(name values.ServiceName) (ServiceSpec, error) {
 	for _, service := range w.services {
 		if service.Name == name {
-			return service, true
+			return service, nil
 		}
 	}
-	return ServiceSpec{}, false
+	return ServiceSpec{}, ErrServiceNotInManifest{Service: name}
+}
+
+func (w *WorkspaceManifest) SpecWaves(waves [][]values.ServiceName) ([][]ServiceSpec, error) {
+	out := make([][]ServiceSpec, 0, len(waves))
+	for _, wave := range waves {
+		specs := make([]ServiceSpec, 0, len(wave))
+		for _, n := range wave {
+			spec, err := w.Get(n)
+			if err != nil {
+				return nil, ErrServiceNotInManifest{Service: n}
+			}
+			specs = append(specs, spec)
+		}
+		out = append(out, specs)
+	}
+	return out, nil
 }
 
 func (w *WorkspaceManifest) Services() []ServiceSpec {

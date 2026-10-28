@@ -6,14 +6,6 @@ import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
-func buildStopPhase(
-	wsID values.WorkspaceId,
-	ws workspace.Record,
-	waves [][]values.ServiceName,
-) (Phase, error) {
-	return NewPhase(PhaseKindStop, waves, wsID, ws)
-}
-
 // BuildDownPhase: requested services + everything that transitively depends on them.
 func BuildDownPhase(
 	wsID values.WorkspaceId,
@@ -23,22 +15,19 @@ func BuildDownPhase(
 	if len(requested) == 0 {
 		requested = ws.Manifest.ServiceNames()
 	}
+
 	for _, name := range requested { // validation only; the graph is built from the full manifest
-		if _, ok := ws.Manifest.Get(name); !ok {
-			return nil, ErrServiceNotExists{WorkspaceID: wsID, Service: name}
+		if _, err := ws.Manifest.Get(name); err != nil {
+			return nil, err
 		}
 	}
 
 	// Full manifest: dependents outside `requested` must be visible to the closure.
 	dag := graph.NewDependencyGraphFromServices(ws.Manifest.Services())
-	waves, err := dag.BuildRevertedWavesFor(requested...)
+	nameWaves, err := dag.BuildRevertedWavesFor(requested...)
 	if err != nil {
 		return nil, err
 	}
 
-	p, err := buildStopPhase(wsID, ws, waves)
-	if err != nil {
-		return nil, err
-	}
-	return []Phase{p}, nil
+	return []Phase{NewStopPhase(nameWaves)}, nil
 }

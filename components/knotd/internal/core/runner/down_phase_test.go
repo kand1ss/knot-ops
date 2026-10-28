@@ -151,13 +151,13 @@ func TestBuildDownPhase(t *testing.T) {
 		if err == nil {
 			t.Fatalf("BuildDownPhase() error = nil, phases = %+v", got)
 		}
-		var missing ErrServiceNotExists
+		var missing domain.ErrServiceNotInManifest
 		if !errors.As(err, &missing) {
 			t.Fatalf("error type = %T, want ErrServiceNotExists", err)
 		}
-		if missing.WorkspaceID != wsID || missing.Service != "missing" {
-			t.Fatalf("error fields = (%q, %q), want (%q, %q)",
-				missing.WorkspaceID, missing.Service, wsID, "missing")
+		if missing.Service != "missing" {
+			t.Fatalf("error fields = %q, want %q",
+				missing.Service, "missing")
 		}
 		if got != nil {
 			t.Fatalf("phases = %+v, want nil on validation error", got)

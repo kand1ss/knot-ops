@@ -62,7 +62,7 @@ func testRecord(specs ...domain.ServiceSpec) workspace.Record {
 func namesOf(units []PhaseUnit) []values.ServiceName {
 	names := make([]values.ServiceName, 0, len(units))
 	for _, unit := range units {
-		names = append(names, unit.Spec.Name)
+		names = append(names, unit.Service)
 	}
 	return names
 }
@@ -89,7 +89,7 @@ func assertUniqueNonZeroTaskIDs(t *testing.T, phases []Phase) {
 		for _, wave := range phase.Waves {
 			for _, unit := range wave {
 				if unit.Id == (values.TaskID{}) {
-					t.Fatalf("service %q has a zero task ID", unit.Spec.Name)
+					t.Fatalf("service %q has a zero task ID", unit.Service)
 				}
 
 				if _, exists := seen[unit.Id]; exists {
@@ -168,13 +168,13 @@ func TestResolveUpTargets(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected an error, got nil")
 				}
-				var missing ErrServiceNotExists
+				var missing domain.ErrServiceNotInManifest
 				if !errors.As(err, &missing) {
 					t.Fatalf("error type = %T, want ErrServiceNotExists", err)
 				}
-				if missing.WorkspaceID != wsID || missing.Service != "missing" {
-					t.Fatalf("error fields = (%q, %q), want (%q, %q)",
-						missing.WorkspaceID, missing.Service, wsID, "missing")
+				if missing.Service != "missing" {
+					t.Fatalf("error fields = %q, want %q",
+						missing.Service, "missing")
 				}
 				if len(got.Start) != 0 || len(got.Stop) != 0 {
 					t.Fatalf("targets on error = %+v, want empty targets", got)
@@ -200,9 +200,6 @@ func TestResolveUpTargets(t *testing.T) {
 }
 
 func TestBuildPrunePhase(t *testing.T) {
-	wsID := testWorkspaceID(uuid.New())
-	ws := testRecord(testSpec("declared"))
-
 	tests := []struct {
 		name    string
 		orphans []values.ServiceName
@@ -230,10 +227,7 @@ func TestBuildPrunePhase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input := slices.Clone(tt.orphans)
-			got, err := BuildPrunePhase(wsID, ws, input)
-			if err != nil {
-				t.Fatalf("BuildPrunePhase() error = %v", err)
-			}
+			got := BuildPrunePhase(input)
 			if !reflect.DeepEqual(input, tt.orphans) {
 				t.Fatalf("input mutated: got %v, original %v", input, tt.orphans)
 			}
@@ -307,9 +301,9 @@ func TestBuildUpPhases(t *testing.T) {
 		}
 		assertNames(t, namesOf(phase.Waves[0]), []values.ServiceName{"db"})
 		assertNames(t, namesOf(phase.Waves[1]), []values.ServiceName{"api"})
-		spec, ok := ws.Manifest.Get(testName("api"))
-		if !ok {
-			t.Fatal("test fixture missing api spec")
+		spec, err := ws.Manifest.Get(testName("api"))
+		if err != nil {
+			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(phase.Waves[1][0].Spec, spec) {
 			t.Fatalf("api spec = %+v, want manifest spec %+v", phase.Waves[1][0].Spec, spec)
