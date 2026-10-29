@@ -20,6 +20,16 @@ type TaskCancelled struct {
 
 func (t TaskCancelled) IsTaskEvent() {}
 
+type TaskDone struct {
+	TaskID  values.TaskID
+	Started uint32
+	Stopped uint32
+	Skipped uint32
+	Failed  uint32
+}
+
+func (t TaskDone) IsTaskEvent() {}
+
 type CancelTaskCode int
 
 const (
