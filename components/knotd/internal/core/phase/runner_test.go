@@ -355,7 +355,7 @@ func TestExecute_WaveBarrier_NextWaveSeesAllPreviousRegistered(t *testing.T) {
 	var violations atomic.Int32
 	h.rt.onStart = func(s domain.ServiceSpec) error {
 		// wave 2 unit may start only after the WHOLE wave 1 is registered.
-		if s.Name == "api" && !(h.reg.has("db") && h.reg.has("cache")) {
+		if s.Name == "api" && (!h.reg.has("db") || !h.reg.has("cache")) {
 			violations.Add(1)
 		}
 		return nil
