@@ -14,7 +14,7 @@ const (
 )
 
 type HandshakeRequest struct {
-	WorkspaceID values.WorkspaceId
+	WorkspaceID values.WorkspaceID
 	Manifest    domain.WorkspaceManifest
 }
 

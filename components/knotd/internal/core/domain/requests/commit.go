@@ -6,7 +6,7 @@ import (
 )
 
 type CommitRequest struct {
-	WorkspaceID      values.WorkspaceId
+	WorkspaceID      values.WorkspaceID
 	Manifest         domain.WorkspaceManifest
 	ExpectedRevision string
 }

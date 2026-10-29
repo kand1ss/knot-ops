@@ -8,23 +8,23 @@ import (
 
 type InMemoryWorkspaceRegistry struct {
 	mu         sync.RWMutex
-	workspaces map[values.WorkspaceId]Record
+	workspaces map[values.WorkspaceID]Record
 }
 
 func NewInMemoryWorkspaceRegistry() *InMemoryWorkspaceRegistry {
 	return &InMemoryWorkspaceRegistry{
-		workspaces: make(map[values.WorkspaceId]Record),
+		workspaces: make(map[values.WorkspaceID]Record),
 	}
 }
 
-func (i *InMemoryWorkspaceRegistry) Commit(id values.WorkspaceId, record Record) error {
+func (i *InMemoryWorkspaceRegistry) Commit(id values.WorkspaceID, record Record) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.workspaces[id] = record
 	return nil
 }
 
-func (i *InMemoryWorkspaceRegistry) Get(id values.WorkspaceId) (Record, bool) {
+func (i *InMemoryWorkspaceRegistry) Get(id values.WorkspaceID) (Record, bool) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	m, ok := i.workspaces[id]

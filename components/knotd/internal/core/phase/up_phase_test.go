@@ -27,7 +27,7 @@ import (
 
 func testName(s string) values.ServiceName { return values.ServiceName(s) }
 
-func testWorkspaceID(s uuid.UUID) values.WorkspaceId { return values.WorkspaceId(s) }
+func testWorkspaceID(s uuid.UUID) values.WorkspaceID { return values.WorkspaceID(s) }
 
 func testSpec(name string, depends ...string) domain.ServiceSpec {
 	spec := domain.ServiceSpec{

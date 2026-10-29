@@ -5,7 +5,7 @@ import (
 )
 
 type UpRequest struct {
-	WorkspaceId      values.WorkspaceId
+	WorkspaceId      values.WorkspaceID
 	Services         []values.ServiceName
 	ExpectedRevision string
 	Prune            bool

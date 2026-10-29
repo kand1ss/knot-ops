@@ -7,7 +7,7 @@ import (
 )
 
 type LogsRequest struct {
-	WorkspaceId values.WorkspaceId
+	WorkspaceId values.WorkspaceID
 	Services    []values.ServiceName
 	Follow      bool
 	Tail        uint32

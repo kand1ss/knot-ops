@@ -12,19 +12,19 @@ import (
 // handle.Inspect(ctx) at query time.
 type RuntimeRegistry interface {
 	Register(handle runstate.ServiceHandle) error
-	Get(ws values.WorkspaceId, service values.ServiceName) (runstate.ServiceHandle, bool)
-	Remove(ws values.WorkspaceId, service values.ServiceName) error
-	List(ws values.WorkspaceId) []runstate.ServiceHandle
+	Get(ws values.WorkspaceID, service values.ServiceName) (runstate.ServiceHandle, bool)
+	Remove(ws values.WorkspaceID, service values.ServiceName) error
+	List(ws values.WorkspaceID) []runstate.ServiceHandle
 	ListAll() []runstate.ServiceHandle
-	ListHashes(ws values.WorkspaceId) map[values.ServiceName]hashing.Hash
+	ListHashes(ws values.WorkspaceID) map[values.ServiceName]hashing.Hash
 
 	// WorkspaceHash and Snapshot exist specifically to make runtime-drift
 	// comparisons against workspace.WorkspaceRecord a plain equality check
 	// on hashing.Hash — see the two comparison examples below for how
 	// config-drift (Handshake) and runtime-drift (reconciliation) each use
 	// exactly one side of this registry.
-	WorkspaceHash(ws values.WorkspaceId) (hashing.Hash, bool)
-	Snapshot(ws values.WorkspaceId) (runstate.RuntimeSnapshot, bool)
+	WorkspaceHash(ws values.WorkspaceID) (hashing.Hash, bool)
+	Snapshot(ws values.WorkspaceID) (runstate.RuntimeSnapshot, bool)
 }
 
 type ServiceHandle = runstate.ServiceHandle

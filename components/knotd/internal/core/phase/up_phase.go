@@ -17,7 +17,7 @@ type Targets struct {
 }
 
 func ResolveUpTargets(
-	wsID values.WorkspaceId,
+	wsID values.WorkspaceID,
 	ws workspace.Record,
 	rtHashes map[values.ServiceName]hashing.Hash,
 	req requests.UpRequest,
@@ -58,7 +58,7 @@ func BuildPrunePhase(taskID values.TaskID, orphans []values.ServiceName) []Phase
 	return []Phase{NewStopPhase(taskID, [][]values.ServiceName{sorted})}
 }
 
-func BuildUpPhases(taskID values.TaskID, wsID values.WorkspaceId, ws workspace.Record, tg Targets) ([]Phase, error) {
+func BuildUpPhases(taskID values.TaskID, wsID values.WorkspaceID, ws workspace.Record, tg Targets) ([]Phase, error) {
 	phases := BuildPrunePhase(taskID, tg.stop)
 	if len(tg.start) == 0 {
 		return phases, nil

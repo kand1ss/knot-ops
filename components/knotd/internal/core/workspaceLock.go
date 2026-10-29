@@ -8,16 +8,16 @@ import (
 
 type WorkspaceLock struct {
 	mu    sync.Mutex
-	locks map[values.WorkspaceId]*sync.RWMutex
+	locks map[values.WorkspaceID]*sync.RWMutex
 }
 
 func NewWorkspaceLock() *WorkspaceLock {
 	return &WorkspaceLock{
-		locks: make(map[values.WorkspaceId]*sync.RWMutex),
+		locks: make(map[values.WorkspaceID]*sync.RWMutex),
 	}
 }
 
-func (l *WorkspaceLock) getOrCreate(id values.WorkspaceId) *sync.RWMutex {
+func (l *WorkspaceLock) getOrCreate(id values.WorkspaceID) *sync.RWMutex {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -29,18 +29,18 @@ func (l *WorkspaceLock) getOrCreate(id values.WorkspaceId) *sync.RWMutex {
 	return mtx
 }
 
-func (l *WorkspaceLock) Lock(id values.WorkspaceId) {
+func (l *WorkspaceLock) Lock(id values.WorkspaceID) {
 	l.getOrCreate(id).Lock()
 }
 
-func (l *WorkspaceLock) Unlock(id values.WorkspaceId) {
+func (l *WorkspaceLock) Unlock(id values.WorkspaceID) {
 	l.getOrCreate(id).Unlock()
 }
 
-func (l *WorkspaceLock) RLock(id values.WorkspaceId) {
+func (l *WorkspaceLock) RLock(id values.WorkspaceID) {
 	l.getOrCreate(id).RLock()
 }
 
-func (l *WorkspaceLock) RUnlock(id values.WorkspaceId) {
+func (l *WorkspaceLock) RUnlock(id values.WorkspaceID) {
 	l.getOrCreate(id).RUnlock()
 }

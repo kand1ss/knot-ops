@@ -120,7 +120,7 @@ func TestInMemoryWorkspaceRegistry_CommitAndGet(t *testing.T) {
 		t.Parallel()
 
 		r := NewInMemoryWorkspaceRegistry()
-		var zeroID values.WorkspaceId
+		var zeroID values.WorkspaceID
 
 		manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "zero-svc"})
 		record, _ := BuildWorkspaceRecord(manifest)
@@ -228,7 +228,7 @@ func TestInMemoryWorkspaceRegistry_Isolation(t *testing.T) {
 	t.Parallel()
 
 	r := NewInMemoryWorkspaceRegistry()
-	ids := make([]values.WorkspaceId, 10)
+	ids := make([]values.WorkspaceID, 10)
 
 	manifest := domain.NewWorkspaceManifest(domain.ServiceSpec{Name: "iso-svc"})
 	record, _ := BuildWorkspaceRecord(manifest)

@@ -37,7 +37,7 @@ func (m mockRunHandle) Inspect(context.Context) (runtime.Status, error) {
 	return m.status, nil
 }
 
-func makeHandle(id values.WorkspaceId, name string, h *mockRunHandle) ServiceHandle {
+func makeHandle(id values.WorkspaceID, name string, h *mockRunHandle) ServiceHandle {
 	return ServiceHandle{
 		Workspace: id,
 		Service:   values.ServiceName(name),

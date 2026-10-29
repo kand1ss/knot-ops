@@ -9,7 +9,7 @@ import (
 // BuildDownPhase: requested services + everything that transitively depends on them.
 func BuildDownPhase(
 	taskID values.TaskID,
-	wsID values.WorkspaceId,
+	wsID values.WorkspaceID,
 	ws workspace.Record,
 	requested []values.ServiceName,
 ) ([]Phase, error) {

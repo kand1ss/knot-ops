@@ -2,10 +2,14 @@ package values
 
 import "github.com/google/uuid"
 
-type WorkspaceId uuid.UUID
+type WorkspaceID uuid.UUID
 
-func NewWorkspaceId() WorkspaceId {
-	return WorkspaceId(uuid.New())
+func NewWorkspaceId() WorkspaceID {
+	return WorkspaceID(uuid.New())
+}
+
+func (s WorkspaceID) String() string {
+	return uuid.UUID(s).String()
 }
 
 type TaskID uuid.UUID

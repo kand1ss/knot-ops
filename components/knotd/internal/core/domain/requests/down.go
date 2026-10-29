@@ -5,6 +5,6 @@ import (
 )
 
 type DownRequest struct {
-	WorkspaceID values.WorkspaceId
+	WorkspaceID values.WorkspaceID
 	Services    []values.ServiceName
 }

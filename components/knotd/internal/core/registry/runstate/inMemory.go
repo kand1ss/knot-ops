@@ -11,12 +11,12 @@ import (
 type InMemoryRuntimeRegistry struct {
 	mu sync.RWMutex
 	// workspace -> service name -> handle
-	byWorkspace map[values.WorkspaceId]map[values.ServiceName]ServiceHandle
+	byWorkspace map[values.WorkspaceID]map[values.ServiceName]ServiceHandle
 }
 
 func NewInMemoryRuntimeRegistry() *InMemoryRuntimeRegistry {
 	return &InMemoryRuntimeRegistry{
-		byWorkspace: make(map[values.WorkspaceId]map[values.ServiceName]ServiceHandle),
+		byWorkspace: make(map[values.WorkspaceID]map[values.ServiceName]ServiceHandle),
 	}
 }
 
@@ -47,7 +47,7 @@ func (r *InMemoryRuntimeRegistry) Register(handle ServiceHandle) error {
 // ok=false means "nothing tracked for this workspace" — not "hash is
 // zero" (Combine(nil) is a well-defined, non-zero value in general, so the
 // two cases can't be confused by checking the hash alone).
-func (r *InMemoryRuntimeRegistry) WorkspaceHash(ws values.WorkspaceId) (hashing.Hash, bool) {
+func (r *InMemoryRuntimeRegistry) WorkspaceHash(ws values.WorkspaceID) (hashing.Hash, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -71,7 +71,7 @@ func (r *InMemoryRuntimeRegistry) WorkspaceHash(ws values.WorkspaceId) (hashing.
 // which would make the returned hash inconsistent with the returned
 // handle list. This is the completed, correctly-shaped replacement for
 // the abandoned GetWorkspace() stub.
-func (r *InMemoryRuntimeRegistry) Snapshot(ws values.WorkspaceId) (RuntimeSnapshot, bool) {
+func (r *InMemoryRuntimeRegistry) Snapshot(ws values.WorkspaceID) (RuntimeSnapshot, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -94,7 +94,7 @@ func (r *InMemoryRuntimeRegistry) Snapshot(ws values.WorkspaceId) (RuntimeSnapsh
 	}, true
 }
 
-func (r *InMemoryRuntimeRegistry) Get(ws values.WorkspaceId, service values.ServiceName) (ServiceHandle, bool) {
+func (r *InMemoryRuntimeRegistry) Get(ws values.WorkspaceID, service values.ServiceName) (ServiceHandle, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -106,7 +106,7 @@ func (r *InMemoryRuntimeRegistry) Get(ws values.WorkspaceId, service values.Serv
 	return h, ok
 }
 
-func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceId, service values.ServiceName) error {
+func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceID, service values.ServiceName) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -125,7 +125,7 @@ func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceId, service values.S
 	return nil
 }
 
-func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceId) []ServiceHandle {
+func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceID) []ServiceHandle {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -160,7 +160,7 @@ func (r *InMemoryRuntimeRegistry) ListAll() []ServiceHandle {
 	return out
 }
 
-func (r *InMemoryRuntimeRegistry) ListHashes(ws values.WorkspaceId) map[values.ServiceName]hashing.Hash {
+func (r *InMemoryRuntimeRegistry) ListHashes(ws values.WorkspaceID) map[values.ServiceName]hashing.Hash {
 	r.mu.RLock()
 	defer r.mu.Unlock()
 

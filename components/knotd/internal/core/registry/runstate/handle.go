@@ -12,7 +12,7 @@ import (
 // (which workspace, which service name) — Inspect()/Stop() alone don't
 // carry that context, and callers iterating List/ListAll need it.
 type ServiceHandle struct {
-	Workspace values.WorkspaceId
+	Workspace values.WorkspaceID
 	Service   values.ServiceName
 	Hash      hashing.Hash
 	Handle    runtime.RunHandle

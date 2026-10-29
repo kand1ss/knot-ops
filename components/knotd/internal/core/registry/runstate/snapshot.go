@@ -6,7 +6,7 @@ import (
 )
 
 type RuntimeSnapshot struct {
-	Workspace values.WorkspaceId
+	Workspace values.WorkspaceID
 	Hash      hashing.Hash
 	Handles   []ServiceHandle
 }

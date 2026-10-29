@@ -6,7 +6,7 @@ import (
 )
 
 type StatusRequest struct {
-	WorkspaceId values.WorkspaceId
+	WorkspaceId values.WorkspaceID
 	Services    []values.ServiceName
 }
 
