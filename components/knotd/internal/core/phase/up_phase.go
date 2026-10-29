@@ -47,7 +47,7 @@ func ResolveUpTargets(
 // BuildPrunePhase: all orphans in a single wave, stopped concurrently.
 // Dependency order is intentionally NOT honoured: orphans have no spec in the
 // manifest, so their edges are unknown without persisting them at start time.
-func BuildPrunePhase(orphans []values.ServiceName) []Phase {
+func BuildPrunePhase(taskID values.TaskID, orphans []values.ServiceName) []Phase {
 	if len(orphans) == 0 {
 		return nil
 	}
@@ -55,11 +55,11 @@ func BuildPrunePhase(orphans []values.ServiceName) []Phase {
 	sorted := slices.Clone(orphans)
 	slices.Sort(sorted)
 
-	return []Phase{NewStopPhase([][]values.ServiceName{sorted})}
+	return []Phase{NewStopPhase(taskID, [][]values.ServiceName{sorted})}
 }
 
-func BuildUpPhases(wsID values.WorkspaceId, ws workspace.Record, tg Targets) ([]Phase, error) {
-	phases := BuildPrunePhase(tg.stop)
+func BuildUpPhases(taskID values.TaskID, wsID values.WorkspaceId, ws workspace.Record, tg Targets) ([]Phase, error) {
+	phases := BuildPrunePhase(taskID, tg.stop)
 	if len(tg.start) == 0 {
 		return phases, nil
 	}
@@ -75,5 +75,5 @@ func BuildUpPhases(wsID values.WorkspaceId, ws workspace.Record, tg Targets) ([]
 		return nil, err
 	}
 
-	return append(phases, NewStartPhase(specWaves)), nil // prune always precedes start
+	return append(phases, NewStartPhase(taskID, specWaves)), nil // prune always precedes start
 }

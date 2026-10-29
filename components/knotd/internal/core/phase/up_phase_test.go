@@ -83,20 +83,12 @@ func assertNames(t *testing.T, got, want []values.ServiceName) {
 func assertUniqueNonZeroTaskIDs(t *testing.T, phases []Phase) {
 	t.Helper()
 
-	seen := make(map[values.TaskID]struct{})
-
 	for _, phase := range phases {
 		for _, wave := range phase.waves {
 			for _, unit := range wave {
 				if unit.id == (values.TaskID{}) {
 					t.Fatalf("service %q has a zero task ID", unit.service)
 				}
-
-				if _, exists := seen[unit.id]; exists {
-					t.Fatalf("duplicate task ID %v", unit.id)
-				}
-
-				seen[unit.id] = struct{}{}
 			}
 		}
 	}
@@ -227,7 +219,8 @@ func TestBuildPrunePhase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input := slices.Clone(tt.orphans)
-			got := BuildPrunePhase(input)
+			id := values.NewTaskID()
+			got := BuildPrunePhase(id, input)
 			if !reflect.DeepEqual(input, tt.orphans) {
 				t.Fatalf("input mutated: got %v, original %v", input, tt.orphans)
 			}
@@ -267,7 +260,7 @@ func TestBuildUpPhases(t *testing.T) {
 	)
 
 	t.Run("empty targets produce no phases", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{})
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
@@ -277,7 +270,7 @@ func TestBuildUpPhases(t *testing.T) {
 	})
 
 	t.Run("prune-only plan contains stop phase", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{stop: []values.ServiceName{"orphan"}})
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{stop: []values.ServiceName{"orphan"}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
@@ -288,7 +281,7 @@ func TestBuildUpPhases(t *testing.T) {
 	})
 
 	t.Run("start-only plan follows dependency order and copies specs", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{"api"}})
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{start: []values.ServiceName{"api"}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
@@ -312,7 +305,7 @@ func TestBuildUpPhases(t *testing.T) {
 	})
 
 	t.Run("prune phase always precedes start phase", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{
 			stop:  []values.ServiceName{"z-orphan", "a-orphan"},
 			start: []values.ServiceName{"api"},
 		})
@@ -330,7 +323,7 @@ func TestBuildUpPhases(t *testing.T) {
 	})
 
 	t.Run("independent services may share a wave", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{"worker", "db"}})
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{start: []values.ServiceName{"worker", "db"}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
@@ -343,14 +336,14 @@ func TestBuildUpPhases(t *testing.T) {
 	})
 
 	t.Run("unknown start target returns error", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{"missing"}})
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{start: []values.ServiceName{"missing"}})
 		if err == nil {
 			t.Fatalf("BuildUpPhases() error = nil, phases = %+v", got)
 		}
 	})
 
 	t.Run("empty start with empty prune list returns no phases", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{}})
+		got, err := BuildUpPhases(values.NewTaskID(), wsID, ws, Targets{start: []values.ServiceName{}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}

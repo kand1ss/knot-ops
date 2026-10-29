@@ -32,7 +32,7 @@ func TestBuildDownPhase(t *testing.T) {
 	)
 
 	t.Run("requested service and transitive dependents are stopped", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, []values.ServiceName{"api"})
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, []values.ServiceName{"api"})
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
@@ -62,7 +62,7 @@ func TestBuildDownPhase(t *testing.T) {
 	})
 
 	t.Run("transitive dependents are ordered before the requested dependency", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, []values.ServiceName{"db"})
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, []values.ServiceName{"db"})
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
@@ -80,7 +80,7 @@ func TestBuildDownPhase(t *testing.T) {
 	})
 
 	t.Run("overlapping targets do not duplicate services", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, []values.ServiceName{"api", "db"})
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, []values.ServiceName{"api", "db"})
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
@@ -101,7 +101,7 @@ func TestBuildDownPhase(t *testing.T) {
 	})
 
 	t.Run("empty request stops all manifest services", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, nil)
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, nil)
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
@@ -121,7 +121,7 @@ func TestBuildDownPhase(t *testing.T) {
 	})
 
 	t.Run("empty request also stops all services when passed as empty slice", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, []values.ServiceName{})
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, []values.ServiceName{})
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
@@ -135,7 +135,7 @@ func TestBuildDownPhase(t *testing.T) {
 	})
 
 	t.Run("independent requested services can share a wave", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, []values.ServiceName{"worker"})
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, []values.ServiceName{"worker"})
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
@@ -147,7 +147,7 @@ func TestBuildDownPhase(t *testing.T) {
 	})
 
 	t.Run("unknown requested service returns typed error and no phases", func(t *testing.T) {
-		got, err := BuildDownPhase(wsID, ws, []values.ServiceName{"missing"})
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, ws, []values.ServiceName{"missing"})
 		if err == nil {
 			t.Fatalf("BuildDownPhase() error = nil, phases = %+v", got)
 		}
@@ -166,7 +166,7 @@ func TestBuildDownPhase(t *testing.T) {
 
 	t.Run("empty manifest produces an empty stop plan", func(t *testing.T) {
 		emptyWS := testRecord()
-		got, err := BuildDownPhase(wsID, emptyWS, nil)
+		got, err := BuildDownPhase(values.NewTaskID(), wsID, emptyWS, nil)
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
