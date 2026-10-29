@@ -41,20 +41,20 @@ func TestBuildDownPhase(t *testing.T) {
 		}
 
 		phase := got[0]
-		if phase.Kind != PhaseKindStop {
-			t.Fatalf("phase kind = %v, want PhaseKindStop", phase.Kind)
+		if phase.kind != phaseKindStop {
+			t.Fatalf("phase kind = %v, want PhaseKindStop", phase.kind)
 		}
-		if len(phase.Waves) != 2 {
-			t.Fatalf("wave count = %d, want 2 (frontend then api)", len(phase.Waves))
+		if len(phase.waves) != 2 {
+			t.Fatalf("wave count = %d, want 2 (frontend then api)", len(phase.waves))
 		}
-		assertNames(t, sortedNames(namesOf(phase.Waves[0])), []values.ServiceName{"frontend"})
-		assertNames(t, sortedNames(namesOf(phase.Waves[1])), []values.ServiceName{"api"})
+		assertNames(t, sortedNames(namesOf(phase.waves[0])), []values.ServiceName{"frontend"})
+		assertNames(t, sortedNames(namesOf(phase.waves[1])), []values.ServiceName{"api"})
 
 		// db is a dependency of api, not a dependent of api; worker is unrelated.
-		for _, wave := range phase.Waves {
+		for _, wave := range phase.waves {
 			for _, unit := range wave {
-				if unit.Spec.Name == "db" || unit.Spec.Name == "worker" {
-					t.Errorf("unexpected service %q in stop plan", unit.Spec.Name)
+				if unit.spec.Name == "db" || unit.spec.Name == "worker" {
+					t.Errorf("unexpected service %q in stop plan", unit.spec.Name)
 				}
 			}
 		}
@@ -70,12 +70,12 @@ func TestBuildDownPhase(t *testing.T) {
 			t.Fatalf("phase count = %d, want 1", len(got))
 		}
 		phase := got[0]
-		if len(phase.Waves) != 3 {
-			t.Fatalf("wave count = %d, want 3 (frontend, api, db)", len(phase.Waves))
+		if len(phase.waves) != 3 {
+			t.Fatalf("wave count = %d, want 3 (frontend, api, db)", len(phase.waves))
 		}
-		assertNames(t, sortedNames(namesOf(phase.Waves[0])), []values.ServiceName{"frontend"})
-		assertNames(t, sortedNames(namesOf(phase.Waves[1])), []values.ServiceName{"api"})
-		assertNames(t, sortedNames(namesOf(phase.Waves[2])), []values.ServiceName{"db"})
+		assertNames(t, sortedNames(namesOf(phase.waves[0])), []values.ServiceName{"frontend"})
+		assertNames(t, sortedNames(namesOf(phase.waves[1])), []values.ServiceName{"api"})
+		assertNames(t, sortedNames(namesOf(phase.waves[2])), []values.ServiceName{"db"})
 		assertStopPhaseInvariants(t, got)
 	})
 
@@ -88,7 +88,7 @@ func TestBuildDownPhase(t *testing.T) {
 			t.Fatalf("phase count = %d, want 1", len(got))
 		}
 		var all []values.ServiceName
-		for _, wave := range got[0].Waves {
+		for _, wave := range got[0].waves {
 			all = append(all, namesOf(wave)...)
 		}
 		if !reflect.DeepEqual(sortedNames(all), []values.ServiceName{"api", "db", "frontend"}) {
@@ -110,7 +110,7 @@ func TestBuildDownPhase(t *testing.T) {
 		}
 
 		var all []values.ServiceName
-		for _, wave := range got[0].Waves {
+		for _, wave := range got[0].waves {
 			all = append(all, namesOf(wave)...)
 		}
 		assertNames(t, sortedNames(all), []values.ServiceName{"api", "db", "frontend", "worker"})
@@ -127,7 +127,7 @@ func TestBuildDownPhase(t *testing.T) {
 		}
 		var all []values.ServiceName
 		for _, phase := range got {
-			for _, wave := range phase.Waves {
+			for _, wave := range phase.waves {
 				all = append(all, namesOf(wave)...)
 			}
 		}
@@ -139,10 +139,10 @@ func TestBuildDownPhase(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildDownPhase() error = %v", err)
 		}
-		if len(got) != 1 || len(got[0].Waves) != 1 {
+		if len(got) != 1 || len(got[0].waves) != 1 {
 			t.Fatalf("phases = %+v, want one phase with one wave", got)
 		}
-		assertNames(t, namesOf(got[0].Waves[0]), []values.ServiceName{"worker"})
+		assertNames(t, namesOf(got[0].waves[0]), []values.ServiceName{"worker"})
 		assertStopPhaseInvariants(t, got)
 	})
 
@@ -173,11 +173,11 @@ func TestBuildDownPhase(t *testing.T) {
 		if len(got) != 1 {
 			t.Fatalf("phase count = %d, want 1 stop phase", len(got))
 		}
-		if got[0].Kind != PhaseKindStop {
-			t.Fatalf("phase kind = %v, want PhaseKindStop", got[0].Kind)
+		if got[0].kind != phaseKindStop {
+			t.Fatalf("phase kind = %v, want PhaseKindStop", got[0].kind)
 		}
-		if len(got[0].Waves) != 0 {
-			t.Fatalf("wave count = %d, want 0 for an empty manifest", len(got[0].Waves))
+		if len(got[0].waves) != 0 {
+			t.Fatalf("wave count = %d, want 0 for an empty manifest", len(got[0].waves))
 		}
 		assertStopPhaseInvariants(t, got)
 	})
@@ -187,13 +187,13 @@ func assertStopPhaseInvariants(t *testing.T, phases []Phase) {
 	t.Helper()
 
 	for _, phase := range phases {
-		if phase.Kind != PhaseKindStop {
-			t.Errorf("phase kind = %v, want PhaseKindStop", phase.Kind)
+		if phase.kind != phaseKindStop {
+			t.Errorf("phase kind = %v, want PhaseKindStop", phase.kind)
 		}
-		for _, wave := range phase.Waves {
+		for _, wave := range phase.waves {
 			for _, unit := range wave {
-				if !reflect.DeepEqual(unit.Spec, domain.ServiceSpec{}) {
-					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.Spec.Name, unit.Spec)
+				if !reflect.DeepEqual(unit.spec, domain.ServiceSpec{}) {
+					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.spec.Name, unit.spec)
 				}
 			}
 		}

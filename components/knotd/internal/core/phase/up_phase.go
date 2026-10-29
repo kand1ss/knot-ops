@@ -12,8 +12,8 @@ import (
 )
 
 type Targets struct {
-	Stop  []values.ServiceName
-	Start []values.ServiceName
+	stop  []values.ServiceName
+	start []values.ServiceName
 }
 
 func ResolveUpTargets(
@@ -26,11 +26,11 @@ func ResolveUpTargets(
 
 	if req.Prune {
 		d := diff.ComputeDiff(rtHashes, ws.ServiceHashes)
-		tg.Stop = d.Removed
+		tg.stop = d.Removed
 	}
 
 	if len(req.Services) == 0 {
-		tg.Start = ws.Manifest.ServiceNames()
+		tg.start = ws.Manifest.ServiceNames()
 		return tg, nil
 	}
 
@@ -40,7 +40,7 @@ func ResolveUpTargets(
 		}
 	}
 
-	tg.Start = req.Services
+	tg.start = req.Services
 	return tg, nil
 }
 
@@ -59,13 +59,13 @@ func BuildPrunePhase(orphans []values.ServiceName) []Phase {
 }
 
 func BuildUpPhases(wsID values.WorkspaceId, ws workspace.Record, tg Targets) ([]Phase, error) {
-	phases := BuildPrunePhase(tg.Stop)
-	if len(tg.Start) == 0 {
+	phases := BuildPrunePhase(tg.stop)
+	if len(tg.start) == 0 {
 		return phases, nil
 	}
 
 	g := graph.NewDependencyGraphFromServices(ws.Manifest.Services())
-	nameWaves, err := g.BuildWavesFor(tg.Start...)
+	nameWaves, err := g.BuildWavesFor(tg.start...)
 	if err != nil {
 		return nil, err
 	}

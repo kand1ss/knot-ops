@@ -62,7 +62,7 @@ func testRecord(specs ...domain.ServiceSpec) workspace.Record {
 func namesOf(units []PhaseUnit) []values.ServiceName {
 	names := make([]values.ServiceName, 0, len(units))
 	for _, unit := range units {
-		names = append(names, unit.Service)
+		names = append(names, unit.service)
 	}
 	return names
 }
@@ -86,17 +86,17 @@ func assertUniqueNonZeroTaskIDs(t *testing.T, phases []Phase) {
 	seen := make(map[values.TaskID]struct{})
 
 	for _, phase := range phases {
-		for _, wave := range phase.Waves {
+		for _, wave := range phase.waves {
 			for _, unit := range wave {
-				if unit.Id == (values.TaskID{}) {
-					t.Fatalf("service %q has a zero task ID", unit.Service)
+				if unit.id == (values.TaskID{}) {
+					t.Fatalf("service %q has a zero task ID", unit.service)
 				}
 
-				if _, exists := seen[unit.Id]; exists {
-					t.Fatalf("duplicate task ID %v", unit.Id)
+				if _, exists := seen[unit.id]; exists {
+					t.Fatalf("duplicate task ID %v", unit.id)
 				}
 
-				seen[unit.Id] = struct{}{}
+				seen[unit.id] = struct{}{}
 			}
 		}
 	}
@@ -176,7 +176,7 @@ func TestResolveUpTargets(t *testing.T) {
 					t.Fatalf("error fields = %q, want %q",
 						missing.Service, "missing")
 				}
-				if len(got.Start) != 0 || len(got.Stop) != 0 {
+				if len(got.start) != 0 || len(got.stop) != 0 {
 					t.Fatalf("targets on error = %+v, want empty targets", got)
 				}
 				return
@@ -185,7 +185,7 @@ func TestResolveUpTargets(t *testing.T) {
 				t.Fatalf("ResolveUpTargets() error = %v", err)
 			}
 
-			gotStart := got.Start
+			gotStart := got.start
 			if len(tt.request.Services) == 0 {
 				gotStart = sortedNames(gotStart)
 			}
@@ -194,7 +194,7 @@ func TestResolveUpTargets(t *testing.T) {
 				wantStart = sortedNames(wantStart)
 			}
 			assertNames(t, gotStart, wantStart)
-			assertNames(t, got.Stop, tt.wantStop)
+			assertNames(t, got.stop, tt.wantStop)
 		})
 	}
 }
@@ -241,16 +241,16 @@ func TestBuildPrunePhase(t *testing.T) {
 				t.Fatalf("phase count = %d, want 1", len(got))
 			}
 			phase := got[0]
-			if phase.Kind != PhaseKindStop {
-				t.Fatalf("phase kind = %v, want PhaseKindStop", phase.Kind)
+			if phase.kind != phaseKindStop {
+				t.Fatalf("phase kind = %v, want PhaseKindStop", phase.kind)
 			}
-			if len(phase.Waves) != 1 {
-				t.Fatalf("wave count = %d, want 1", len(phase.Waves))
+			if len(phase.waves) != 1 {
+				t.Fatalf("wave count = %d, want 1", len(phase.waves))
 			}
-			assertNames(t, namesOf(phase.Waves[0]), tt.want)
-			for _, unit := range phase.Waves[0] {
-				if !reflect.DeepEqual(unit.Spec, domain.ServiceSpec{}) {
-					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.Spec.Name, unit.Spec)
+			assertNames(t, namesOf(phase.waves[0]), tt.want)
+			for _, unit := range phase.waves[0] {
+				if !reflect.DeepEqual(unit.spec, domain.ServiceSpec{}) {
+					t.Errorf("stop unit %q has spec %+v, want zero spec", unit.spec.Name, unit.spec)
 				}
 			}
 			assertUniqueNonZeroTaskIDs(t, got)
@@ -277,44 +277,44 @@ func TestBuildUpPhases(t *testing.T) {
 	})
 
 	t.Run("prune-only plan contains stop phase", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{Stop: []values.ServiceName{"orphan"}})
+		got, err := BuildUpPhases(wsID, ws, Targets{stop: []values.ServiceName{"orphan"}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
-		if len(got) != 1 || got[0].Kind != PhaseKindStop {
+		if len(got) != 1 || got[0].kind != phaseKindStop {
 			t.Fatalf("phases = %+v, want one stop phase", got)
 		}
-		assertNames(t, namesOf(got[0].Waves[0]), []values.ServiceName{"orphan"})
+		assertNames(t, namesOf(got[0].waves[0]), []values.ServiceName{"orphan"})
 	})
 
 	t.Run("start-only plan follows dependency order and copies specs", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{Start: []values.ServiceName{"api"}})
+		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{"api"}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
-		if len(got) != 1 || got[0].Kind != PhaseKindStart {
+		if len(got) != 1 || got[0].kind != phaseKindStart {
 			t.Fatalf("phases = %+v, want one start phase", got)
 		}
 		phase := got[0]
-		if len(phase.Waves) != 2 {
-			t.Fatalf("wave count = %d, want 2 (db then api)", len(phase.Waves))
+		if len(phase.waves) != 2 {
+			t.Fatalf("wave count = %d, want 2 (db then api)", len(phase.waves))
 		}
-		assertNames(t, namesOf(phase.Waves[0]), []values.ServiceName{"db"})
-		assertNames(t, namesOf(phase.Waves[1]), []values.ServiceName{"api"})
+		assertNames(t, namesOf(phase.waves[0]), []values.ServiceName{"db"})
+		assertNames(t, namesOf(phase.waves[1]), []values.ServiceName{"api"})
 		spec, err := ws.Manifest.Get(testName("api"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(phase.Waves[1][0].Spec, spec) {
-			t.Fatalf("api spec = %+v, want manifest spec %+v", phase.Waves[1][0].Spec, spec)
+		if !reflect.DeepEqual(phase.waves[1][0].spec, spec) {
+			t.Fatalf("api spec = %+v, want manifest spec %+v", phase.waves[1][0].spec, spec)
 		}
 		assertUniqueNonZeroTaskIDs(t, got)
 	})
 
 	t.Run("prune phase always precedes start phase", func(t *testing.T) {
 		got, err := BuildUpPhases(wsID, ws, Targets{
-			Stop:  []values.ServiceName{"z-orphan", "a-orphan"},
-			Start: []values.ServiceName{"api"},
+			stop:  []values.ServiceName{"z-orphan", "a-orphan"},
+			start: []values.ServiceName{"api"},
 		})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
@@ -322,35 +322,35 @@ func TestBuildUpPhases(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("phase count = %d, want 2", len(got))
 		}
-		if got[0].Kind != PhaseKindStop || got[1].Kind != PhaseKindStart {
-			t.Fatalf("phase kinds = (%v, %v), want (Stop, Start)", got[0].Kind, got[1].Kind)
+		if got[0].kind != phaseKindStop || got[1].kind != phaseKindStart {
+			t.Fatalf("phase kinds = (%v, %v), want (Stop, Start)", got[0].kind, got[1].kind)
 		}
-		assertNames(t, namesOf(got[0].Waves[0]), []values.ServiceName{"a-orphan", "z-orphan"})
+		assertNames(t, namesOf(got[0].waves[0]), []values.ServiceName{"a-orphan", "z-orphan"})
 		assertUniqueNonZeroTaskIDs(t, got)
 	})
 
 	t.Run("independent services may share a wave", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{Start: []values.ServiceName{"worker", "db"}})
+		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{"worker", "db"}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
-		if len(got) != 1 || len(got[0].Waves) == 0 {
+		if len(got) != 1 || len(got[0].waves) == 0 {
 			t.Fatalf("phases = %+v, want one non-empty start phase", got)
 		}
 		// The graph implementation determines ordering within a wave; assert the
 		// membership without making the test depend on map iteration order.
-		assertNames(t, sortedNames(namesOf(got[0].Waves[0])), []values.ServiceName{"db", "worker"})
+		assertNames(t, sortedNames(namesOf(got[0].waves[0])), []values.ServiceName{"db", "worker"})
 	})
 
 	t.Run("unknown start target returns error", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{Start: []values.ServiceName{"missing"}})
+		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{"missing"}})
 		if err == nil {
 			t.Fatalf("BuildUpPhases() error = nil, phases = %+v", got)
 		}
 	})
 
 	t.Run("empty start with empty prune list returns no phases", func(t *testing.T) {
-		got, err := BuildUpPhases(wsID, ws, Targets{Start: []values.ServiceName{}})
+		got, err := BuildUpPhases(wsID, ws, Targets{start: []values.ServiceName{}})
 		if err != nil {
 			t.Fatalf("BuildUpPhases() error = %v", err)
 		}
