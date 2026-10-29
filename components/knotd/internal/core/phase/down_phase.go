@@ -1,4 +1,4 @@
-package runner
+package phase
 
 import (
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/graph"

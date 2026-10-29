@@ -8,7 +8,7 @@
 //   - An empty request stops every service in the workspace.
 //   - Unknown targets return ErrServiceNotExists without producing phases.
 //   - Empty workspaces, independent services, stop-phase metadata, zero specs, and task IDs.
-package runner
+package phase
 
 import (
 	"errors"

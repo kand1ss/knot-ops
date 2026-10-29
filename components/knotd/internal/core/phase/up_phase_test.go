@@ -9,7 +9,7 @@
 //     dependency ordering, empty plans, and invalid start targets.
 //   - Phase invariants: start units carry manifest specs and task IDs are non-empty
 //     and unique within the generated plan.
-package runner
+package phase
 
 import (
 	"errors"
