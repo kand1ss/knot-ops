@@ -79,10 +79,22 @@ func (s *Supervisor) tick(ctx context.Context) {
 			slog.Error("failed to remove service from RuntimeRegistry", "err", err)
 		}
 
+		event := Event{
+			Workspace: sh,
+			Status:    EventExited,
+			ExitCode:  status.ExitCode,
+		}
+
 		select {
-		case s.events <- Event{Workspace: sh, Status: EventExited, ExitCode: status.ExitCode}:
-		default:
-			slog.Warn("event channel full, dropping exit event", "service", sh.Service)
+		case s.events <- event:
+			// Delivered.
+		case <-ctx.Done():
+			// Delivery cancelled.
+			slog.Error(
+				"failed to deliver exit event",
+				"service", sh.Service,
+				"error", ctx.Err(),
+			)
 		}
 	}
 }
