@@ -4,16 +4,17 @@ package process_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime/process"
+	"golang.org/x/sys/windows"
 )
 
 // helperSpecWithPID builds a spec that writes the payload's own PID to
@@ -85,18 +86,24 @@ func TestProcessRuntime_Stop_DoesNotOrphanRealPayload(t *testing.T) {
 // the same low-level Windows API os/exec itself relies on for process
 // bookkeeping (no extra dependency needed for this check).
 func processAlive(pid int) bool {
-	const stillActive = 259 // STILL_ACTIVE, per the Windows API GetExitCodeProcess docs
-
-	handle, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
 	if err != nil {
-		// Can't open it — most likely it no longer exists.
-		return false
+		// ERROR_INVALID_PARAMETER means no process with this PID exists.
+		// Any other error is indeterminate: treat it as alive (fail-safe).
+		return !errors.Is(err, windows.ERROR_INVALID_PARAMETER)
 	}
-	defer syscall.CloseHandle(handle)
+	defer windows.CloseHandle(handle)
 
-	var exitCode uint32
-	if err := syscall.GetExitCodeProcess(handle, &exitCode); err != nil {
-		return false
+	event, err := windows.WaitForSingleObject(handle, 0)
+	if err != nil {
+		return true
 	}
-	return exitCode == stillActive
+	switch event {
+	case windows.WAIT_OBJECT_0:
+		return false
+	case uint32(windows.WAIT_TIMEOUT):
+		return true
+	default:
+		return true
+	}
 }
