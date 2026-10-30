@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -55,6 +56,8 @@ func buildCommand(service domain.ServiceSpec) (*exec.Cmd, error) {
 // ever kill cmd.exe and orphan the actual service.
 type windowsJob struct {
 	handle windows.Handle
+	mu     sync.Mutex
+	closed bool
 }
 
 // attachToContainer creates a Job Object, sets JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
@@ -166,6 +169,12 @@ func releaseContainer(container processContainer) {
 	if !ok || job == nil {
 		return
 	}
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	if job.closed {
+		return
+	}
+	job.closed = true
 	_ = windows.CloseHandle(job.handle)
 }
 
@@ -181,6 +190,11 @@ func terminateGraceful(proc *os.Process, container processContainer) error {
 
 func killForceful(proc *os.Process, container processContainer) error {
 	if job, ok := container.(*windowsJob); ok && job != nil {
+		job.mu.Lock()
+		defer job.mu.Unlock()
+		if job.closed {
+			return os.ErrProcessDone
+		}
 		return windows.TerminateJobObject(job.handle, 1)
 	}
 	// No job available — attachToContainer failed or wasn't wired up for
