@@ -61,7 +61,6 @@ func (r *Runner) Execute(
 	wsID values.WorkspaceID,
 	phases []Phase,
 	out chan task.TaskEvent,
-	done func(*Stats) task.TaskEvent,
 ) {
 	defer close(out)
 	defer r.wsLock.Unlock(wsID)

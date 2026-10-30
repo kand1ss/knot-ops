@@ -194,7 +194,7 @@ func (h *harness) execute(phases []Phase) []task.TaskEvent {
 	h.t.Helper()
 	h.lock.Lock(h.wsID) // Execute owns the unlock
 	out := make(chan task.TaskEvent)
-	go h.runner.Execute(h.execCtx, h.callerCtx, h.execCancel, h.taskID, h.wsID, phases, out, snap)
+	go h.runner.Execute(h.execCtx, h.callerCtx, h.execCancel, h.taskID, h.wsID, phases, out)
 
 	var evs []task.TaskEvent
 	deadline := time.After(failsafe)
@@ -577,7 +577,7 @@ func TestExecute_ConsumerGone_DoesNotLeakGoroutineOrLock(t *testing.T) {
 	go func() {
 		defer close(finished)
 		h.runner.Execute(h.execCtx, h.callerCtx, h.execCancel, h.taskID, h.wsID,
-			[]Phase{startPhase(nil, []values.ServiceName{"a", "b"}, []values.ServiceName{"c"})}, out, snap)
+			[]Phase{startPhase(nil, []values.ServiceName{"a", "b"}, []values.ServiceName{"c"})}, out)
 	}()
 
 	select {
