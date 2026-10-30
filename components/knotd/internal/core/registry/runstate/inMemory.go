@@ -162,7 +162,7 @@ func (r *InMemoryRuntimeRegistry) ListAll() []ServiceHandle {
 
 func (r *InMemoryRuntimeRegistry) ListHashes(ws values.WorkspaceID) map[values.ServiceName]hashing.Hash {
 	r.mu.RLock()
-	defer r.mu.Unlock()
+	defer r.mu.RUnlock()
 
 	handlesByServices, ok := r.byWorkspace[ws]
 	if !ok {
