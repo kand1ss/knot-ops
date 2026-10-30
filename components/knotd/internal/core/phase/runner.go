@@ -85,7 +85,7 @@ func (r *Runner) Execute(
 					if dependency, blocked := firstUnavailableDependency(u, unavailable); blocked {
 						unavailable[u.service] = struct{}{}
 						st.skipped.Add(1)
-						em.emit(svcEvent(u, task.SkippedEvent{
+						em.emit(svcEvent(taskID, u, task.SkippedEvent{
 							Message: fmt.Sprintf("dependency %q did not start", dependency),
 						}))
 						continue
@@ -94,15 +94,15 @@ func (r *Runner) Execute(
 
 				wg.Go(func() {
 					if execCtx.Err() != nil {
-						em.emit(task.TaskCancelled{TaskID: u.id, Message: "cancelled"})
+						em.emit(task.TaskCancelled{TaskID: taskID, Message: "cancelled"})
 						return
 					}
 
 					switch p.kind {
 					case phaseKindStop:
-						r.stopUnit(execCtx, wsID, u, em, &st)
+						r.stopUnit(execCtx, taskID, wsID, u, em, &st)
 					case phaseKindStart:
-						if !r.startUnit(execCtx, wsID, u, em, &st) {
+						if !r.startUnit(execCtx, taskID, wsID, u, em, &st) {
 							failedThisWave <- u.service
 						}
 					}
@@ -142,28 +142,28 @@ func (r *Runner) createExecutionPlan(taskID values.TaskID, phases []Phase) task.
 	}
 }
 
-func svcEvent(u PhaseUnit, ev task.Event) task.ServiceEvent {
-	return task.ServiceEvent{Service: string(u.service), TaskID: u.id, Event: ev}
+func svcEvent(taskID values.TaskID, u PhaseUnit, ev task.Event) task.ServiceEvent {
+	return task.ServiceEvent{Service: string(u.service), TaskID: taskID, Event: ev}
 }
 
-func failedEvent(u PhaseUnit, err error, ctxMsg, solution string) task.ServiceEvent {
-	return svcEvent(u, task.FailedEvent{Error: task.ServiceError{
+func failedEvent(taskID values.TaskID, u PhaseUnit, err error, ctxMsg, solution string) task.ServiceEvent {
+	return svcEvent(taskID, u, task.FailedEvent{Error: task.ServiceError{
 		Issue: err.Error(), Context: ctxMsg, Solution: solution,
 	}})
 }
 
-func (r *Runner) startUnit(ctx context.Context, wsID values.WorkspaceID, u PhaseUnit, em emitter, st *Stats) bool {
+func (r *Runner) startUnit(ctx context.Context, taskID values.TaskID, wsID values.WorkspaceID, u PhaseUnit, em emitter, st *Stats) bool {
 	if _, exists := r.rtRegistry.Get(wsID, u.service); exists {
 		st.skipped.Add(1)
-		em.emit(svcEvent(u, task.SkippedEvent{Message: "already running"}))
+		em.emit(svcEvent(taskID, u, task.SkippedEvent{Message: "already running"}))
 		return true
 	}
-	em.emit(svcEvent(u, task.StartingEvent{Message: "starting"}))
+	em.emit(svcEvent(taskID, u, task.StartingEvent{Message: "starting"}))
 
 	hash, err := hashing.ServiceHash(u.spec)
 	if err != nil {
 		st.failed.Add(1)
-		em.emit(failedEvent(u, err,
+		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("an error occurred while hashing service %q", u.service),
 			fmt.Sprintf("check the %q service configuration", u.service)))
 		return false
@@ -172,7 +172,7 @@ func (r *Runner) startUnit(ctx context.Context, wsID values.WorkspaceID, u Phase
 	handle, err := r.runtime.Start(ctx, u.spec)
 	if err != nil {
 		st.failed.Add(1)
-		em.emit(failedEvent(u, err,
+		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("an error occurred while starting service %q", u.service),
 			fmt.Sprintf("check the %q service configuration, or run 'knot logs'", u.service)))
 		return false
@@ -184,14 +184,14 @@ func (r *Runner) startUnit(ctx context.Context, wsID values.WorkspaceID, u Phase
 	}); err != nil {
 		st.failed.Add(1)
 		r.stopOrphaned(ctx, handle, stopGrace, wsID, u.service)
-		em.emit(failedEvent(u, err,
+		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("an error occurred while registering service %q", u.service),
 			"check for duplicate entries in the configuration, or run 'knot logs'"))
 		return false
 	}
 
 	st.started.Add(1)
-	em.emit(svcEvent(u, task.RunningEvent{Message: fmt.Sprintf("pid: %s", handle.ID())}))
+	em.emit(svcEvent(taskID, u, task.RunningEvent{Message: fmt.Sprintf("pid: %s", handle.ID())}))
 	return true
 }
 
@@ -232,24 +232,25 @@ func (r *Runner) stopOrphaned(
 
 func (r *Runner) stopUnit(
 	ctx context.Context,
+	taskID values.TaskID,
 	wsID values.WorkspaceID,
 	u PhaseUnit,
 	em emitter,
 	st *Stats,
 ) {
-	em.emit(svcEvent(u, task.StoppingEvent{Message: "stopping"}))
+	em.emit(svcEvent(taskID, u, task.StoppingEvent{Message: "stopping"}))
 
 	h, ok := r.rtRegistry.Get(wsID, u.service)
 	if !ok { // plan was built from a snapshot; already gone != failure
 		st.skipped.Add(1)
-		em.emit(svcEvent(u, task.SkippedEvent{Message: "not running"}))
+		em.emit(svcEvent(taskID, u, task.SkippedEvent{Message: "not running"}))
 		return
 	}
 
 	if err := h.Handle.Stop(ctx, stopGrace); err != nil {
 		st.failed.Add(1)
 		slog.Error("stop failed", "workspace", wsID, "service", u.service, "error", err)
-		em.emit(failedEvent(u, err,
+		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("an error occurred while stopping service %q", u.service),
 			"run 'knot logs'; the process may still be running"))
 		return
@@ -258,12 +259,12 @@ func (r *Runner) stopUnit(
 	// Process is dead. A Remove failure must NOT re-stop it (old code did): just report.
 	if err := r.rtRegistry.Remove(wsID, u.service); err != nil {
 		st.failed.Add(1)
-		em.emit(failedEvent(u, err,
+		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("service %q stopped, but removing it from the runtime registry failed", u.service),
 			"internal daemon error; run 'knot logs'"))
 		return
 	}
 
 	st.stopped.Add(1)
-	em.emit(svcEvent(u, task.StoppedEvent{Message: fmt.Sprintf("pid: %s", h.Handle.ID())}))
+	em.emit(svcEvent(taskID, u, task.StoppedEvent{Message: fmt.Sprintf("pid: %s", h.Handle.ID())}))
 }

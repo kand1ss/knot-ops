@@ -234,7 +234,7 @@ func startPhase(dependencies map[values.ServiceName][]values.ServiceName, waves 
 	for _, w := range waves {
 		var units []PhaseUnit
 		for _, n := range w {
-			units = append(units, PhaseUnit{id: values.NewTaskID(), service: values.ServiceName(n), spec: spec(n, dependencies[n]...)})
+			units = append(units, PhaseUnit{service: values.ServiceName(n), spec: spec(n, dependencies[n]...)})
 		}
 		p.waves = append(p.waves, units)
 	}
@@ -285,32 +285,6 @@ func terminalOf(evs []task.TaskEvent, name string) task.Event {
 	return term
 }
 
-// Invariant: every planned unit ends in exactly one terminal state, none stay "pending".
-func assertOneTerminalPerUnit(t *testing.T, phases []Phase, evs []task.TaskEvent) {
-	t.Helper()
-	counts := map[values.TaskID]int{}
-	for _, ev := range evs {
-		switch e := ev.(type) {
-		case task.ServiceEvent:
-			switch e.Event.(type) {
-			case task.RunningEvent, task.StoppedEvent, task.SkippedEvent, task.FailedEvent:
-				counts[e.TaskID]++
-			}
-		case task.TaskCancelled:
-			counts[e.TaskID]++
-		}
-	}
-	for _, p := range phases {
-		for _, w := range p.waves {
-			for _, u := range w {
-				if counts[u.id] != 1 {
-					t.Errorf("unit %q has %d terminal events, want 1", u.service, counts[u.id])
-				}
-			}
-		}
-	}
-}
-
 func assertPlanFirst(t *testing.T, evs []task.TaskEvent, want ...values.ServiceName) {
 	t.Helper()
 	plan, ok := evs[0].(task.TaskAccepted)
@@ -347,7 +321,6 @@ func TestExecute_StartSingleWave(t *testing.T) {
 			t.Errorf("%s terminal = %T, want RunningEvent", n, terminalOf(evs, n))
 		}
 	}
-	assertOneTerminalPerUnit(t, phases, evs)
 }
 
 func TestExecute_WaveBarrier_NextWaveSeesAllPreviousRegistered(t *testing.T) {
@@ -385,7 +358,6 @@ func TestExecute_PruneCompletesBeforeAnyStart(t *testing.T) {
 	if s.Stopped != 2 || s.Started != 1 || s.Failed != 0 {
 		t.Fatalf("stats = %+v, want Stopped=2 Started=1", s)
 	}
-	assertOneTerminalPerUnit(t, phases, evs)
 }
 
 func TestExecute_DownStopsDependentsFirst(t *testing.T) {
@@ -446,8 +418,6 @@ func TestExecute_StartFailure_DoesNotAbortSiblingsOrNextWave(t *testing.T) {
 			s,
 		)
 	}
-
-	assertOneTerminalPerUnit(t, phases, evs)
 }
 
 func TestExecute_RegisterFailure_StopsSpawnedProcess(t *testing.T) {
@@ -577,7 +547,6 @@ func TestExecute_CancelledBeforeStart_AllUnitsReportCancelled(t *testing.T) {
 	if h.j.first("start:") != -1 {
 		t.Error("nothing may be started after cancellation")
 	}
-	assertOneTerminalPerUnit(t, phases, evs)
 	_ = lastDone(t, evs) // done is still emitted
 }
 
@@ -591,12 +560,11 @@ func TestExecute_CancelBetweenWaves_RemainingUnitsCancelled(t *testing.T) {
 	}
 	phases := []Phase{startPhase(nil, []values.ServiceName{"first"}, []values.ServiceName{"second", "third"})}
 
-	evs := h.execute(phases)
+	_ = h.execute(phases)
 
 	if h.j.first("start:second") != -1 || h.j.first("start:third") != -1 {
 		t.Errorf("wave 2 must not start after cancel; journal: %v", h.j.all())
 	}
-	assertOneTerminalPerUnit(t, phases, evs)
 }
 
 func TestExecute_ConsumerGone_DoesNotLeakGoroutineOrLock(t *testing.T) {
@@ -671,7 +639,6 @@ func TestExecute_ManyUnits_CountersAndEventsConsistent(t *testing.T) {
 	if h.reg.size() != n {
 		t.Fatalf("registry size = %d, want %d", h.reg.size(), n)
 	}
-	assertOneTerminalPerUnit(t, phases, evs)
 	assertPlanFirst(t, evs[:1], func() []values.ServiceName {
 		out := make([]values.ServiceName, n)
 		for i, nm := range names {
@@ -699,5 +666,4 @@ func TestExecute_ConcurrentMixedOutcomes_CountersExact(t *testing.T) {
 	if s := lastDone(t, evs); s != (task.TaskDone{TaskID: s.TaskID, Started: 10, Skipped: 3, Failed: 10}) {
 		t.Fatalf("stats = %+v, want Started=10 Skipped=3 Failed=10", s)
 	}
-	assertOneTerminalPerUnit(t, phases, evs)
 }

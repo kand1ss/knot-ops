@@ -8,7 +8,6 @@ import (
 
 // BuildDownPhase: requested services + everything that transitively depends on them.
 func BuildDownPhase(
-	taskID values.TaskID,
 	wsID values.WorkspaceID,
 	ws workspace.Record,
 	requested []values.ServiceName,
@@ -30,5 +29,5 @@ func BuildDownPhase(
 		return nil, err
 	}
 
-	return []Phase{NewStopPhase(taskID, nameWaves)}, nil
+	return []Phase{NewStopPhase(nameWaves)}, nil
 }
