@@ -269,13 +269,13 @@ func TestInMemoryRuntimeRegistry_ListAndListAll(t *testing.T) {
 	})
 
 	t.Run("ListHashes specific workspace", func(t *testing.T) {
-		list := r.List(id1)
+		list := r.ListHashes(id1)
 		if len(list) != 2 {
 			t.Fatalf("expected 2 entries in ws1, got %d", len(list))
 		}
 
-		if h1.Hash != list[0].Hash {
-			t.Fatalf("expected %q hash in ws1, got %q", h1.Hash, list[0].Hash)
+		if h1.Hash != list[h1.Service] {
+			t.Fatalf("expected %q hash in ws1, got %q", h1.Hash, list[h1.Service])
 		}
 	})
 }
