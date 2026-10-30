@@ -18,6 +18,20 @@ message TaskCancelled {
   string message = 2;
 }
 
+// Event emitted when a task execution is completed
+message TaskDone {
+  // Unique identifier of the completed task.
+  string task_id = 1;
+  // Number of services that were launched during execution
+  uint32 started = 2;
+  // Number of services that were stopped during execution
+  uint32 stopped = 3;
+  // Number of services that were skipped during execution
+  uint32 skipped = 4;
+  // Number of services that were failed during execution
+  uint32 failed = 5;
+}
+
 // Requests graceful cancellation of a running task.
 message CancelTaskRequest {
   // Unique identifier of the task to cancel.
