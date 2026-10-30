@@ -23,13 +23,13 @@ message TaskDone {
   // Unique identifier of the completed task.
   string task_id = 1;
   // Number of services that were launched during execution
-  string started = 2;
+  uint32 started = 2;
   // Number of services that were stopped during execution
-  string stopped = 3;
+  uint32 stopped = 3;
   // Number of services that were skipped during execution
-  string skipped = 4;
+  uint32 skipped = 4;
   // Number of services that were failed during execution
-  string failed = 5;
+  uint32 failed = 5;
 }
 
 // Requests graceful cancellation of a running task.
