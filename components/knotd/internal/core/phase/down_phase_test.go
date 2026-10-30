@@ -53,8 +53,8 @@ func TestBuildDownPhase(t *testing.T) {
 		// db is a dependency of api, not a dependent of api; worker is unrelated.
 		for _, wave := range phase.waves {
 			for _, unit := range wave {
-				if unit.spec.Name == "db" || unit.spec.Name == "worker" {
-					t.Errorf("unexpected service %q in stop plan", unit.spec.Name)
+				if unit.service == "db" || unit.service == "worker" {
+					t.Errorf("unexpected service %q in stop plan", unit.service)
 				}
 			}
 		}
