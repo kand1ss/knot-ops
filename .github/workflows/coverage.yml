@@ -8,10 +8,15 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: read
 
 jobs:
   changes:
@@ -49,21 +54,47 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2.9.2
 
-      - name: Install tarpaulin
-        uses: taiki-e/install-action@cargo-tarpaulin
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov
 
-      - name: Run Rust coverage
-        run: cargo tarpaulin --workspace --all-features --out Xml --output-dir ./
+      - name: Run tests with coverage
+        run: |
+          cargo llvm-cov nextest \
+            --workspace --all-features \
+            --profile ci \
+            --lcov --output-path lcov.info
 
-      - name: Upload Rust coverage to Codecov
+      - name: Upload Rust coverage
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: cobertura.xml
+          files: lcov.info
           flags: rust
           fail_ci_if_error: false
+
+      - name: Upload Rust test results
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/nextest/ci/rust-junit.xml
+          flags: rust
+          fail_ci_if_error: false
+
+      - name: Publish Rust test results
+        if: ${{ always() && !cancelled() }}
+        uses: dorny/test-reporter@v2
+        with:
+          name: Rust Tests
+          path: target/nextest/ci/rust-junit.xml
+          reporter: java-junit
+          fail-on-error: false
 
   go-coverage:
     name: Go Coverage
@@ -78,17 +109,48 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: 'components/knotd/go.mod'
+          go-version-file: "components/knotd/go.mod"
           cache: true
-          cache-dependency-path: 'components/knotd/go.sum'
+          cache-dependency-path: "components/knotd/go.sum"
 
-      - name: Run Go coverage
-        run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.12.0
 
-      - name: Upload Go coverage to Codecov
+      - name: Run Go tests and coverage (JUnit)
+        run: |
+          mkdir -p test-results
+          gotestsum \
+            --format standard-verbose \
+            --junitfile test-results/go-junit.xml \
+            -- \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            ./...
+
+      - name: Upload Go coverage
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: components/knotd/coverage.out
           flags: go
           fail_ci_if_error: false
+
+      - name: Upload Go test results
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: components/knotd/test-results/go-junit.xml
+          flags: go
+          fail_ci_if_error: false
+
+      - name: Publish Go test results
+        if: ${{ always() && !cancelled() }}
+        uses: dorny/test-reporter@v2
+        with:
+          name: Go Tests
+          path: components/knotd/test-results/go-junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
