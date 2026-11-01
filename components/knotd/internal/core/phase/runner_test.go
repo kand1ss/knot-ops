@@ -140,15 +140,6 @@ func (r *fakeRuntime) startedHandle(n values.ServiceName) *fakeHandle {
 	return r.started[n]
 }
 
-// ---------- harness ----------
-
-type snapshot struct{ Started, Stopped, Skipped, Failed uint32 }
-
-func (snapshot) IsTaskEvent() {}
-func snap(st *Stats) task.TaskEvent {
-	return snapshot{st.started.Load(), st.stopped.Load(), st.skipped.Load(), st.failed.Load()}
-}
-
 type harness struct {
 	t            *testing.T
 	taskID       values.TaskID

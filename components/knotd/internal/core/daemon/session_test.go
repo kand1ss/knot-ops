@@ -265,7 +265,7 @@ func TestSession_Up_StartsAllInDependencyOrder(t *testing.T) {
 	if d := done(t, evs); d.Started != 3 || d.Failed != 0 {
 		t.Fatalf("done = %+v, want Started=3", d)
 	}
-	if !(e.j.index("start:db") < e.j.index("start:api") && e.j.index("start:api") < e.j.index("start:web")) {
+	if e.j.index("start:db") >= e.j.index("start:api") || e.j.index("start:api") >= e.j.index("start:web") {
 		t.Fatalf("dependency order violated: %v", e.j.all())
 	}
 	acc, ok := evs[0].(task.TaskAccepted)

@@ -43,7 +43,12 @@ func TestAcquire_CreatesLockFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire() error = %v", err)
 	}
-	defer lock.Close()
+	defer func() {
+		err := lock.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -73,7 +78,12 @@ func TestAcquire_LockReleasedAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Acquire() error = %v", err)
 	}
-	defer second.Close()
+	defer func() {
+		err := second.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestAcquire_RejectsSecondLock verifies exclusivity between
@@ -85,7 +95,12 @@ func TestAcquire_RejectsSecondLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Acquire() error = %v", err)
 	}
-	defer first.Close()
+	defer func() {
+		err := first.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	second, err := Acquire(path)
 	if !errors.Is(err, ErrAlreadyLocked) {
@@ -153,7 +168,12 @@ func TestFileLock_ConcurrentClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire() after concurrent Close() error = %v", err)
 	}
-	defer reopened.Close()
+	defer func() {
+		err := reopened.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestFileLock_ProcessExclusivity verifies that a separate process
@@ -220,7 +240,12 @@ func TestFileLock_ProcessExclusivity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire() after helper exit: %v", err)
 	}
-	defer lock.Close()
+	defer func() {
+		err := lock.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 // TestFileLockHelperProcess is executed as a subprocess.
@@ -241,7 +266,10 @@ func TestFileLockHelperProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("helper Acquire() error = %v", err)
 	}
-	defer lock.Close()
+	defer func() {
+		err := lock.Close()
+		t.Fatal(err)
+	}()
 
 	if err := os.WriteFile(readyPath, nil, 0600); err != nil {
 		t.Fatalf("writing ready signal: %v", err)
@@ -258,7 +286,12 @@ func TestWritePID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
+	defer func() {
+		err := l.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if err := l.WritePID(); err != nil {
 		t.Fatal(err)

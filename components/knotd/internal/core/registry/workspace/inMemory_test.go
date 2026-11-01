@@ -33,9 +33,10 @@ func TestNewInMemoryWorkspaceRegistry(t *testing.T) {
 	r := NewInMemoryWorkspaceRegistry()
 	if r == nil {
 		t.Fatal("expected registry to be non-nil")
-	}
-	if r.workspaces == nil {
-		t.Fatal("expected internal workspaces map to be initialized, got nil")
+	} else {
+		if r.workspaces == nil {
+			t.Fatal("expected internal workspaces map to be initialized, got nil")
+		}
 	}
 }
 
