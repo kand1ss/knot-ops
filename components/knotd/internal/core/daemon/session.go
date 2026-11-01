@@ -19,6 +19,15 @@ func (e ErrWorkspaceNotExists) Error() string {
 	return fmt.Sprintf("workspace %q not exists", values.WorkspaceID(e))
 }
 
+type ErrWrongRevision struct {
+	expected string
+	provided string
+}
+
+func (e ErrWrongRevision) Error() string {
+	return fmt.Sprintf("a provided revision %q doesn't match with the expected %q", e.provided, e.expected)
+}
+
 type TaskSession struct {
 	id values.TaskID
 
