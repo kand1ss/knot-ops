@@ -15,6 +15,7 @@ import (
 )
 
 var ErrEmptyCommand = errors.New("process runtime: service command is empty")
+var ErrDirectoryIsFile = errors.New("process runtime: working directory is not a directory")
 
 const forceKillTimeout = 5 * time.Second
 
@@ -142,6 +143,14 @@ func NewProcessRuntime() *Runtime {
 func (r *Runtime) Start(ctx context.Context, service domain.ServiceSpec) (runtime.RunHandle, error) {
 	if strings.TrimSpace(service.Command) == "" {
 		return nil, fmt.Errorf("%w: service %q", ErrEmptyCommand, service.Name)
+	}
+
+	if service.Directory != "" {
+		if fi, err := os.Stat(service.Directory); err != nil {
+			return nil, fmt.Errorf("working directory %q: %w", service.Directory, err)
+		} else if !fi.IsDir() {
+			return nil, fmt.Errorf("%w: directory %q", ErrDirectoryIsFile, service.Directory)
+		}
 	}
 
 	// Only pre-start cancellation is honored here — ctx is the daemon's

@@ -133,6 +133,36 @@ func TestProcessRuntime_Start_Validation(t *testing.T) {
 		}
 	})
 
+	t.Run("returns error when spec.Directory is not null and directory not exists", func(t *testing.T) {
+		t.Parallel()
+
+		spec := helperSpec("MODE_SLEEP")
+		spec.Directory = "/non_existent_dir"
+
+		handle, err := rt.Start(t.Context(), spec)
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expected ErrNotExist, got: %v", err)
+		}
+		if handle != nil {
+			t.Fatal("expected handle to be nil on error")
+		}
+	})
+
+	t.Run("returns error when spec.Directory is not null and directory is file", func(t *testing.T) {
+		t.Parallel()
+
+		spec := helperSpec("MODE_SLEEP")
+		spec.Directory = "/bin/sh"
+
+		handle, err := rt.Start(t.Context(), spec)
+		if !errors.Is(err, process.ErrDirectoryIsFile) {
+			t.Fatalf("expected ErrDirectoryIsFile, got: %v", err)
+		}
+		if handle != nil {
+			t.Fatal("expected handle to be nil on error")
+		}
+	})
+
 	t.Run("returns error if context is already canceled pre-start", func(t *testing.T) {
 		t.Parallel()
 
