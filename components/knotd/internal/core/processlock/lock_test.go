@@ -252,6 +252,34 @@ func TestFileLockHelperProcess(t *testing.T) {
 	}
 }
 
+func TestWritePID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "knotd.lock")
+	l, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	if err := l.WritePID(); err != nil {
+		t.Fatal(err)
+	}
+	// Rewrite with shorter content: tail must be truncated.
+	if err := l.Write([]byte("1\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := os.ReadFile(path) // fails on Windows if whole-file lock: see note
+	if string(got) != "1\n" {
+		t.Fatalf("got %q", got)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Write(nil); !errors.Is(err, ErrClosed) {
+		t.Fatal("expected ErrClosed")
+	}
+}
+
 func waitForFile(path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
