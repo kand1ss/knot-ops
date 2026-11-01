@@ -80,16 +80,17 @@ jobs:
 
       - name: Upload Rust test results
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
           files: target/nextest/ci/rust-junit.xml
           flags: rust
           fail_ci_if_error: false
 
       - name: Publish Rust test results
         if: ${{ always() && !cancelled() }}
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         with:
           name: Rust Tests
           path: target/nextest/ci/rust-junit.xml
@@ -114,7 +115,7 @@ jobs:
           cache-dependency-path: "components/knotd/go.sum"
 
       - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v1.13.0
+        run: go install gotest.tools/gotestsum@v1.1.0
 
       - name: Run Go tests and coverage (JUnit)
         run: |
@@ -138,16 +139,17 @@ jobs:
 
       - name: Upload Go test results
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
           files: components/knotd/test-results/go-junit.xml
           flags: go
           fail_ci_if_error: false
 
       - name: Publish Go test results
         if: ${{ always() && !cancelled() }}
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         with:
           name: Go Tests
           path: components/knotd/test-results/go-junit.xml
