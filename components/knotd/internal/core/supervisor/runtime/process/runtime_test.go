@@ -151,8 +151,15 @@ func TestProcessRuntime_Start_Validation(t *testing.T) {
 	t.Run("returns error when spec.Directory is not null and directory is file", func(t *testing.T) {
 		t.Parallel()
 
+		// Self-contained fixture: a regular file that definitely exists on every OS.
+		// t.TempDir() is unique per (sub)test, so t.Parallel() is safe.
+		filePath := filepath.Join(t.TempDir(), "not-a-directory")
+		if err := os.WriteFile(filePath, []byte("x"), 0o600); err != nil {
+			t.Fatalf("create fixture file: %v", err)
+		}
+
 		spec := helperSpec("MODE_SLEEP")
-		spec.Directory = "/bin/sh"
+		spec.Directory = filePath
 
 		handle, err := rt.Start(t.Context(), spec)
 		if !errors.Is(err, process.ErrDirectoryIsFile) {
