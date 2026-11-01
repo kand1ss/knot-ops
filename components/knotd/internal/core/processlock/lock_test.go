@@ -268,7 +268,9 @@ func TestFileLockHelperProcess(t *testing.T) {
 	}
 	defer func() {
 		err := lock.Close()
-		t.Fatal(err)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}()
 
 	if err := os.WriteFile(readyPath, nil, 0600); err != nil {
