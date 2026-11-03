@@ -4,55 +4,56 @@ package processlock
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	"golang.org/x/sys/windows"
 )
 
+// lockOffset places the locked byte far beyond any real file content so the
+// PID region stays readable by other handles (client reads PID while the
+// daemon holds the lock). LockFileEx permits locking past EOF.
 const (
-	lockFlags = windows.LOCKFILE_EXCLUSIVE_LOCK |
-		windows.LOCKFILE_FAIL_IMMEDIATELY
-
-	lockRangeLow  = ^uint32(0)
-	lockRangeHigh = ^uint32(0)
+	lockOffsetHigh uint32 = 0x100 // offset = 0x100 << 32 = 1 TiB
+	lockOffsetLow  uint32 = 0
+	lockLenLow     uint32 = 1
+	lockLenHigh    uint32 = 0
 )
 
-func lockFile(file *os.File) error {
-	overlapped := &windows.Overlapped{}
+func newOverlapped() *windows.Overlapped {
+	return &windows.Overlapped{
+		Offset:     lockOffsetLow,
+		OffsetHigh: lockOffsetHigh,
+	}
+}
 
+func lockFile(f *os.File) error {
 	err := windows.LockFileEx(
-		windows.Handle(file.Fd()),
-		lockFlags,
-		0,
-		lockRangeLow,
-		lockRangeHigh,
-		overlapped,
+		windows.Handle(f.Fd()),
+		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
+		0, // reserved
+		lockLenLow,
+		lockLenHigh,
+		newOverlapped(),
 	)
 	if err != nil {
 		if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
-			return fmt.Errorf("%w: %s", ErrAlreadyLocked, file.Name())
+			return ErrAlreadyLocked
 		}
-
-		return fmt.Errorf("LockFileEx: %w", err)
+		return err
 	}
-
 	return nil
 }
 
-func unlockFile(file *os.File) error {
-	overlapped := &windows.Overlapped{}
-
+func unlockFile(f *os.File) error {
 	err := windows.UnlockFileEx(
-		windows.Handle(file.Fd()),
-		0,
-		lockRangeLow,
-		lockRangeHigh,
-		overlapped,
+		windows.Handle(f.Fd()),
+		0, // reserved
+		lockLenLow,
+		lockLenHigh,
+		newOverlapped(),
 	)
-	if err != nil {
-		return fmt.Errorf("UnlockFileEx: %w", err)
+	if err != nil && !errors.Is(err, windows.ERROR_NOT_LOCKED) {
+		return err
 	}
-
 	return nil
 }
