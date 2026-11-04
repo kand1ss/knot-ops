@@ -1,6 +1,6 @@
 package supervisor
 
-import "github.com/kand1ss/knot-ops/components/knotd/internal/core/registry/runstate"
+import "github.com/kand1ss/knot-ops/components/knotd/internal/core/registry"
 
 type EventKind int
 
@@ -9,7 +9,7 @@ const (
 )
 
 type Event struct {
-	Workspace runstate.ServiceHandle
-	Status    EventKind
-	ExitCode  *int32
+	Handle   registry.ServiceHandle
+	Status   EventKind
+	ExitCode *int32
 }

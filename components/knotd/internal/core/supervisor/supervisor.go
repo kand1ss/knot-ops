@@ -2,11 +2,14 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime"
 )
 
 var ErrNegativeValue = fmt.Errorf("negative value is provided but not supported")
@@ -21,6 +24,11 @@ type Supervisor struct {
 	runtimes        registry.RuntimeRegistry
 	inspectInterval time.Duration
 	events          chan Event
+
+	reported map[runtime.RunHandle]struct{}
+	dropped  atomic.Uint32
+
+	logger *slog.Logger
 }
 
 func NewSupervisor(runtimes registry.RuntimeRegistry, inspectInterval time.Duration) (*Supervisor, error) {
@@ -28,10 +36,16 @@ func NewSupervisor(runtimes registry.RuntimeRegistry, inspectInterval time.Durat
 		return nil, ErrNegativeValue
 	}
 
+	if runtimes == nil {
+		return nil, errors.New("runtime registry must not be nil")
+	}
+
 	return &Supervisor{
 		runtimes:        runtimes,
 		inspectInterval: inspectInterval,
 		events:          make(chan Event, 64),
+		reported:        make(map[runtime.RunHandle]struct{}),
+		logger:          slog.Default().With("component", "supervisor"),
 	}, nil
 }
 
@@ -60,41 +74,47 @@ func (s *Supervisor) Run(ctx context.Context) {
 }
 
 func (s *Supervisor) tick(ctx context.Context) {
+	live := make(map[runtime.RunHandle]struct{})
 	for _, sh := range s.runtimes.ListAll() {
-		status, err := sh.Handle.Inspect(ctx)
-		if err != nil {
-			slog.Error("inspect failed", "service", sh.Service, "workspace", sh.Workspace, "err", err)
+		live[sh.Handle] = struct{}{}
+		if _, done := s.reported[sh.Handle]; done {
 			continue
 		}
 
-		if status.Alive {
+		st, err := sh.Handle.Inspect(ctx)
+		if err != nil {
+			s.logger.ErrorContext(ctx, "inspect failed", "service", sh.Service, "workspace", sh.Workspace.String(), "error", err)
 			continue
 		}
 
-		// Transition detected: process has exited since last tick.
-		// RuntimeRegistry must stop claiming this service is running —
-		// this is the single point where that claim gets corrected.
-		err = s.runtimes.Remove(sh.Workspace, sh.Service)
-		if err != nil {
-			slog.Error("failed to remove service from RuntimeRegistry", "err", err)
-		}
-
-		event := Event{
-			Workspace: sh,
-			Status:    EventExited,
-			ExitCode:  status.ExitCode,
+		if st.Alive {
+			continue
 		}
 
 		select {
-		case s.events <- event:
-			// Delivered.
+		case s.events <- Event{Handle: sh, Status: EventExited, ExitCode: st.ExitCode}:
+			s.reported[sh.Handle] = struct{}{} // only after delivery
 		case <-ctx.Done():
-			// Delivery cancelled.
-			slog.Error(
-				"failed to deliver exit event",
+			s.logger.ErrorContext(ctx,
+				"failed to deliver event: context was cancelled",
 				"service", sh.Service,
+				"workspace", sh.Workspace.String(),
 				"error", ctx.Err(),
 			)
+			return
+		default:
+			s.dropped.Add(1)
+			s.logger.WarnContext(ctx, "supervisor channel is full: failed to deliver event; retry next interval",
+				"service", sh.Service,
+				"workspace", sh.Workspace.String(),
+				"dropped_count", s.dropped.Load(),
+			)
+		}
+	}
+
+	for k := range s.reported { // GC
+		if _, ok := live[k]; !ok {
+			delete(s.reported, k)
 		}
 	}
 }

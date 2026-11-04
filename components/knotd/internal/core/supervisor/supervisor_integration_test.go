@@ -116,8 +116,8 @@ func TestIntegration_Supervisor_DetectsRealProcessExit(t *testing.T) {
 		if !ok {
 			t.Fatal("events channel closed unexpectedly")
 		}
-		if ev.Workspace.Service != "short-lived-worker" {
-			t.Errorf("expected service 'short-lived-worker', got %s", ev.Workspace.Service)
+		if ev.Handle.Service != "short-lived-worker" {
+			t.Errorf("expected service 'short-lived-worker', got %s", ev.Handle.Service)
 		}
 		if ev.Status != supervisor.EventExited {
 			t.Errorf("expected status EventExited, got %v", ev.Status)
@@ -127,11 +127,6 @@ func TestIntegration_Supervisor_DetectsRealProcessExit(t *testing.T) {
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for Supervisor to detect exited process")
-	}
-
-	_, exists := reg.Get(wsID, "short-lived-worker")
-	if exists {
-		t.Fatal("exited process was not removed from real registry")
 	}
 }
 
@@ -177,15 +172,11 @@ func TestIntegration_Supervisor_KeepsRunningProcessUntilKilled(t *testing.T) {
 
 	select {
 	case ev := <-sup.Events():
-		if ev.Workspace.Service != "long-running-app" {
-			t.Errorf("expected service 'long-running-app', got %s", ev.Workspace.Service)
+		if ev.Handle.Service != "long-running-app" {
+			t.Errorf("expected service 'long-running-app', got %s", ev.Handle.Service)
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for Supervisor to handle killed process")
-	}
-
-	if _, exists := reg.Get(wsID, "long-running-app"); exists {
-		t.Fatal("killed process was not removed from registry")
 	}
 }
 
@@ -220,7 +211,7 @@ func TestIntegration_Supervisor_MultipleParallelProcesses(t *testing.T) {
 		select {
 		case ev := <-sup.Events():
 			if ev.ExitCode != nil {
-				exitedServices[ev.Workspace.Service] = *ev.ExitCode
+				exitedServices[ev.Handle.Service] = *ev.ExitCode
 			}
 		case <-time.After(1 * time.Second):
 			t.Fatalf("timed out waiting for process exit events (received %d/2)", i)
@@ -232,11 +223,6 @@ func TestIntegration_Supervisor_MultipleParallelProcesses(t *testing.T) {
 	}
 	if code, ok := exitedServices["p3-success"]; !ok || code != 0 {
 		t.Errorf("expected p3-success to exit with 0, got %v", code)
-	}
-
-	remaining := reg.ListAll()
-	if len(remaining) != 1 || remaining[0].Service != "p2-alive" {
-		t.Fatalf("expected only 'p2-alive' to stay in registry, got: %+v", remaining)
 	}
 }
 
@@ -261,7 +247,7 @@ func TestIntegration_Supervisor_DynamicProcessAddition_DetectsExit(t *testing.T)
 		t.Skipf("skipping test: system unable to exec process: %v", err)
 	}
 
-	sh := runstate.ServiceHandle{
+	sh := registry.ServiceHandle{
 		Workspace: wsID,
 		Service:   "dynamic-late-worker",
 		Handle:    proc,
@@ -276,18 +262,14 @@ func TestIntegration_Supervisor_DynamicProcessAddition_DetectsExit(t *testing.T)
 		if !ok {
 			t.Fatal("events channel closed unexpectedly")
 		}
-		if ev.Workspace.Service != "dynamic-late-worker" {
-			t.Errorf("expected service 'dynamic-late-worker', got %s", ev.Workspace.Service)
+		if ev.Handle.Service != "dynamic-late-worker" {
+			t.Errorf("expected service 'dynamic-late-worker', got %s", ev.Handle.Service)
 		}
 		if ev.ExitCode == nil || *ev.ExitCode != 77 {
 			t.Errorf("expected exit code 77, got %v", ev.ExitCode)
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for Supervisor to detect dynamically registered process exit")
-	}
-
-	if _, exists := reg.Get(wsID, "dynamic-late-worker"); exists {
-		t.Fatal("dynamically added process was not removed from registry after exit")
 	}
 }
 
@@ -311,7 +293,7 @@ func TestIntegration_Supervisor_DynamicProcessAddition_MonitorsAndReactsToTermin
 	}
 	defer func() { _ = proc.Stop(context.Background(), 0) }()
 
-	_ = reg.Register(runstate.ServiceHandle{
+	_ = reg.Register(registry.ServiceHandle{
 		Workspace: wsID,
 		Service:   "dynamic-long-running",
 		Handle:    proc,
@@ -332,8 +314,8 @@ func TestIntegration_Supervisor_DynamicProcessAddition_MonitorsAndReactsToTermin
 
 	select {
 	case ev := <-sup.Events():
-		if ev.Workspace.Service != "dynamic-long-running" {
-			t.Errorf("expected event for 'dynamic-long-running', got %s", ev.Workspace.Service)
+		if ev.Handle.Service != "dynamic-long-running" {
+			t.Errorf("expected event for 'dynamic-long-running', got %s", ev.Handle.Service)
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for Supervisor to process dynamic process termination")
@@ -368,7 +350,7 @@ func TestIntegration_Supervisor_ConcurrentDynamicRegistrations(t *testing.T) {
 			}
 
 			svcName := values.ServiceName(fmt.Sprintf("concurrent-svc-%d", id))
-			_ = reg.Register(runstate.ServiceHandle{
+			_ = reg.Register(registry.ServiceHandle{
 				Workspace: wsID,
 				Service:   svcName,
 				Handle:    p,
@@ -382,7 +364,7 @@ func TestIntegration_Supervisor_ConcurrentDynamicRegistrations(t *testing.T) {
 	for i := 0; i < workerCount; i++ {
 		select {
 		case ev := <-sup.Events():
-			receivedEvents[ev.Workspace.Service] = true
+			receivedEvents[ev.Handle.Service] = true
 		case <-time.After(1 * time.Second):
 			t.Fatalf("timeout: received only %d/%d events", len(receivedEvents), workerCount)
 		}
@@ -390,9 +372,5 @@ func TestIntegration_Supervisor_ConcurrentDynamicRegistrations(t *testing.T) {
 
 	if len(receivedEvents) != workerCount {
 		t.Errorf("expected %d unique events, got %d", workerCount, len(receivedEvents))
-	}
-
-	if remaining := reg.ListAll(); len(remaining) != 0 {
-		t.Fatalf("expected 0 remaining handles in registry, got %d", len(remaining))
 	}
 }
