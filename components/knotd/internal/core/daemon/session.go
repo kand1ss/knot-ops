@@ -67,7 +67,7 @@ func NewTask(
 		rtRegistry: rtRegistry,
 		wsLock:     wsLock,
 		runner:     runner,
-		logger:     slog.Default().With("component", "session"),
+		logger:     slog.Default().With("component", "session", "session_id", id.String()),
 	}
 }
 
@@ -82,10 +82,19 @@ func (s *TaskSession) Cancel() {
 
 func (s *TaskSession) withWorkspaceLock(
 	id values.WorkspaceID,
+	ev chan<- task.TaskEvent,
 	fn func(ws workspace.Record) (handoff bool, err error),
 ) error {
 	s.logger.Debug("trying to acquire workspace lock", "workspace", id.String())
-	s.wsLock.Lock(id)
+
+	if notLocked := s.wsLock.TryLock(id); !notLocked {
+		s.logger.Debug("workspace lock is busy; waiting for lock", "workspace", id.String())
+		ev <- task.TaskBlocked{
+			TaskID: s.id,
+			Reason: task.TaskBlockedReasonWorkspaceBusy,
+		}
+		s.wsLock.Lock(id)
+	}
 	s.logger.Debug("workspace lock acquired", "workspace", id.String())
 
 	handedOff := false
@@ -127,13 +136,12 @@ func (s *TaskSession) launch(
 		}
 	}()
 
-	var events chan task.TaskEvent
-	err := s.withWorkspaceLock(wsID, func(ws workspace.Record) (bool, error) {
+	events := make(chan task.TaskEvent, 10)
+	err := s.withWorkspaceLock(wsID, events, func(ws workspace.Record) (bool, error) {
 		phases, err := build(ws)
 		if err != nil {
 			return false, err
 		}
-		events = make(chan task.TaskEvent, 10)
 		handedOff = true
 		go s.runner.Execute(execCtx, callerCtx, cancel, s.id, wsID, phases, events, s.Cancel)
 		return true, nil

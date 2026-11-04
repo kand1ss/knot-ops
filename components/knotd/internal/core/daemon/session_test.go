@@ -170,6 +170,26 @@ func newEnv(t *testing.T) *env {
 	return e
 }
 
+// newSession builds an extra one-shot session sharing lock, registries and
+// runtime with e.sess — i.e. a second concurrent client of the same daemon.
+func (e *env) newSession() *TaskSession {
+	e.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	e.t.Cleanup(cancel)
+	runner := phase.NewRunner(e.wsReg, e.rtReg, e.lock, e.rt)
+	return NewTask(ctx, cancel, values.NewTaskID(), e.wsReg, e.rtReg, e.lock, runner)
+}
+
+func countBlocked(evs []task.TaskEvent) int {
+	n := 0
+	for _, ev := range evs {
+		if _, ok := ev.(task.TaskBlocked); ok {
+			n++
+		}
+	}
+	return n
+}
+
 // commit registers a manifest and returns its id and revision.
 func (e *env) commit(specs ...domain.ServiceSpec) (values.WorkspaceID, string) {
 	e.t.Helper()
@@ -643,5 +663,113 @@ func TestSession_IsOneShot_SecondRunOnSameSessionFails(t *testing.T) {
 
 	if _, err := e.up(context.Background(), id, rev, false); !errors.Is(err, ErrSessionClosed) {
 		t.Fatalf("want ErrSessionClosed, got %v", err)
+	}
+}
+
+func TestSession_Up_EmitsTaskBlockedWhenWorkspaceBusy(t *testing.T) {
+	e := newEnv(t)
+	id, rev := e.commit(spec("slow"))
+
+	// The first Start parks until released; later Starts (session B) pass through.
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	e.rt.onStart = func(ctx context.Context, _ values.ServiceName) error {
+		first := false
+		once.Do(func() { first = true; close(entered) })
+		if !first {
+			return nil
+		}
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(failsafe):
+			return errors.New("holder was never released")
+		}
+	}
+
+	// Session A takes the workspace lock and keeps it (lock is handed off to Execute).
+	chA, err := e.up(context.Background(), id, rev, false)
+	if err != nil {
+		t.Fatalf("Up A: %v", err)
+	}
+	<-entered // A is provably inside Start, so the lock is held
+
+	// Session B targets the same workspace; Up must block on the lock.
+	sessB := e.newSession()
+	type upResult struct {
+		ch  <-chan task.TaskEvent
+		err error
+	}
+	resB := make(chan upResult, 1)
+	go func() {
+		ch, err := sessB.Up(context.Background(), requests.UpRequest{WorkspaceId: id, ExpectedRevision: rev})
+		resB <- upResult{ch, err}
+	}()
+
+	// Negative window: can only mask a bug (false green), never cause a false red.
+	select {
+	case r := <-resB:
+		t.Fatalf("Up B returned while workspace was held by A (err=%v)", r.err)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(release)
+	evsA := e.drain(chA)
+	if d := done(t, evsA); d.Started != 1 {
+		t.Fatalf("A done = %+v, want Started=1", d)
+	}
+	if n := countBlocked(evsA); n != 0 {
+		t.Errorf("A acquired a free lock but emitted %d TaskBlocked", n)
+	}
+
+	var r upResult
+	select {
+	case r = <-resB:
+	case <-time.After(failsafe):
+		t.Fatal("Up B never returned after A released the lock (nil-channel send in launch?)")
+	}
+	if r.err != nil {
+		t.Fatalf("Up B: %v", r.err)
+	}
+	evsB := e.drain(r.ch)
+
+	if len(evsB) == 0 {
+		t.Fatal("B produced no events")
+	}
+	blocked, ok := evsB[0].(task.TaskBlocked)
+	if !ok {
+		t.Fatalf("first event of B = %T, want task.TaskBlocked", evsB[0])
+	}
+	if blocked.TaskID != sessB.id {
+		t.Errorf("TaskBlocked.TaskID = %v, want %v", blocked.TaskID, sessB.id)
+	}
+	if blocked.Reason != task.TaskBlockedReasonWorkspaceBusy {
+		t.Errorf("TaskBlocked.Reason = %v, want WorkspaceBusy", blocked.Reason)
+	}
+	if n := countBlocked(evsB); n != 1 {
+		t.Errorf("TaskBlocked emitted %d times, want exactly 1", n)
+	}
+	done(t, evsB) // B must still run to completion after being unblocked
+	e.assertLockReleased(id)
+}
+
+func TestSession_Up_NoTaskBlockedWhenWorkspaceFree(t *testing.T) {
+	e := newEnv(t)
+	id, rev := e.commit(spec("api"))
+
+	ch, err := e.up(context.Background(), id, rev, false)
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	evs := e.drain(ch)
+
+	if n := countBlocked(evs); n != 0 {
+		t.Fatalf("uncontended Up emitted %d TaskBlocked, want 0", n)
+	}
+	if _, ok := evs[0].(task.TaskAccepted); !ok {
+		t.Fatalf("first event = %T, want TaskAccepted", evs[0])
 	}
 }

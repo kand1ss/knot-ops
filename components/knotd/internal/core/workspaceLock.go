@@ -20,6 +20,7 @@ func NewWorkspaceLock() *WorkspaceLock {
 func (l *WorkspaceLock) getOrCreate(id values.WorkspaceID) *sync.RWMutex {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.mu.TryLock()
 
 	mtx, exists := l.locks[id]
 	if !exists {
@@ -33,12 +34,20 @@ func (l *WorkspaceLock) Lock(id values.WorkspaceID) {
 	l.getOrCreate(id).Lock()
 }
 
+func (l *WorkspaceLock) TryLock(id values.WorkspaceID) bool {
+	return l.getOrCreate(id).TryLock()
+}
+
 func (l *WorkspaceLock) Unlock(id values.WorkspaceID) {
 	l.getOrCreate(id).Unlock()
 }
 
 func (l *WorkspaceLock) RLock(id values.WorkspaceID) {
 	l.getOrCreate(id).RLock()
+}
+
+func (l *WorkspaceLock) TryRLock(id values.WorkspaceID) bool {
+	return l.getOrCreate(id).TryRLock()
 }
 
 func (l *WorkspaceLock) RUnlock(id values.WorkspaceID) {

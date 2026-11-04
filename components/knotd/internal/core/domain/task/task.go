@@ -13,6 +13,19 @@ type TaskAccepted struct {
 
 func (c TaskAccepted) IsTaskEvent() {}
 
+type TaskBlockedReason uint8
+
+const (
+	TaskBlockedReasonWorkspaceBusy = iota
+)
+
+type TaskBlocked struct {
+	TaskID values.TaskID
+	Reason TaskBlockedReason
+}
+
+func (t TaskBlocked) IsTaskEvent() {}
+
 type TaskCancelled struct {
 	TaskID  values.TaskID
 	Message string
