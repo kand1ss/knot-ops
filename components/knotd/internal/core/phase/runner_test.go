@@ -94,13 +94,13 @@ func (r *fakeRegistry) Register(h registry.ServiceHandle) error {
 	r.items[h.Service] = h
 	return nil
 }
-func (r *fakeRegistry) Remove(_ values.WorkspaceID, n values.ServiceName) error {
+func (r *fakeRegistry) Remove(h registry.ServiceHandle) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.removeErr[n]; err != nil {
+	if err := r.removeErr[h.Service]; err != nil {
 		return err
 	}
-	delete(r.items, n)
+	delete(r.items, h.Service)
 	return nil
 }
 func (r *fakeRegistry) has(n values.ServiceName) bool {

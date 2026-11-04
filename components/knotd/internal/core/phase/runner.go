@@ -38,6 +38,7 @@ type Runner struct {
 	rtRegistry registry.RuntimeRegistry
 	wsLock     *core.WorkspaceLock
 	runtime    runtime.Runtime
+	logger     *slog.Logger
 }
 
 func NewRunner(
@@ -51,6 +52,7 @@ func NewRunner(
 		wsRegistry: wsRegistry,
 		wsLock:     wsLock,
 		runtime:    runtime,
+		logger:     slog.Default().With("component", "runner"),
 	}
 }
 
@@ -62,8 +64,13 @@ func (r *Runner) Execute(
 	phases []Phase,
 	out chan task.TaskEvent,
 ) {
+	r.logger.Debug("execution started", "workspace", wsID.String())
 	defer close(out)
-	defer r.wsLock.Unlock(wsID)
+	defer func() {
+		r.logger.Debug("releasing workspace lock", "workspace", wsID.String())
+		r.wsLock.Unlock(wsID)
+		r.logger.Debug("workspace lock released", "workspace", wsID.String())
+	}()
 	defer cancel()
 
 	em := emitter{out: out, gone: callerCtx.Done()}
@@ -248,7 +255,7 @@ func (r *Runner) stopUnit(
 
 	if err := h.Handle.Stop(ctx, stopGrace); err != nil {
 		st.failed.Add(1)
-		slog.Error("stop failed", "workspace", wsID, "service", u.service, "error", err)
+		r.logger.Error("stop failed", "workspace", wsID, "service", u.service, "error", err)
 		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("an error occurred while stopping service %q", u.service),
 			"run 'knot logs'; the process may still be running"))
@@ -256,7 +263,7 @@ func (r *Runner) stopUnit(
 	}
 
 	// Process is dead. A Remove failure must NOT re-stop it (old code did): just report.
-	if err := r.rtRegistry.Remove(wsID, u.service); err != nil {
+	if err := r.rtRegistry.Remove(h); err != nil {
 		st.failed.Add(1)
 		em.emit(failedEvent(taskID, u, err,
 			fmt.Sprintf("service %q stopped, but removing it from the runtime registry failed", u.service),
