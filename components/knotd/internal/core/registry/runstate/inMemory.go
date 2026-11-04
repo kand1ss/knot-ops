@@ -5,33 +5,34 @@ import (
 	"sync"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
 
 type InMemoryRuntimeRegistry struct {
 	mu sync.RWMutex
 	// workspace -> service name -> handle
-	byWorkspace map[values.WorkspaceID]map[values.ServiceName]ServiceHandle
+	byWorkspace map[values.WorkspaceID]map[values.ServiceName]registry.ServiceHandle
 }
 
 func NewInMemoryRuntimeRegistry() *InMemoryRuntimeRegistry {
 	return &InMemoryRuntimeRegistry{
-		byWorkspace: make(map[values.WorkspaceID]map[values.ServiceName]ServiceHandle),
+		byWorkspace: make(map[values.WorkspaceID]map[values.ServiceName]registry.ServiceHandle),
 	}
 }
 
-func (r *InMemoryRuntimeRegistry) Register(handle ServiceHandle) error {
+func (r *InMemoryRuntimeRegistry) Register(handle registry.ServiceHandle) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	services, ok := r.byWorkspace[handle.Workspace]
 	if !ok {
-		services = make(map[values.ServiceName]ServiceHandle)
+		services = make(map[values.ServiceName]registry.ServiceHandle)
 		r.byWorkspace[handle.Workspace] = services
 	}
 
 	if _, exists := services[handle.Service]; exists {
-		return fmt.Errorf("%w: workspace=%s service=%s", ErrAlreadyRegistered, handle.Workspace, handle.Service)
+		return fmt.Errorf("%w: workspace=%s service=%s", registry.ErrAlreadyRegistered, handle.Workspace, handle.Service)
 	}
 
 	services[handle.Service] = handle
@@ -71,61 +72,71 @@ func (r *InMemoryRuntimeRegistry) WorkspaceHash(ws values.WorkspaceID) (hashing.
 // which would make the returned hash inconsistent with the returned
 // handle list. This is the completed, correctly-shaped replacement for
 // the abandoned GetWorkspace() stub.
-func (r *InMemoryRuntimeRegistry) Snapshot(ws values.WorkspaceID) (RuntimeSnapshot, bool) {
+func (r *InMemoryRuntimeRegistry) Snapshot(ws values.WorkspaceID) (registry.RuntimeSnapshot, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	services, ok := r.byWorkspace[ws]
 	if !ok || len(services) == 0 {
-		return RuntimeSnapshot{}, false
+		return registry.RuntimeSnapshot{}, false
 	}
 
-	handles := make([]ServiceHandle, 0, len(services))
+	handles := make([]registry.ServiceHandle, 0, len(services))
 	pairs := make(map[values.ServiceName]hashing.Hash)
 	for name, h := range services {
 		handles = append(handles, h)
 		pairs[name] = h.Hash
 	}
 
-	return RuntimeSnapshot{
+	return registry.RuntimeSnapshot{
 		Workspace: ws,
 		Hash:      hashing.Combine(pairs),
 		Handles:   handles,
 	}, true
 }
 
-func (r *InMemoryRuntimeRegistry) Get(ws values.WorkspaceID, service values.ServiceName) (ServiceHandle, bool) {
+func (r *InMemoryRuntimeRegistry) Get(ws values.WorkspaceID, service values.ServiceName) (registry.ServiceHandle, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	services, ok := r.byWorkspace[ws]
 	if !ok {
-		return ServiceHandle{}, false
+		return registry.ServiceHandle{}, false
 	}
 	h, ok := services[service]
 	return h, ok
 }
 
-func (r *InMemoryRuntimeRegistry) Remove(ws values.WorkspaceID, service values.ServiceName) error {
+func (r *InMemoryRuntimeRegistry) Remove(sh registry.ServiceHandle) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	services, ok := r.byWorkspace[ws]
+	services, ok := r.byWorkspace[sh.Workspace]
 	if !ok {
 		return nil
 	}
-	delete(services, service)
+
+	cur, ok := services[sh.Service]
+	if !ok {
+		return nil
+	}
+
+	if cur.Handle != sh.Handle {
+		return registry.ErrHandleNotMatch
+	}
+
+	delete(services, sh.Service)
 
 	// Prevent unbounded growth of byWorkspace itself: a workspace that's
 	// been fully torn down (`knot down`) shouldn't leave an empty map
 	// entry behind forever.
 	if len(services) == 0 {
-		delete(r.byWorkspace, ws)
+		delete(r.byWorkspace, sh.Workspace)
 	}
 	return nil
 }
 
-func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceID) []ServiceHandle {
+func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceID) []registry.ServiceHandle {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -134,7 +145,7 @@ func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceID) []ServiceHandle {
 		return nil
 	}
 
-	out := make([]ServiceHandle, 0, len(services))
+	out := make([]registry.ServiceHandle, 0, len(services))
 	for _, h := range services {
 		out = append(out, h)
 	}
@@ -142,7 +153,7 @@ func (r *InMemoryRuntimeRegistry) List(ws values.WorkspaceID) []ServiceHandle {
 	return out
 }
 
-func (r *InMemoryRuntimeRegistry) ListAll() []ServiceHandle {
+func (r *InMemoryRuntimeRegistry) ListAll() []registry.ServiceHandle {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -151,7 +162,7 @@ func (r *InMemoryRuntimeRegistry) ListAll() []ServiceHandle {
 		total += len(services)
 	}
 
-	out := make([]ServiceHandle, 0, total)
+	out := make([]registry.ServiceHandle, 0, total)
 	for _, services := range r.byWorkspace {
 		for _, h := range services {
 			out = append(out, h)

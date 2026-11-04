@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/hashing"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/registry"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
@@ -37,8 +38,8 @@ func (m mockRunHandle) Inspect(context.Context) (runtime.Status, error) {
 	return m.status, nil
 }
 
-func makeHandle(id values.WorkspaceID, name string, h *mockRunHandle) ServiceHandle {
-	return ServiceHandle{
+func makeHandle(id values.WorkspaceID, name string, h *mockRunHandle) registry.ServiceHandle {
+	return registry.ServiceHandle{
 		Workspace: id,
 		Service:   values.ServiceName(name),
 		Handle:    h,
@@ -46,7 +47,7 @@ func makeHandle(id values.WorkspaceID, name string, h *mockRunHandle) ServiceHan
 	}
 }
 
-func assertHandleEqual(t *testing.T, expected, got ServiceHandle) {
+func assertHandleEqual(t *testing.T, expected, got registry.ServiceHandle) {
 	t.Helper()
 	if got.Workspace != expected.Workspace || got.Service != expected.Service || got.Hash != expected.Hash {
 		t.Fatalf("handle mismatch: expected %+v, got %+v", expected, got)
@@ -91,7 +92,7 @@ func TestInMemoryRuntimeRegistry_Register(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error on duplicate registration, got nil")
 		}
-		if !errors.Is(err, ErrAlreadyRegistered) {
+		if !errors.Is(err, registry.ErrAlreadyRegistered) {
 			t.Errorf("expected error to wrap ErrAlreadyRegistered, got: %v", err)
 		}
 
@@ -161,67 +162,201 @@ func TestInMemoryRuntimeRegistry_Get(t *testing.T) {
 }
 
 func TestInMemoryRuntimeRegistry_Remove(t *testing.T) {
-	t.Run("remove existing service", func(t *testing.T) {
+	prune := func(t *testing.T, r *InMemoryRuntimeRegistry, id values.WorkspaceID) bool {
+		t.Helper()
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		_, exists := r.byWorkspace[id]
+		return exists
+	}
+
+	t.Run("matching handle is removed, siblings untouched", func(t *testing.T) {
 		r := NewInMemoryRuntimeRegistry()
 		id := values.NewWorkspaceId()
-		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
-		_ = r.Register(makeHandle(id, "svc2", &mockRunHandle{id: "h2"}))
+		h1 := makeHandle(id, "svc1", &mockRunHandle{id: "h1"})
+		h2 := makeHandle(id, "svc2", &mockRunHandle{id: "h2"})
+		_ = r.Register(h1)
+		_ = r.Register(h2)
 
-		err := r.Remove(id, "svc1")
-		if err != nil {
-			t.Error(err)
+		if err := r.Remove(h1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-
 		if _, ok := r.Get(id, "svc1"); ok {
 			t.Error("svc1 should have been removed")
 		}
 		if _, ok := r.Get(id, "svc2"); !ok {
-			t.Error("svc2 should still exist in ws1")
+			t.Error("svc2 should still exist")
 		}
 	})
 
-	t.Run("edge case: workspace cleanup after last service removed", func(t *testing.T) {
+	t.Run("workspace cleanup after last service removed", func(t *testing.T) {
 		r := NewInMemoryRuntimeRegistry()
 		id := values.NewWorkspaceId()
-		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
+		h := makeHandle(id, "svc1", &mockRunHandle{id: "h1"})
+		_ = r.Register(h)
 
-		err := r.Remove(id, "svc1")
-		if err != nil {
-			t.Error(err)
+		if err := r.Remove(h); err != nil {
+			t.Fatal(err)
 		}
-
-		// Verify internal workspace map entry is pruned
 		if list := r.List(id); list != nil {
-			t.Errorf("expected List('ws1') to return nil after cleanup, got %+v", list)
+			t.Errorf("expected List to return nil after cleanup, got %+v", list)
 		}
-
-		r.mu.RLock()
-		_, exists := r.byWorkspace[id]
-		r.mu.RUnlock()
-
-		if exists {
-			t.Error("expected workspace entry to be deleted from internal map to prevent memory leak")
+		if prune(t, r, id) {
+			t.Error("expected workspace entry to be pruned from internal map")
 		}
 	})
 
-	t.Run("no-op removals", func(t *testing.T) {
+	t.Run("different handle with same ID() is NOT removed (identity, not ID)", func(t *testing.T) {
+		r := NewInMemoryRuntimeRegistry()
+		id := values.NewWorkspaceId()
+		live := &mockRunHandle{id: "h1"}
+		_ = r.Register(makeHandle(id, "svc1", live))
+
+		// same ID on purpose: models PID reuse
+		err := r.Remove(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
+		if !errors.Is(err, registry.ErrHandleNotMatch) {
+			t.Fatalf("want ErrHandleNotMatch, got %v", err)
+		}
+		cur, ok := r.Get(id, "svc1")
+		if !ok {
+			t.Fatal("live entry was evicted by a stale handle")
+		}
+		if cur.Handle != live {
+			t.Error("registry no longer holds the live handle")
+		}
+	})
+
+	t.Run("replacement scenario: old handle cannot evict new instance", func(t *testing.T) {
+		r := NewInMemoryRuntimeRegistry()
+		id := values.NewWorkspaceId()
+		old := makeHandle(id, "svc1", &mockRunHandle{id: "h1"})
+		fresh := &mockRunHandle{id: "h1"}
+		_ = r.Register(old)
+
+		if err := r.Remove(old); err != nil { // regular Down
+			t.Fatal(err)
+		}
+		if err := r.Register(makeHandle(id, "svc1", fresh)); err != nil { // Up
+			t.Fatal(err)
+		}
+
+		err := r.Remove(old) // stale supervisor event
+		if !errors.Is(err, registry.ErrHandleNotMatch) {
+			t.Fatalf("want ErrHandleNotMatch, got %v", err)
+		}
+		if cur, ok := r.Get(id, "svc1"); !ok || cur.Handle != fresh {
+			t.Error("replacement instance must remain registered")
+		}
+	})
+
+	t.Run("mismatch does not prune workspace", func(t *testing.T) {
 		r := NewInMemoryRuntimeRegistry()
 		id := values.NewWorkspaceId()
 		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
 
-		// Removing non-existent service or workspace should not panic
-		err := r.Remove(id, "non-existent")
-		if err != nil {
-			t.Error(err)
+		err := r.Remove(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
+		if !errors.Is(err, registry.ErrHandleNotMatch) {
+			t.Fatalf("want ErrHandleNotMatch, got %v", err)
 		}
-
-		err = r.Remove(values.NewWorkspaceId(), "svc1")
-		if err != nil {
-			t.Error(err)
+		if !prune(t, r, id) {
+			t.Error("workspace entry pruned despite handle mismatch")
 		}
+	})
 
+	t.Run("no-op: missing service, missing workspace, repeated call", func(t *testing.T) {
+		r := NewInMemoryRuntimeRegistry()
+		id := values.NewWorkspaceId()
+		h := makeHandle(id, "svc1", &mockRunHandle{id: "h1"})
+		_ = r.Register(h)
+
+		if err := r.Remove(makeHandle(id, "non-existent", &mockRunHandle{id: "h1"})); err != nil {
+			t.Errorf("missing service: want nil, got %v", err)
+		}
+		if err := r.Remove(makeHandle(values.NewWorkspaceId(), "svc1", &mockRunHandle{id: "h1"})); err != nil {
+			t.Errorf("missing workspace: want nil, got %v", err)
+		}
 		if _, ok := r.Get(id, "svc1"); !ok {
-			t.Error("ws1/svc1 was removed by invalid operation")
+			t.Error("svc1 was removed by an invalid operation")
+		}
+
+		// Idempotency: removal, then a repeat on the now-absent entry.
+		if err := r.Remove(h); err != nil {
+			t.Fatalf("first call: %v", err)
+		}
+		if _, ok := r.Get(id, "svc1"); ok {
+			t.Fatal("first call must remove")
+		}
+		if err := r.Remove(h); err != nil {
+			t.Errorf("second call: want nil, got %v", err)
+		}
+	})
+
+	t.Run("nil handle never matches", func(t *testing.T) {
+		r := NewInMemoryRuntimeRegistry()
+		id := values.NewWorkspaceId()
+		_ = r.Register(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
+
+		err := r.Remove(makeHandle(id, "svc1", nil))
+		if !errors.Is(err, registry.ErrHandleNotMatch) {
+			t.Errorf("want ErrHandleNotMatch, got %v", err)
+		}
+		if _, ok := r.Get(id, "svc1"); !ok {
+			t.Error("nil handle evicted a live entry")
+		}
+	})
+
+	t.Run("concurrent: all callers see nil, entry removed, no races", func(t *testing.T) {
+		r := NewInMemoryRuntimeRegistry()
+		id := values.NewWorkspaceId()
+		h := makeHandle(id, "svc1", &mockRunHandle{id: "h1"})
+		_ = r.Register(h)
+
+		const n = 32
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for range n {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				if err := r.Remove(h); err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		if _, ok := r.Get(id, "svc1"); ok {
+			t.Error("entry must be gone")
+		}
+	})
+
+	t.Run("concurrent: stale handle never evicts live entry", func(t *testing.T) {
+		r := NewInMemoryRuntimeRegistry()
+		id := values.NewWorkspaceId()
+		live := &mockRunHandle{id: "h1"}
+		_ = r.Register(makeHandle(id, "svc1", live))
+
+		const n = 32
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for range n {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				err := r.Remove(makeHandle(id, "svc1", &mockRunHandle{id: "h1"}))
+				if !errors.Is(err, registry.ErrHandleNotMatch) {
+					t.Errorf("want ErrHandleNotMatch, got %v", err)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		if cur, ok := r.Get(id, "svc1"); !ok || cur.Handle != live {
+			t.Error("live entry must survive concurrent stale removals")
 		}
 	})
 }
@@ -319,8 +454,8 @@ func TestInMemoryRuntimeRegistry_Concurrency(t *testing.T) {
 				defer wg.Done()
 				for i := range opsPerGoroutine {
 					ws := values.NewWorkspaceId()
-					svc := values.ServiceName(fmt.Sprintf("svc-%d-%d", gID, i))
-					err := r.Remove(ws, svc)
+					svc := fmt.Sprintf("svc-%d-%d", gID, i)
+					err := r.Remove(makeHandle(ws, svc, &mockRunHandle{id: svc}))
 					if err != nil {
 						t.Error(err)
 					}
@@ -350,7 +485,7 @@ func TestInMemoryRuntimeRegistry_Concurrency(t *testing.T) {
 					svcName := fmt.Sprintf("svc-%d", i)
 					sh := makeHandle(ws, svcName, &mockRunHandle{id: "h"})
 					_ = r.Register(sh)
-					err := r.Remove(ws, values.ServiceName(svcName))
+					err := r.Remove(sh)
 					if err != nil {
 						t.Error(err)
 					}
