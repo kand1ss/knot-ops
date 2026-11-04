@@ -34,14 +34,6 @@ message DownResponse {
     // Progress or status update event from a service being stopped.
     knot.v1.task.ServiceEvent event = 3;
     // Terminal event indicating that the Down command execution has finished.
-    DownDone done = 4;
+    knot.v1.task.TaskDone done = 4;
   }
-}
-
-// Terminal summary for a completed Down command.
-message DownDone {
-  // Number of services successfully stopped.
-  uint32 stopped = 1;
-  // Number of services that failed to stop.
-  uint32 failed = 2;
 }

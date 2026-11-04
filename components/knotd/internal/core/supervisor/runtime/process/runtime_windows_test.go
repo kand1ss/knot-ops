@@ -1,0 +1,109 @@
+//go:build windows
+
+package process_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain"
+	"github.com/kand1ss/knot-ops/components/knotd/internal/core/supervisor/runtime/process"
+	"golang.org/x/sys/windows"
+)
+
+// helperSpecWithPID builds a spec that writes the payload's own PID to
+// pidFile as soon as it starts, independent of whatever PID the runtime
+// itself is tracking (cmd.exe / sh). Use with waitForHelperPID to get the
+// real payload PID for out-of-band liveness checks after Stop().
+func helperSpecWithPID(mode, pidFile string) domain.ServiceSpec {
+	return helperSpecWithArgs(mode, "PID_FILE="+pidFile)
+}
+
+// waitForHelperPID blocks until the helper process has reported its own PID
+// via pidFile, and returns it. Fails the test on timeout or malformed content.
+func waitForHelperPID(t *testing.T, pidFile string) int {
+	t.Helper()
+
+	var content []byte
+	if !waitUntil(2*time.Second, 5*time.Millisecond, func() bool {
+		data, statErr := os.ReadFile(pidFile)
+		if statErr != nil || len(data) == 0 {
+			return false
+		}
+		content = data
+		return true
+	}) {
+		t.Fatalf("timed out waiting for helper process to report its pid (pid file: %s)", pidFile)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+	if err != nil {
+		t.Fatalf("helper process wrote malformed pid %q: %v", content, err)
+	}
+	return pid
+}
+
+func TestProcessRuntime_Stop_DoesNotOrphanRealPayload(t *testing.T) {
+	t.Parallel()
+
+	rt := process.NewProcessRuntime()
+	ctx := context.Background()
+
+	pidFile := filepath.Join(t.TempDir(), "payload.pid")
+	spec := helperSpecWithPID("MODE_SLEEP", pidFile)
+
+	handle, err := rt.Start(ctx, spec)
+	if err != nil {
+		t.Fatalf("failed to start process: %v", err)
+	}
+
+	// The PID the payload reports about itself, independent of whatever PID
+	// the runtime is tracking (cmd.exe's, in the current implementation).
+	payloadPID := waitForHelperPID(t, pidFile)
+
+	if err := handle.Stop(ctx, 500*time.Millisecond); err != nil {
+		t.Fatalf("Stop() returned unexpected error: %v", err)
+	}
+
+	if !waitUntil(2*time.Second, 20*time.Millisecond, func() bool {
+		return !processAlive(payloadPID)
+	}) {
+		t.Fatalf(
+			"payload process (pid %d) is still running 2s after Stop() returned successfully — "+
+				"the cmd.exe wrapper was killed but its child process tree was not",
+			payloadPID,
+		)
+	}
+}
+
+// processAlive reports whether pid refers to a still-running process, using
+// the same low-level Windows API os/exec itself relies on for process
+// bookkeeping (no extra dependency needed for this check).
+func processAlive(pid int) bool {
+	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
+	if err != nil {
+		// ERROR_INVALID_PARAMETER means no process with this PID exists.
+		// Any other error is indeterminate: treat it as alive (fail-safe).
+		return !errors.Is(err, windows.ERROR_INVALID_PARAMETER)
+	}
+	defer windows.CloseHandle(handle)
+
+	event, err := windows.WaitForSingleObject(handle, 0)
+	if err != nil {
+		return true
+	}
+	switch event {
+	case windows.WAIT_OBJECT_0:
+		return false
+	case uint32(windows.WAIT_TIMEOUT):
+		return true
+	default:
+		return true
+	}
+}

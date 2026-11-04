@@ -15,7 +15,7 @@ message StatusRequest {
 // Status information for the selected services.
 message StatusResponse {
   // One entry for each service selected by the request.
-  repeated knot.v1.data.ServiceInfo services = 1;
+  repeated knot.v1.data.ServiceSnapshot services = 1;
 
   // True if at least one running service has spec drift compared to manifest.
   bool has_drifted = 2;

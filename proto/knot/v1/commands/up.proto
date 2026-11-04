@@ -37,16 +37,6 @@ message UpResponse {
     // Progress or status update event from a service.
     knot.v1.task.ServiceEvent event = 3;
     // Terminal event indicating that the Up command has finished executing.
-    UpDone done = 4;
+    knot.v1.task.TaskDone done = 4;
   }
-}
-
-// Terminal summary for a completed Up command.
-message UpDone {
-  // Number of services successfully started.
-  uint32 started = 1;
-  // Number of services already in the desired state.
-  uint32 skipped = 2;
-  // Number of services that failed to start.
-  uint32 failed = 3;
 }
