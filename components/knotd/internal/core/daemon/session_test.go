@@ -100,10 +100,10 @@ func (r *fakeRtRegistry) Register(h registry.ServiceHandle) error {
 	r.items[h.Service] = h
 	return nil
 }
-func (r *fakeRtRegistry) Remove(_ values.WorkspaceID, n values.ServiceName) error {
+func (r *fakeRtRegistry) Remove(sh registry.ServiceHandle) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.items, n)
+	delete(r.items, sh.Service)
 	return nil
 }
 func (r *fakeRtRegistry) ListHashes(values.WorkspaceID) map[values.ServiceName]hashing.Hash {

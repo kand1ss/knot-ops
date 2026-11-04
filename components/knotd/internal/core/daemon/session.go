@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain/requests"
@@ -38,6 +39,8 @@ type TaskSession struct {
 	wsRegistry registry.WorkspaceRegistry
 	rtRegistry registry.RuntimeRegistry
 	wsLock     *core.WorkspaceLock
+
+	logger *slog.Logger
 }
 
 func NewSession(
@@ -57,6 +60,7 @@ func NewSession(
 		rtRegistry: rtRegistry,
 		wsLock:     wsLock,
 		runner:     runner,
+		logger:     slog.Default().With("component", "session"),
 	}
 }
 
@@ -68,18 +72,25 @@ func (s *TaskSession) withWorkspaceLock(
 	id values.WorkspaceID,
 	fn func(ws workspace.Record) (handoff bool, err error),
 ) error {
+	s.logger.Debug("trying to acquire workspace lock", "workspace", id.String())
+	s.wsLock.Lock(id)
+	s.logger.Debug("workspace lock acquired", "workspace", id.String())
+
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			s.logger.Debug("releasing workspace lock", "workspace", id.String())
+			s.wsLock.Unlock(id)
+			s.logger.Debug("workspace lock released", "workspace", id.String())
+		} else {
+			s.logger.Debug("unlock handed off; skip releasing", "workspace", id.String())
+		}
+	}()
+
 	ws, exists := s.wsRegistry.Get(id)
 	if !exists {
 		return ErrWorkspaceNotExists(id)
 	}
-
-	s.wsLock.Lock(id)
-	handedOff := false
-	defer func() {
-		if !handedOff {
-			s.wsLock.Unlock(id)
-		}
-	}()
 
 	handedOff, err := fn(ws)
 	return err
@@ -135,6 +146,11 @@ func mergeContexts(parentCtx, secondaryCtx context.Context) (context.Context, co
 // caller's perspective and is guaranteed to be closed once the run completes
 // (successfully, on error, or on ctx cancellation).
 func (s *TaskSession) Up(ctx context.Context, req requests.UpRequest) (<-chan task.TaskEvent, error) {
+	s.logger.InfoContext(ctx, "handle up request",
+		"workspace", req.WorkspaceId.String(),
+		"services", req.Services,
+		"prune", req.Prune,
+	)
 	return s.launch(ctx, req.WorkspaceId,
 		func(ws workspace.Record) ([]phase.Phase, error) {
 			if req.ExpectedRevision != ws.Hash.String() {
@@ -149,6 +165,10 @@ func (s *TaskSession) Up(ctx context.Context, req requests.UpRequest) (<-chan ta
 }
 
 func (s *TaskSession) Down(ctx context.Context, req requests.DownRequest) (<-chan task.TaskEvent, error) {
+	s.logger.InfoContext(ctx, "handle down request",
+		"workspace", req.WorkspaceID.String(),
+		"services", req.Services,
+	)
 	return s.launch(ctx, req.WorkspaceID,
 		func(ws workspace.Record) ([]phase.Phase, error) {
 			return phase.BuildDownPhase(req.WorkspaceID, ws, req.Services)
