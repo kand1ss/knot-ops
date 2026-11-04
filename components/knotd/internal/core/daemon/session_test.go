@@ -166,7 +166,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(cancel)
 	e.sessCtx = ctx
 	runner := phase.NewRunner(e.wsReg, e.rtReg, e.lock, e.rt)
-	e.sess = NewSession(ctx, cancel, values.NewTaskID(), e.wsReg, e.rtReg, e.lock, runner)
+	e.sess = NewTask(ctx, cancel, values.NewTaskID(), e.wsReg, e.rtReg, e.lock, runner)
 	return e
 }
 
@@ -491,26 +491,6 @@ func TestSession_Up_PruneWithoutOrphansIsNoOp(t *testing.T) {
 	}
 }
 
-func TestSession_Up_SecondRunIsIdempotent(t *testing.T) {
-	e := newEnv(t)
-	id, rev := e.commit(spec("api"))
-
-	for i := 0; i < 2; i++ {
-		ch, err := e.up(context.Background(), id, rev, false)
-		if err != nil {
-			t.Fatalf("Up #%d: %v", i, err)
-		}
-		evs := e.drain(ch)
-		d := done(t, evs)
-		if i == 0 && d.Started != 1 || i == 1 && (d.Started != 0 || d.Skipped != 1) {
-			t.Fatalf("run %d: done = %+v", i, d)
-		}
-	}
-	if e.j.count("start:api") != 1 {
-		t.Fatalf("runtime.Start must be called once, journal: %v", e.j.all())
-	}
-}
-
 func TestSession_Up_EmptyManifestCompletesImmediately(t *testing.T) {
 	e := newEnv(t)
 	id, rev := e.commit()
@@ -599,68 +579,6 @@ func TestSession_ConsumerNeverReads_DoesNotLeakLock(t *testing.T) {
 
 // ---------- concurrency ----------
 
-// Two Up on one workspace must be serialized by the workspace lock. Proof is
-// behavioural: the second run observes the first run's result (Skipped), which
-// is impossible if both executed concurrently.
-func TestSession_ConcurrentUpOnSameWorkspace_AreSerialized(t *testing.T) {
-	e := newEnv(t)
-	id, rev := e.commit(spec("api"))
-
-	entered := make(chan struct{})
-	gate := make(chan struct{})
-	var once sync.Once
-	e.rt.onStart = func(ctx context.Context, _ values.ServiceName) error {
-		once.Do(func() { close(entered) })
-		select {
-		case <-gate:
-			return nil
-		case <-time.After(failsafe):
-			return errors.New("gate never opened")
-		}
-	}
-
-	first, err := e.up(context.Background(), id, rev, false)
-	if err != nil {
-		t.Fatalf("first Up: %v", err)
-	}
-	<-entered // first run holds the lock and is inside Start
-
-	type result struct {
-		ch  <-chan task.TaskEvent
-		err error
-	}
-	second := make(chan result, 1)
-	go func() {
-		ch, err := e.up(context.Background(), id, rev, false)
-		second <- result{ch, err}
-	}()
-
-	close(gate)
-	firstEvs := e.drain(first)
-
-	var r result
-	select {
-	case r = <-second:
-	case <-time.After(failsafe):
-		t.Fatal("second Up never acquired the lock")
-	}
-	if r.err != nil {
-		t.Fatalf("second Up: %v", r.err)
-	}
-	secondEvs := e.drain(r.ch)
-
-	if d := done(t, firstEvs); d.Started != 1 {
-		t.Fatalf("first done = %+v", d)
-	}
-	if d := done(t, secondEvs); d.Started != 0 || d.Skipped != 1 {
-		t.Fatalf("second done = %+v, want Skipped=1 (serialized after first)", d)
-	}
-	if e.j.count("start:api") != 1 {
-		t.Fatalf("service started %d times, want 1", e.j.count("start:api"))
-	}
-	e.assertLockReleased(id)
-}
-
 // Different workspaces must not block each other. Rendezvous: each Start waits
 // until BOTH have entered; a global lock would make this time out and fail.
 func TestSession_UpOnDifferentWorkspaces_RunInParallel(t *testing.T) {
@@ -711,5 +629,19 @@ func TestSession_Up_DoesNotReturnBeforePlanIsBuilt_NoPartialEventsOnError(t *tes
 	}
 	if ch != nil {
 		t.Fatal("no channel (hence no TaskAccepted) may exist on validation error")
+	}
+}
+
+func TestSession_IsOneShot_SecondRunOnSameSessionFails(t *testing.T) {
+	e := newEnv(t)
+	id, rev := e.commit(spec("api"))
+	ch, err := e.up(context.Background(), id, rev, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.drain(ch)
+
+	if _, err := e.up(context.Background(), id, rev, false); !errors.Is(err, ErrSessionClosed) {
+		t.Fatalf("want ErrSessionClosed, got %v", err)
 	}
 }

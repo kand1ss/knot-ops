@@ -2,8 +2,10 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core"
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/domain/requests"
@@ -29,6 +31,8 @@ func (e ErrWrongRevision) Error() string {
 	return fmt.Sprintf("a provided revision %q doesn't match with the expected %q", e.provided, e.expected)
 }
 
+var ErrSessionClosed = errors.New("failed executing: session already closed")
+
 type TaskSession struct {
 	id values.TaskID
 
@@ -40,10 +44,13 @@ type TaskSession struct {
 	rtRegistry registry.RuntimeRegistry
 	wsLock     *core.WorkspaceLock
 
+	onDone   func()
+	doneOnce sync.Once
+
 	logger *slog.Logger
 }
 
-func NewSession(
+func NewTask(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	id values.TaskID,
@@ -65,7 +72,12 @@ func NewSession(
 }
 
 func (s *TaskSession) Cancel() {
-	s.cancel()
+	s.doneOnce.Do(func() {
+		if s.onDone != nil {
+			s.onDone() // remove from registry first
+		}
+		s.cancel() // then release ctx-bound resources
+	})
 }
 
 func (s *TaskSession) withWorkspaceLock(
@@ -102,11 +114,16 @@ func (s *TaskSession) launch(
 	wsID values.WorkspaceID,
 	build func(workspace.Record) ([]phase.Phase, error),
 ) (<-chan task.TaskEvent, error) {
+	if s.ctx.Err() != nil {
+		return nil, ErrSessionClosed
+	}
+
 	execCtx, cancel := mergeContexts(s.ctx, callerCtx)
 	handedOff := false
 	defer func() {
 		if !handedOff {
 			cancel()
+			s.Cancel()
 		}
 	}()
 
@@ -118,7 +135,7 @@ func (s *TaskSession) launch(
 		}
 		events = make(chan task.TaskEvent, 10)
 		handedOff = true
-		go s.runner.Execute(execCtx, callerCtx, cancel, s.id, wsID, phases, events)
+		go s.runner.Execute(execCtx, callerCtx, cancel, s.id, wsID, phases, events, s.Cancel)
 		return true, nil
 	})
 	if err != nil {

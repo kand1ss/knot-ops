@@ -63,9 +63,15 @@ func (r *Runner) Execute(
 	wsID values.WorkspaceID,
 	phases []Phase,
 	out chan task.TaskEvent,
+	onFinish func(),
 ) {
 	r.logger.Debug("execution started", "workspace", wsID.String())
 	defer close(out)
+	defer func() {
+		if onFinish != nil {
+			onFinish()
+		}
+	}()
 	defer func() {
 		r.logger.Debug("releasing workspace lock", "workspace", wsID.String())
 		r.wsLock.Unlock(wsID)
