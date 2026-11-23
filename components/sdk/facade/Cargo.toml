@@ -15,7 +15,7 @@ knot-grpc = { path = "../grpc" }
 knot-sys = { path = "../sys" }
 tonic = { version = "0.14.6", features = ["channel"] }
 tracing = "0.1.44"
-sysinfo = "0.39.3"
+sysinfo = "0.40.4"
 tokio-stream = "0.1.18"
 thiserror = "2.0.18"
 
@@ -24,7 +24,7 @@ windows-sys = "0.61.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.189"
-nix = { version = "0.31.3", features = ["signal"] }
+nix = { version = "0.32.0", features = ["signal"] }
 
 [[bin]]
 name = "client-fixture"
