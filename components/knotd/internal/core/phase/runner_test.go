@@ -162,7 +162,7 @@ func newHarness(t *testing.T) *harness {
 	rt := &fakeRuntime{j: j, started: map[values.ServiceName]*fakeHandle{}, failStart: map[values.ServiceName]error{}}
 	lock := core.NewWorkspaceLock()
 	h := &harness{t: t, taskID: values.NewTaskID(), wsID: values.NewWorkspaceId(), lock: lock, reg: reg, rt: rt, j: j,
-		runner: NewRunner(nil, reg, lock, rt)}
+		runner: NewRunner(nil, lock, rt)}
 	h.execCtx, h.execCancel = context.WithCancel(context.Background())
 	h.callerCtx, h.callerCancel = context.WithCancel(context.Background())
 	t.Cleanup(func() { h.execCancel(); h.callerCancel() })

@@ -34,7 +34,6 @@ func (e emitter) emit(ev task.TaskEvent) {
 }
 
 type Runner struct {
-	wsRegistry registry.WorkspaceRegistry
 	rtRegistry registry.RuntimeRegistry
 	wsLock     *core.WorkspaceLock
 	runtime    runtime.Runtime
@@ -42,14 +41,12 @@ type Runner struct {
 }
 
 func NewRunner(
-	wsRegistry registry.WorkspaceRegistry,
 	rtRegistry registry.RuntimeRegistry,
 	wsLock *core.WorkspaceLock,
 	runtime runtime.Runtime,
 ) Runner {
 	return Runner{
 		rtRegistry: rtRegistry,
-		wsRegistry: wsRegistry,
 		wsLock:     wsLock,
 		runtime:    runtime,
 		logger:     slog.Default().With("component", "runner"),

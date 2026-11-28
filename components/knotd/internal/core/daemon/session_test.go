@@ -165,7 +165,7 @@ func newEnv(t *testing.T) *env {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	e.sessCtx = ctx
-	runner := phase.NewRunner(e.wsReg, e.rtReg, e.lock, e.rt)
+	runner := phase.NewRunner(e.rtReg, e.lock, e.rt)
 	e.sess = NewTask(ctx, cancel, values.NewTaskID(), e.wsReg, e.rtReg, e.lock, runner)
 	return e
 }
@@ -176,7 +176,7 @@ func (e *env) newSession() *TaskSession {
 	e.t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	e.t.Cleanup(cancel)
-	runner := phase.NewRunner(e.wsReg, e.rtReg, e.lock, e.rt)
+	runner := phase.NewRunner(e.rtReg, e.lock, e.rt)
 	return NewTask(ctx, cancel, values.NewTaskID(), e.wsReg, e.rtReg, e.lock, runner)
 }
 
