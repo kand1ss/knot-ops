@@ -181,7 +181,7 @@ func (s *TaskSession) Up(ctx context.Context, req requests.UpRequest) (<-chan ta
 			if req.ExpectedRevision != ws.Hash.String() {
 				return nil, ErrWrongRevision{expected: ws.Hash.String(), provided: req.ExpectedRevision}
 			}
-			tg, err := phase.ResolveUpTargets(req.WorkspaceId, ws, s.rtRegistry.ListHashes(req.WorkspaceId), req)
+			tg, err := phase.ResolveUpTargets(ws, s.rtRegistry.ListHashes(req.WorkspaceId), req)
 			if err != nil {
 				return nil, err
 			}
