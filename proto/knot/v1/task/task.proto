@@ -10,12 +10,36 @@ message TaskAccepted {
   repeated string services = 2;
 }
 
+message TaskBlocked {
+  string task_id = 1;
+  Reason reason = 2;
+
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    REASON_WORKSPACE_BUSY = 1;
+  }
+}
+
 // Event emitted when a task execution is cancelled.
 message TaskCancelled {
   // Unique identifier of the cancelled task.
   string task_id = 1;
   // Reason or additional context regarding the cancellation.
   string message = 2;
+}
+
+// Event emitted when a task execution is completed
+message TaskDone {
+  // Unique identifier of the completed task.
+  string task_id = 1;
+  // Number of services that were launched during execution
+  uint32 started = 2;
+  // Number of services that were stopped during execution
+  uint32 stopped = 3;
+  // Number of services that were skipped during execution
+  uint32 skipped = 4;
+  // Number of services that were failed during execution
+  uint32 failed = 5;
 }
 
 // Requests graceful cancellation of a running task.

@@ -1,0 +1,9 @@
+[profile.ci]
+fail-fast = false
+retries = 0
+
+[profile.ci.junit]
+path = "rust-junit.xml"
+store-success-output = false
+store-failure-output = true
+report-skipped = "all"

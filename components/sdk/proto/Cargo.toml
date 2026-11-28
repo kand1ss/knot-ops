@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 prost = "0.14.4"
+prost-types = "0.14.6"
 tonic = "0.14.6"
 tonic-prost = "0.14.6"
 
