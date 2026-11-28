@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/values"
 )
@@ -76,5 +77,6 @@ func (w *WorkspaceManifest) ServiceNames() []values.ServiceName {
 	for _, v := range w.services {
 		names = append(names, v.Name)
 	}
+	slices.Sort(names)
 	return names
 }

@@ -67,8 +67,11 @@ func ResolveUpTargets(
 
 func resolveScope(ws workspace.Record, requested []values.ServiceName) ([]values.ServiceName, error) {
 	if len(requested) == 0 {
-		// Clone: don't leak the manifest's internal slice.
-		return slices.Clone(ws.Manifest.ServiceNames()), nil
+		// Manifest iteration order is not part of its contract: normalize here
+		// so the plan is stable. Clone first: slices.Sort mutates in place.
+		names := slices.Clone(ws.Manifest.ServiceNames())
+		slices.Sort(names)
+		return names, nil
 	}
 
 	seen := make(map[values.ServiceName]struct{}, len(requested))
