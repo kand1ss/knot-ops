@@ -181,7 +181,10 @@ func (r *Runner) startUnit(ctx context.Context, taskID values.TaskID, wsID value
 		return false
 	}
 
+	beforeStart := time.Now()
 	handle, err := r.runtime.Start(ctx, u.spec)
+	uptime := time.Since(beforeStart)
+
 	if err != nil {
 		st.failed.Add(1)
 		em.emit(failedEvent(taskID, u, err,
@@ -192,7 +195,7 @@ func (r *Runner) startUnit(ctx context.Context, taskID values.TaskID, wsID value
 
 	// AlreadyRegistered is NOT benign here: we just spawned a second, untracked process.
 	if err := r.rtRegistry.Register(registry.ServiceHandle{
-		Workspace: wsID, Service: u.service, Hash: hash, Handle: handle,
+		Workspace: wsID, Service: u.service, Hash: hash, Handle: handle, Uptime: uptime.Seconds(),
 	}); err != nil {
 		st.failed.Add(1)
 		r.stopOrphaned(ctx, handle, stopGrace, wsID, u.service)

@@ -21,8 +21,10 @@ type RuntimeSnapshot struct {
 type ServiceHandle struct {
 	Workspace values.WorkspaceID
 	Service   values.ServiceName
-	Hash      hashing.Hash
 	Handle    runtime.RunHandle
+
+	Hash   hashing.Hash
+	Uptime float64
 }
 
 var ErrAlreadyRegistered = fmt.Errorf("runtime registry: handle already registered for this service")
