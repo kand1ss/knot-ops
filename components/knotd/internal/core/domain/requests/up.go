@@ -9,4 +9,5 @@ type UpRequest struct {
 	Services         []values.ServiceName
 	ExpectedRevision string
 	Prune            bool
+	Restart          bool
 }

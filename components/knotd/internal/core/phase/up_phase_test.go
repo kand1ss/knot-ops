@@ -81,11 +81,11 @@ func assertNames(t *testing.T, got, want []values.ServiceName) {
 }
 
 func TestResolveUpTargets(t *testing.T) {
-	wsID := testWorkspaceID(uuid.New())
 	ws := testRecord(testSpec("api"), testSpec("db"), testSpec("worker"))
 
-	var runtimeAPI, runtimeOrphan hashing.Hash
+	var runtimeAPI, runtimeDB, runtimeOrphan hashing.Hash
 	runtimeAPI[0] = 1
+	runtimeDB[0] = 2
 	runtimeOrphan[0] = 9
 
 	tests := []struct {
@@ -133,6 +133,79 @@ func TestResolveUpTargets(t *testing.T) {
 			request:   requests.UpRequest{Prune: true, Services: []values.ServiceName{"api"}},
 			wantStart: []values.ServiceName{"api"},
 		},
+		{
+			name:      "restart is scoped to requested services",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI, "db": runtimeDB},
+			request:   requests.UpRequest{Restart: true, Services: []values.ServiceName{"api"}},
+			wantStart: []values.ServiceName{"api"},
+			wantStop:  []values.ServiceName{"api"}, // db is running but out of scope: untouched
+		},
+		{
+			name:      "restart without services restarts every running manifest service",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI, "db": runtimeDB},
+			request:   requests.UpRequest{Restart: true},
+			wantStart: []values.ServiceName{"api", "db", "worker"}, // worker was not running: plain start
+			wantStop:  []values.ServiceName{"api", "db"},
+		},
+		{
+			name:      "restart never stops runtime-only services without prune",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI, "orphan": runtimeOrphan},
+			request:   requests.UpRequest{Restart: true},
+			wantStart: []values.ServiceName{"api", "db", "worker"},
+			wantStop:  []values.ServiceName{"api"}, // orphan has no ServiceSpec: cannot be restarted
+		},
+		{
+			name:      "restart with prune stops restarted services and orphans once each",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI, "orphan": runtimeOrphan},
+			request:   requests.UpRequest{Restart: true, Prune: true, Services: []values.ServiceName{"api"}},
+			wantStart: []values.ServiceName{"api"},
+			wantStop:  []values.ServiceName{"api", "orphan"}, // sorted
+		},
+		{
+			name:      "restart of a service that is not running is a plain start",
+			runtime:   map[values.ServiceName]hashing.Hash{"db": runtimeDB},
+			request:   requests.UpRequest{Restart: true, Services: []values.ServiceName{"api"}},
+			wantStart: []values.ServiceName{"api"},
+			// wantStop intentionally nil: nothing to stop
+		},
+		{
+			name:      "restart with empty runtime state starts everything and stops nothing",
+			request:   requests.UpRequest{Restart: true},
+			wantStart: []values.ServiceName{"api", "db", "worker"},
+		},
+		{
+			name:      "restart deduplicates repeated service names",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI},
+			request:   requests.UpRequest{Restart: true, Services: []values.ServiceName{"api", "api"}},
+			wantStart: []values.ServiceName{"api"},
+			wantStop:  []values.ServiceName{"api"},
+		},
+		{
+			name:      "restart keeps start in request order and sorts stop",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI, "worker": runtimeDB},
+			request:   requests.UpRequest{Restart: true, Services: []values.ServiceName{"worker", "api"}},
+			wantStart: []values.ServiceName{"worker", "api"},
+			wantStop:  []values.ServiceName{"api", "worker"},
+		},
+		{
+			name:      "running services are not stopped when restart is not requested",
+			runtime:   map[values.ServiceName]hashing.Hash{"api": runtimeAPI},
+			request:   requests.UpRequest{Services: []values.ServiceName{"api"}},
+			wantStart: []values.ServiceName{"api"},
+			// wantStop nil: skipping an already-running service is the executor's job
+		},
+		{
+			name:    "restart cannot target a runtime-only service by name",
+			runtime: map[values.ServiceName]hashing.Hash{"missing": runtimeOrphan},
+			request: requests.UpRequest{Restart: true, Services: []values.ServiceName{"missing"}},
+			wantErr: true, // must be ErrServiceNotInManifest, not a stop of the orphan
+		},
+		{
+			name:    "restart with unknown service fails regardless of prune",
+			runtime: map[values.ServiceName]hashing.Hash{"api": runtimeAPI, "orphan": runtimeOrphan},
+			request: requests.UpRequest{Restart: true, Prune: true, Services: []values.ServiceName{"api", "missing"}},
+			wantErr: true, // validation precedes any stop computation: no partial targets
+		},
 	}
 
 	for _, tt := range tests {
@@ -141,7 +214,7 @@ func TestResolveUpTargets(t *testing.T) {
 			if tt.name == "empty manifest and empty request produce empty targets" {
 				record = testRecord()
 			}
-			got, err := ResolveUpTargets(wsID, record, tt.runtime, tt.request)
+			got, err := ResolveUpTargets(record, tt.runtime, tt.request)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected an error, got nil")
@@ -174,6 +247,44 @@ func TestResolveUpTargets(t *testing.T) {
 			assertNames(t, gotStart, wantStart)
 			assertNames(t, got.stop, tt.wantStop)
 		})
+	}
+}
+
+func TestResolveUpTargets_DoesNotAliasInput(t *testing.T) {
+	ws := testRecord(testSpec("api"), testSpec("db"))
+	req := requests.UpRequest{Restart: true, Services: []values.ServiceName{"api", "db"}}
+	rt := map[values.ServiceName]hashing.Hash{"api": {1}, "db": {2}}
+
+	got, err := ResolveUpTargets(ws, rt, req)
+	if err != nil {
+		t.Fatalf("ResolveUpTargets() error = %v", err)
+	}
+
+	// Mutating results must not corrupt the caller's request or the manifest.
+	got.start[0] = "mutated"
+	got.stop[0] = "mutated"
+
+	if req.Services[0] != "api" {
+		t.Fatalf("request mutated through targets: %v", req.Services)
+	}
+	again, _ := ResolveUpTargets(ws, rt, req)
+	assertNames(t, again.start, []values.ServiceName{"api", "db"})
+}
+
+func TestResolveUpTargets_Deterministic(t *testing.T) {
+	ws := testRecord(testSpec("a"), testSpec("b"), testSpec("c"), testSpec("d"))
+	rt := map[values.ServiceName]hashing.Hash{"a": {1}, "b": {2}, "c": {3}, "d": {4}, "o1": {5}, "o2": {6}}
+	req := requests.UpRequest{Restart: true, Prune: true}
+
+	first, err := ResolveUpTargets(ws, rt, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Map iteration order is randomized per range: repeat to catch leaks of it.
+	for i := 0; i < 100; i++ {
+		got, _ := ResolveUpTargets(ws, rt, req)
+		assertNames(t, got.stop, first.stop)
+		assertNames(t, got.start, first.start)
 	}
 }
 

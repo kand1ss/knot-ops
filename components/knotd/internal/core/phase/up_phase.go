@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"cmp"
 	"slices"
 
 	"github.com/kand1ss/knot-ops/components/knotd/internal/core/diff"
@@ -16,32 +17,91 @@ type Targets struct {
 	start []values.ServiceName
 }
 
+// ResolveUpTargets computes which services must be stopped and started.
+//
+// Semantics:
+//   - scope  = req.Services, or the whole manifest when empty (validated first).
+//   - start  = scope. The executor skips services already in the desired state,
+//     so a service stopped during the stop phase is started again.
+//   - stop   = (prune ? orphans : ∅) ∪ (restart ? scope ∩ running : ∅).
+//     Restart never touches services outside scope, nor orphans.
+//
+// Output slices are fresh, deduplicated and sorted; actual ordering for
+// execution is the DAG engine's responsibility.
 func ResolveUpTargets(
-	wsID values.WorkspaceID,
 	ws workspace.Record,
 	rtHashes map[values.ServiceName]hashing.Hash,
 	req requests.UpRequest,
 ) (Targets, error) {
+	// 1. Resolve and validate scope first (fail fast, no wasted diff work).
+	scope, err := resolveScope(ws, req.Services)
+	if err != nil {
+		return Targets{}, err
+	}
+
 	var tg Targets
+	tg.start = scope
 
+	// 2. Prune is intentionally global: orphans cannot be named in req.Services
+	//    because they are absent from the manifest.
 	if req.Prune {
-		d := diff.ComputeDiff(rtHashes, ws.ServiceHashes)
-		tg.stop = d.Removed
+		tg.stop = append(tg.stop, diff.ComputeDiff(rtHashes, ws.ServiceHashes).Removed...)
 	}
 
-	if len(req.Services) == 0 {
-		tg.start = ws.Manifest.ServiceNames()
-		return tg, nil
-	}
-
-	for _, n := range req.Services {
-		if _, err := ws.Manifest.Get(n); err != nil {
-			return Targets{}, err
+	// 3. Restart is scoped: only requested services that the daemon knows about.
+	//    Not-running services in scope are simply started by `start`.
+	if req.Restart {
+		for _, name := range scope {
+			if _, running := rtHashes[name]; !running {
+				continue
+			}
+			tg.stop = append(tg.stop, name)
+			tg.start = append(tg.start, name)
 		}
 	}
 
-	tg.start = req.Services
+	tg.stop = uniqueSorted(tg.stop)
+	tg.start = uniqueStable(tg.start)
 	return tg, nil
+}
+
+func resolveScope(ws workspace.Record, requested []values.ServiceName) ([]values.ServiceName, error) {
+	if len(requested) == 0 {
+		// Clone: don't leak the manifest's internal slice.
+		return slices.Clone(ws.Manifest.ServiceNames()), nil
+	}
+
+	seen := make(map[values.ServiceName]struct{}, len(requested))
+	scope := make([]values.ServiceName, 0, len(requested))
+	for _, n := range requested {
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		if _, err := ws.Manifest.Get(n); err != nil {
+			return nil, err
+		}
+		seen[n] = struct{}{}
+		scope = append(scope, n) // preserves user order => deterministic first-error reporting
+	}
+	return scope, nil
+}
+
+func uniqueStable[S ~[]E, E comparable](s S) S {
+	seen := make(map[E]struct{}, len(s))
+	out := make(S, 0, len(s))
+	for _, v := range s {
+		if _, dup := seen[v]; dup {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func uniqueSorted[S ~[]E, E cmp.Ordered](s S) S {
+	slices.Sort(s)
+	return slices.Compact(s)
 }
 
 // BuildPrunePhase: all orphans in a single wave, stopped concurrently.
