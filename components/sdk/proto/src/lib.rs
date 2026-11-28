@@ -12,8 +12,4 @@ pub mod v1 {
     pub mod commands {
         tonic::include_proto!("knot.v1.commands");
     }
-
-    pub mod data {
-        tonic::include_proto!("knot.v1.data");
-    }
 }
